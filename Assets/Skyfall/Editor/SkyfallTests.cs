@@ -152,7 +152,7 @@ namespace Skyfall.EditorTools
                         if (Arg("-skyfallProbeDragon", "") != "")
                         {
                             var petPos = game.pet.transform.position;
-                            foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+                            foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
                             {
                                 if (!r.enabled || !r.gameObject.activeInHierarchy) continue;
                                 if (r.transform.IsChildOf(game.pet.transform) && r.GetComponentInParent<CharacterRig>() != null) continue;
@@ -169,7 +169,7 @@ namespace Skyfall.EditorTools
                             var xy = probe.Split(',');
                             var target = new Vector2(float.Parse(xy[0]) * Screen.width / 1280f, (720f - float.Parse(xy[1])) * Screen.height / 720f);
                             var cam = game.player.cam;
-                            foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+                            foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
                             {
                                 if (!r.enabled || !r.gameObject.activeInHierarchy) continue;
                                 var sp = cam.WorldToScreenPoint(r.bounds.center);
