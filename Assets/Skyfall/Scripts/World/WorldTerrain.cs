@@ -5,7 +5,7 @@ using UnityEngine.Rendering;
 namespace Skyfall
 {
     /// Procedural heightmap world with water and medieval ruins/battlefields.
-    public class WorldTerrain : MonoBehaviour
+    public partial class WorldTerrain : MonoBehaviour
     {
         public const float HALF = 200f;
         public const int RES = 200;
@@ -37,6 +37,7 @@ namespace Skyfall
             packRoot.SetParent(transform, false);
             ScatterProps();
             ScatterGreenery();
+            BuildIslands();
             // Merge the static scenery into big batches so thousands of small parts render cheaply.
             StaticBatchingUtility.Combine(propsRoot.gameObject);
         }
@@ -291,7 +292,9 @@ namespace Skyfall
             {
                 var center = Spot(30f, 0.12f);
                 if (M.IsInf(center)) continue;
-                int houses = rng.RangeInt(4, 7);
+                bool kit = KitAvailable;
+                if (kit) BuildKitVillage(center);
+                int houses = kit ? rng.RangeInt(1, 2) : rng.RangeInt(4, 7);
                 for (int h = 0; h < houses; h++)
                 {
                     var p = Spot(16f, 0.16f, center, 22f);

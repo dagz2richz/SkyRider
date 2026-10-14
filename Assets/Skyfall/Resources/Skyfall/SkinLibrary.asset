@@ -58,6 +58,7 @@ MonoBehaviour:
   - {fileID: 6739804228592001243, guid: 6cdd667aa0034cd4dadc8d58a65fb098, type: 3}
   - {fileID: 6739804228592001243, guid: 6cdd667aa0034cd4dadc8d58a65fb098, type: 3}
   - {fileID: 6444807355431749394, guid: f593bc20677ebf14abd27a4853408c68, type: 3}
+  ruinsKit: {fileID: -927199367670048503, guid: 71ff0e77341aa304c921a48a639924b6, type: 3}
   skybox: {fileID: 2100000, guid: de1d750fefeeac642bf9b11a3978ccf5, type: 2}
   vfx:
   - name: hit

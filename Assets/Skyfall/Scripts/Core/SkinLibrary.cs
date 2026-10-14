@@ -37,6 +37,8 @@ namespace Skyfall
         public GameObject[] standingStones;
         public GameObject[] shrubs;
         public GameObject[] grass;
+        /// The Ruins Creation Kit model; its child objects are the individual ruin pieces.
+        public GameObject ruinsKit;
 
         [Header("Sky")]
         public Material skybox;

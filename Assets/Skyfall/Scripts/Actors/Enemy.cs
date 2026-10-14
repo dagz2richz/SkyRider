@@ -455,7 +455,7 @@ namespace Skyfall
 
             var p = Pos + (move + knock) * delta;
             knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
-            p.y = terrain.Height(p.x, p.z);
+            p.y = terrain.SurfaceHeight(p.x, p.z, Pos.y);
             Pos = p;
             if (dist > 0.1f && state != "charge" && frozenT <= 0f)
             {
@@ -601,7 +601,7 @@ namespace Skyfall
             Sfx.Play("boom", at, 2f);
             game.Shake(0.6f);
             var d = player.Pos - at;
-            float gh = game.terrain.Height(player.Pos.x, player.Pos.z);
+            float gh = game.terrain.SurfaceHeight(player.Pos.x, player.Pos.z, player.Pos.y);
             if (new Vector2(d.x, d.z).magnitude < rad && player.Pos.y - gh < 3f)
                 player.TakeDamage(damage * 1.4f * AtkMult);
         }
@@ -640,7 +640,7 @@ namespace Skyfall
             var p = game.player;
             var pos = transform.position;
             bool hitPlayer = p != null && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.8f;
-            float gh = game.terrain.Height(pos.x, pos.z);
+            float gh = game.terrain.SurfaceHeight(pos.x, pos.z, pos.y - velocity.y * delta);
             if (hitPlayer || pos.y < gh || life <= 0f)
             {
                 FX.Burst(pos, new Color(0.45f, 0.4f, 0.35f), 14, 7f, 0.4f);

@@ -137,8 +137,12 @@ namespace Skyfall.EditorTools
                     stage = 1;
                     frame = 0;
                     game.StartRun(lo[2], lo[3], lo[0], lo[1]);
-                    game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
+                    if (Arg("-skyfallIslandView", "") == "") game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
                     game.player.hp = game.player.maxHp = 5000f;   // keep the hero alive for the whole test
+                }
+                else if (stage == 1 && Arg("-skyfallIslandView", "") != "")
+                {
+                    IslandView(game);
                 }
                 else if (stage == 1)
                 {
@@ -216,6 +220,64 @@ namespace Skyfall.EditorTools
                 Debug.LogError("SKYFALL_TEST exception: " + e);
                 Finish(1);
             }
+        }
+
+        /// -skyfallIslandView 1: photographs the floating islands from the ground and from the boss island's top.
+        static void IslandView(Game game)
+        {
+            var pl = game.player;
+            var tr = game.terrain;
+            pl.hp = pl.maxHp = 99999f;
+            var bc = tr.BossIslandCenter;
+            if (frame == 1)
+            {
+                Debug.Log($"SKYFALL_TEST islands={tr.islands.Count} boss center={bc} radius={tr.BossIslandRadius} ground={tr.Height(bc.x, bc.z):0.0}");
+                foreach (var i in tr.islands)
+                    Debug.Log($"SKYFALL_TEST island big={i.big} pos={i.center} r={i.radius:0.0} depth={i.depth:0.0} groundBelow={tr.Height(i.center.x, i.center.z):0.0}");
+            }
+            void LookFrom(Vector3 stand, Vector3 look, float dist, float pitch)
+            {
+                pl.Pos = stand;
+                pl.velocity = Vector3.zero;
+                var d = look - stand; d.y = 0;
+                pl.camYaw = Mathf.Atan2(-d.x, -d.z);
+                pl.camDistTarget = dist;
+                pl.camPitch = pitch;
+            }
+            Vector3 toward = new Vector3(bc.x, 0, bc.z).normalized;
+            if (frame < 60) LookFrom(new Vector3(0, tr.Height(0, 0), 0), bc, 30f, 0.1f);
+            else if (frame < 100)
+            {
+                var s = bc - toward * 70f; s.y = tr.Height(s.x, s.z);
+                LookFrom(s, bc, 20f, 0.05f);
+                if (frame == 99) Snap("islands_1_far");
+            }
+            else if (frame < 140)
+            {
+                var s = bc - toward * 45f; s.y = tr.Height(s.x, s.z);
+                LookFrom(s, bc, 12f, 0.5f);
+                if (frame == 139) Snap("islands_2_chain");
+            }
+            else if (frame < 180)
+            {
+                var side = new Vector3(-toward.z, 0, toward.x);
+                var s = bc + side * 62f; s.y = tr.Height(s.x, s.z);
+                LookFrom(s, bc, 8f, 0.12f);
+                if (frame == 179) Snap("islands_3_side");
+            }
+            else if (frame == 180)
+            {
+                pl.Pos = bc + new Vector3(0, 1f, 0);
+                pl.velocity = Vector3.zero;
+                pl.camDistTarget = 14f; pl.camPitch = 0.35f;
+            }
+            else if (frame == 300)
+            {
+                Snap("islands_4_top");
+                Debug.Log($"SKYFALL_TEST on top: pos={pl.Pos} expectedTop={bc.y} dy={pl.Pos.y - bc.y:0.00}");
+                pl.camYaw += 2.5f; pl.camDistTarget = 26f; pl.camPitch = 0.55f;
+            }
+            else if (frame == 330) { Snap("islands_5_top_wide"); Finish(0); }
         }
 
         static string tag = "run";

@@ -44,10 +44,71 @@ namespace Skyfall.EditorTools
             }
             int converted = ConvertMaterials();
             int nature = PrepareNatureMaterials();
+            converted += PrepareRuinsKit();
             BuildLibrary();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log($"SKYFALL_TEST asset setup done: {converted} materials converted to URP, {nature} nature materials prepared, library at {LibraryPath}");
+        }
+
+        const string KitFolder = "Assets/Ruins_creation_kit";
+        const string KitModel = "Assets/Ruins_creation_kit/ruins_creation_kit.FBX";
+
+        /// Ruins kit: converts its legacy materials to URP Lit (keeping texture + normal map) and maps the FBX's
+        /// embedded materials onto them by name, since the model ships without linked materials.
+        static int PrepareRuinsKit()
+        {
+            if (!AssetDatabase.IsValidFolder(KitFolder)) return 0;
+            var upgraders = Upgraders();
+            var known = new HashSet<string>(upgraders.Select(u => u.OldShaderPath));
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            var byName = new Dictionary<string, Material>();
+            int n = 0;
+            foreach (var mat in MaterialsIn(KitFolder + "/Materials"))
+            {
+                string sh = mat.shader ? mat.shader.name : "";
+                if (known.Contains(sh)) { MaterialUpgrader.Upgrade(mat, upgraders, MaterialUpgrader.UpgradeFlags.None); n++; }
+                else if (!sh.StartsWith("Universal Render Pipeline/") && lit != null)
+                {
+                    Texture main = mat.HasProperty("_MainTex") ? mat.GetTexture("_MainTex") : null;
+                    Texture bump = mat.HasProperty("_BumpMap") ? mat.GetTexture("_BumpMap") : null;
+                    Color col = mat.HasProperty("_Color") ? mat.GetColor("_Color") : Color.white;
+                    mat.shader = lit;
+                    mat.SetTexture("_BaseMap", main);
+                    mat.SetColor("_BaseColor", col);
+                    if (bump) { mat.SetTexture("_BumpMap", bump); mat.EnableKeyword("_NORMALMAP"); }
+                    mat.SetFloat("_Smoothness", 0.12f);
+                    mat.SetFloat("_Metallic", 0f);
+                    n++;
+                }
+                mat.enableInstancing = true;
+                EditorUtility.SetDirty(mat);
+                byName[mat.name] = mat;
+            }
+            // FBX material name -> kit material.
+            var map = new Dictionary<string, string>
+            {
+                ["walls"] = "wall_01", ["walls_break"] = "ruins_creation_kit-walls_break", ["01_ground"] = "ruins_creation_kit-01_ground",
+                ["worked_Stone"] = "dif_smoothStone_01", ["worked_Stone_2"] = "dif_smoothStone_02", ["woodRoof"] = "dif_woodRoof_01",
+                ["old_wood"] = "dif_oldWood_01", ["wood_planks"] = "dif_dirtyPlanks_02", ["messBrick"] = "dif_messBrick",
+                ["metal"] = "dif_metal_01", ["iron"] = "dif_metal_01", ["pew_01"] = "dif_dirtyWood_01", ["tomb_01"] = "dif_smoothStone_01",
+                ["domeOutside"] = "dif_coupole_01", ["domeInside"] = "dif_coupole_01",
+                ["vitrail_01"] = "dif_vitrail_01", ["vitrail_02"] = "dif_vitrail_02", ["vitrail_03"] = "dif_vitrail_03", ["vitrail_04"] = "dif_vitrail_04",
+            };
+            if (AssetImporter.GetAtPath(KitModel) is ModelImporter imp)
+            {
+                bool changed = false;
+                foreach (var emb in AssetDatabase.LoadAllAssetsAtPath(KitModel).OfType<Material>().ToList())
+                {
+                    if (!map.TryGetValue(emb.name, out var target) || !byName.TryGetValue(target, out var kitMat)) continue;
+                    var id = new AssetImporter.SourceAssetIdentifier(typeof(Material), emb.name);
+                    if (imp.GetExternalObjectMap().TryGetValue(id, out var cur) && cur == kitMat) continue;
+                    imp.AddRemap(id, kitMat);
+                    changed = true;
+                }
+                if (changed) imp.SaveAndReimport();
+            }
+            return n;
         }
 
         // ---------------------------------------------------------------- materials
@@ -219,6 +280,8 @@ namespace Skyfall.EditorTools
             lib.shrubs = Prefabs(Nature + "Shrubs/PT_Generic_Shrub_01_dead.prefab", Nature + "Shrubs/PT_Generic_Shrub_01_dead.prefab",
                 Nature + "Shrubs/PT_Generic_Shrub_01_green.prefab");
             lib.grass = Prefabs(Nature + "Plants/PT_Grass_02.prefab", Nature + "Plants/PT_Grass_02.prefab", Nature + "Flowers/PT_Poppy_02.prefab");
+
+            lib.ruinsKit = Load<GameObject>(KitModel);
 
             // Sky.
             lib.skybox = Load<Material>(SkyPath());

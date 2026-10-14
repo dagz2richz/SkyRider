@@ -482,7 +482,11 @@ namespace Skyfall
                 Shake(1f);
                 FX.Flash(pos + new Vector3(0, 3, 0), 10f, new Color(1f, 0.8f, 0.4f, 0.8f), 0.8f);
                 for (int i = 0; i < 10; i++)
-                    DropGem(pos + new Vector3(M.RandRange(-4f, 4f), 0, M.RandRange(-4f, 4f)), e.xpValue / 10f * 3f);
+                {
+                    var gp = pos + new Vector3(M.RandRange(-4f, 4f), 0, M.RandRange(-4f, 4f));
+                    gp.y = terrain.SurfaceHeight(gp.x, gp.z, pos.y);
+                    DropGem(gp, e.xpValue / 10f * 3f);
+                }
                 player.Heal(player.maxHp * 0.4f);
                 hud.Banner($"{e.displayName} has fallen!", "");
                 Sfx.Play("roar", 0f, 0f);

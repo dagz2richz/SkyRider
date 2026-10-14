@@ -548,7 +548,7 @@ namespace Skyfall
             velocity.x = hv.x;
             velocity.z = hv.z;
 
-            float ground = terrain.Height(Pos.x, Pos.z);
+            float ground = terrain.SurfaceHeight(Pos.x, Pos.z, Pos.y);
             if (GameInput.JumpPressed && !leaping && !flying)
             {
                 if (onGround)
@@ -580,7 +580,7 @@ namespace Skyfall
             float lim = WorldTerrain.PLAY_LIMIT + 8f;
             pos.x = Mathf.Clamp(pos.x, -lim, lim);
             pos.z = Mathf.Clamp(pos.z, -lim, lim);
-            float g = terrain.Height(pos.x, pos.z);
+            float g = terrain.SurfaceHeight(pos.x, pos.z, Pos.y);
             if (pos.y <= g)
             {
                 pos.y = g;
@@ -613,7 +613,7 @@ namespace Skyfall
             var flat = M.Flat(target - Pos);
             if (flat.magnitude > 22f) flat = flat.normalized * 22f;
             const float t = 0.45f;
-            float drop = Pos.y - game.terrain.Height(Pos.x + flat.x, Pos.z + flat.z);
+            float drop = Pos.y - game.terrain.SurfaceHeight(Pos.x + flat.x, Pos.z + flat.z, Pos.y);
             velocity = new Vector3(flat.x / t, (0.5f * GRAVITY * t * t - drop) / t, flat.z / t);
             if (flat.magnitude > 0.5f) yaw = Mathf.Atan2(-flat.x, -flat.z);
             armR.Keys((new Vector3(-2.8f, 0, 0), 0.25f));
