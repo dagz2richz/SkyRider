@@ -488,8 +488,8 @@ namespace Skyfall
                     {
                         // The charge ends at the edge with a crash.
                         state = "";
-                        FX.Shockwave(p + new Vector3(0, 0.3f, 0), 7f, new Color(0.8f, 0.6f, 0.4f, 0.8f), 0.35f);
-                        FX.Burst(p + new Vector3(0, 0.5f, 0), new Color(0.5f, 0.4f, 0.3f), 14, 6f, 0.5f);
+                        FX.Shockwave(p + new Vector3(0, 0.3f, 0), 7f, M.WithA(FX.EnemyRed, 0.8f), 0.35f, false);
+                        FX.Burst(p + new Vector3(0, 0.5f, 0), FX.EnemyRed, 14, 6f, 0.5f);
                         game.Shake(0.3f);
                     }
                     g = terrain.SurfaceHeight(p.x, p.z, island.topY);
@@ -772,7 +772,7 @@ namespace Skyfall
                     stateT = 0.7f;
                     chargeDir = dir;
                     if (rig) rig.Action(0.7f, "Victory", "Attack02");
-                    FX.Telegraph(Pos, radius + 1.5f, 0.7f, new Color(1f, 0.5f, 0.1f, 0.4f));
+                    FX.Telegraph(Pos, radius + 1.5f, 0.7f, new Color(FX.EnemyRed.r, FX.EnemyRed.g, FX.EnemyRed.b, 0.4f));
                     Sfx.Play("roar", Pos, -4f, 0.15f);
                     break;
                 case "boulders":
@@ -810,9 +810,9 @@ namespace Skyfall
             }
             else yield return Tw.Wait(1.05f);
             if (this == null || dead || player == null) yield break;
-            FX.Vfx("ground_explosion", at, rad / 6f);
-            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad, new Color(1f, 0.4f, 0.2f, 0.9f), 0.4f);
-            FX.Burst(at + new Vector3(0, 0.5f, 0), new Color(0.55f, 0.42f, 0.3f), 30, 12f, 0.7f);
+            FX.Vfx("ground_explosion", at, rad / 6f, 2f, null, 0.04f, FX.EnemyRed);
+            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad, M.WithA(FX.EnemyRed, 0.9f), 0.4f, false);
+            FX.Burst(at + new Vector3(0, 0.5f, 0), FX.EnemyRed, 30, 12f, 0.7f);
             Sfx.Play("boom", at, 2f);
             game.Shake(0.6f);
             var d = player.Pos - at;
@@ -839,7 +839,7 @@ namespace Skyfall
             b.damage = damage;
             var d = to - from;
             b.velocity = new Vector3(d.x / flightTime, (d.y + 0.5f * G * flightTime * flightTime) / flightTime, d.z / flightTime);
-            FX.Telegraph(new Vector3(to.x, g.terrain.SurfaceHeight(to.x, to.z, to.y), to.z), 2.6f, flightTime, new Color(1f, 0.3f, 0.1f, 0.35f));
+            FX.Telegraph(new Vector3(to.x, g.terrain.SurfaceHeight(to.x, to.z, to.y), to.z), 2.6f, flightTime, new Color(FX.EnemyRed.r, FX.EnemyRed.g, FX.EnemyRed.b, 0.35f));
             FX.Part(b.transform, MeshGen.Sphere(7), FX.Lit(Props.STONE_DARK), Vector3.zero, new Vector3(1.1f, 0.9f, 1f));
             b.transform.position = from;
         }
@@ -858,10 +858,10 @@ namespace Skyfall
             float gh = game.terrain.SurfaceHeight(pos.x, pos.z, pos.y - velocity.y * delta);
             if (hitPlayer || pos.y < gh || life <= 0f)
             {
-                FX.Burst(pos, new Color(0.45f, 0.4f, 0.35f), 14, 7f, 0.4f);
-                FX.Shockwave(pos + new Vector3(0, 0.2f, 0), 2.6f, new Color(0.7f, 0.5f, 0.3f, 0.7f), 0.3f);
+                FX.Burst(pos, FX.EnemyRed, 14, 7f, 0.4f);
+                FX.Shockwave(pos + new Vector3(0, 0.2f, 0), 2.6f, M.WithA(FX.EnemyRed, 0.7f), 0.3f, false);
                 Sfx.Play("arrow_hit", pos, 2f);
-                FX.Vfx("stones_hit", pos, 1f, 2f);
+                FX.Vfx("stones_hit", pos, 1f, 2f, null, 0.04f, FX.EnemyRed);
                 if (p != null && Vector3.Distance(p.Center, pos) < 2.6f) p.TakeDamage(damage);
                 Destroy(gameObject);
             }

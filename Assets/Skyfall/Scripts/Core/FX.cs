@@ -341,10 +341,10 @@ namespace Skyfall
                 Tw.Call(() => { if (t) Object.Destroy(t.gameObject); Object.Destroy(m); })));
         }
 
-        public static void Shockwave(Vector3 pos, float radius, Color color, float dur = 0.4f)
+        public static void Shockwave(Vector3 pos, float radius, Color color, float dur = 0.4f, bool additive = true)
         {
             if (root == null) return;
-            var m = FadeMat(color);
+            var m = FadeMat(color, additive);
             var r = Part(root, MeshGen.Ring(), m, Vector3.zero, new Vector3(0.3f, 2f, 0.3f));
             r.transform.position = pos;
             NoShadow(r);
@@ -405,12 +405,17 @@ namespace Skyfall
 
         // ---------------------------------------------------------------- Asset Store effects
 
+        /// Enemy-caused explosions, death puffs and impacts are always this red.
+        public static readonly Color EnemyRed = new Color(0.9f, 0.1f, 0.08f);
+
         public static int liveVfx;
         static readonly Dictionary<string, float> vfxLast = new Dictionary<string, float>();
 
         /// Plays a one-shot effect prefab from the skin library (does nothing when the packs are not set up).
         /// minGap throttles how often the same effect can start, so big fights stay readable and fast.
-        public static bool Vfx(string name, Vector3 pos, float scale = 1f, float life = 2f, Quaternion? rot = null, float minGap = 0.04f)
+        /// With a tint the effect is recolored: hue moves to the tint's (keeping each color's brightness and some of its saturation),
+        /// in the particles' start colors, color-over-lifetime gradients, trails, lights and the particle materials' colors.
+        public static bool Vfx(string name, Vector3 pos, float scale = 1f, float life = 2f, Quaternion? rot = null, float minGap = 0.04f, Color? tint = null)
         {
             var lib = Skins.Lib;
             if (lib == null || root == null || liveVfx >= 45) return false;
@@ -433,6 +438,7 @@ namespace Skyfall
                 m.loop = false;
                 m.scalingMode = ParticleSystemScalingMode.Hierarchy;
             }
+            if (tint.HasValue) TintEffect(go, tint.Value);
             liveVfx++;
             Tw.After(life, () =>
             {
@@ -440,6 +446,84 @@ namespace Skyfall
                 if (go) Object.Destroy(go);
             });
             return true;
+        }
+
+        // ---------------------------------------------------------------- effect tinting
+
+        static readonly Dictionary<(int, int), Material> tintedMats = new Dictionary<(int, int), Material>();
+        static readonly string[] COLOR_PROPS = { "_Color", "_BaseColor", "_TintColor", "_MainColor", "_EmissionColor", "_Emission", "_Tint", "_CoreColor", "_EdgeColor", "_FresnelColor" };
+
+        /// Moves a color's hue to the tint's. Saturation is pulled toward the tint's so grays and whites (dust, white-hot cores)
+        /// also turn the color, and brightness is scaled by the tint's value (a darker tint gives a deeper color).
+        public static Color Retint(Color c, Color tint)
+        {
+            Color.RGBToHSV(c, out _, out float s, out float v);
+            Color.RGBToHSV(tint, out float th, out float ts, out float tv);
+            float ns = Mathf.Clamp01(Mathf.Lerp(s, ts, 0.7f));
+            var r = Color.HSVToRGB(th, ns, Mathf.Min(v, 4f) * Mathf.Lerp(1f, tv, 0.85f), true);
+            r.a = c.a;
+            return r;
+        }
+
+        static Gradient RetintGradient(Gradient g, Color tint)
+        {
+            var ng = new Gradient { mode = g.mode };
+            var ck = g.colorKeys;
+            for (int i = 0; i < ck.Length; i++) ck[i].color = Retint(ck[i].color, tint);
+            ng.SetKeys(ck, g.alphaKeys);
+            return ng;
+        }
+
+        static ParticleSystem.MinMaxGradient RetintMinMax(ParticleSystem.MinMaxGradient g, Color tint)
+        {
+            switch (g.mode)
+            {
+                case ParticleSystemGradientMode.Color: return new ParticleSystem.MinMaxGradient(Retint(g.color, tint));
+                case ParticleSystemGradientMode.TwoColors: return new ParticleSystem.MinMaxGradient(Retint(g.colorMin, tint), Retint(g.colorMax, tint));
+                case ParticleSystemGradientMode.Gradient: return new ParticleSystem.MinMaxGradient(RetintGradient(g.gradient, tint));
+                case ParticleSystemGradientMode.TwoGradients: return new ParticleSystem.MinMaxGradient(RetintGradient(g.gradientMin, tint), RetintGradient(g.gradientMax, tint));
+                default: return new ParticleSystem.MinMaxGradient(RetintGradient(g.gradient, tint));
+            }
+        }
+
+        static Material TintedMaterial(Material src, Color tint)
+        {
+            var key = (src.GetHashCode(), ColorUtility.ToHtmlStringRGBA(tint).GetHashCode());
+            if (tintedMats.TryGetValue(key, out var m) && m) return m;
+            m = new Material(src) { name = src.name + "_tint" };
+            foreach (var prop in COLOR_PROPS)
+                if (m.HasProperty(prop)) m.SetColor(prop, Retint(m.GetColor(prop), tint));
+            tintedMats[key] = m;
+            return m;
+        }
+
+        /// Recolors every particle system, light and renderer material under an effect instance (see Vfx).
+        public static void TintEffect(GameObject go, Color tint)
+        {
+            foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
+            {
+                var main = ps.main;
+                main.startColor = RetintMinMax(main.startColor, tint);
+                var col = ps.colorOverLifetime;
+                if (col.enabled) col.color = RetintMinMax(col.color, tint);
+                var tr = ps.trails;
+                if (tr.enabled)
+                {
+                    tr.colorOverLifetime = RetintMinMax(tr.colorOverLifetime, tint);
+                    tr.colorOverTrail = RetintMinMax(tr.colorOverTrail, tint);
+                }
+                var cbs = ps.colorBySpeed;
+                if (cbs.enabled) cbs.color = RetintMinMax(cbs.color, tint);
+            }
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < mats.Length; i++)
+                    if (mats[i] != null) { mats[i] = TintedMaterial(mats[i], tint); changed = true; }
+                if (changed) r.sharedMaterials = mats;
+            }
+            foreach (var l in go.GetComponentsInChildren<Light>(true)) l.color = Retint(l.color, tint);
         }
 
         /// Attaches a looping effect prefab to a parent (for auras and circles); the caller destroys it.

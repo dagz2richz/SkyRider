@@ -95,8 +95,36 @@ namespace Skyfall
         /// The procedural dragon is 12 units long at scale 1; pack dragons are scaled to match.
         const float DRAGON_LENGTH = 12f;
 
+        /// Deep red the pack's Terror Bringer Red is multiplied by (keeps its texture detail; applied to per-dragon material copies).
+        static readonly Color RED_SKIN_TINT = new Color(0.82f, 0.3f, 0.3f);
+        readonly System.Collections.Generic.List<Material> skinMats = new System.Collections.Generic.List<Material>();
+
+        void OnDestroy()
+        {
+            foreach (var m in skinMats) if (m) Destroy(m);
+        }
+
+        /// Instances the skin's materials once and multiplies their base color by a tint (the pack's own assets stay untouched).
+        void TintSkin(Transform root, Color tint)
+        {
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = r.materials;
+                foreach (var m in mats)
+                {
+                    if (m == null) continue;
+                    skinMats.Add(m);
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.GetColor("_BaseColor") * tint);
+                    else if (m.HasProperty("_Color")) m.SetColor("_Color", m.GetColor("_Color") * tint);
+                }
+                r.materials = mats;
+            }
+        }
+
         void ApplySkin(string id)
         {
+            foreach (var m in skinMats) if (m) Destroy(m);
+            skinMats.Clear();
             if (skin) DestroyImmediate(skin.gameObject);
             skin = null;
             skinMouth = skinChest = null;
@@ -117,6 +145,7 @@ namespace Skyfall
             float len = Mathf.Max(b.size.z, 0.01f);
             holder.localScale = Vector3.one * (DRAGON_LENGTH / len);
             skinMouth = Skins.Find(go.transform, "UpperMouth", "UpperMouth01", "JawTip", "Head");
+            if (id == "red") TintSkin(go.transform, RED_SKIN_TINT);
             skinChest = Skins.Find(go.transform, "Chest");
             if (skinChest) skinBack = (skinChest.position.y - transform.position.y) * 0.4f;
             transform.rotation = savedRot;
@@ -191,7 +220,7 @@ namespace Skyfall
                     break;
                 case "red":
                     if (M.RandF() < 0.15f * strength)
-                        FX.Flash(e.Pos + new Vector3(0, e.size, 0), 1.2f, new Color(1f, 0.6f, 0.2f, 0.7f), 0.2f);
+                        FX.Flash(e.Pos + new Vector3(0, e.size, 0), 1.2f, new Color(fire.r, fire.g, fire.b, 0.7f), 0.2f);
                     break;
                 case "black":
                     e.Weaken(2.5f, 0.4f);
@@ -206,7 +235,7 @@ namespace Skyfall
             state = "mount";
             model.fold = 0f;
             model.jawOpen = 0.8f;
-            FX.Shockwave(player.Pos + new Vector3(0, 0.3f, 0), 6f, new Color(fire.r, fire.g, fire.b, 0.7f), 0.4f);
+            FX.Shockwave(player.Pos + new Vector3(0, 0.3f, 0), 6f, new Color(fire.r, fire.g, fire.b, 0.7f), 0.4f, dragonId == "blue");
         }
 
         public void Dismount()
@@ -409,9 +438,9 @@ namespace Skyfall
             float rad = (5f + 0.5f * L) * player.AreaMult * (dragonId == "red" ? 1.2f : 1f);
             float dmg = (70f + 30f * L) * DmgMult;
             var at = diveTo;
-            if (!FX.Vfx(dragonId == "black" ? "dark_explosion" : dragonId == "red" ? "red_explosion" : "explosion", at, rad / 4f, 2.5f))
+            if (!FX.Vfx(dragonId == "black" ? "dark_explosion" : dragonId == "red" ? "red_explosion" : "explosion", at, rad / 4f, 2.5f, null, 0.04f, dragonId == "black" ? (Color?)null : fire))
                 FX.Flash(at + new Vector3(0, 1, 0), rad, new Color(fire.r, fire.g, fire.b, 0.85f), 0.45f);
-            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.3f, new Color(fire.r, fire.g, fire.b, 0.9f), 0.45f);
+            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.3f, new Color(fire.r, fire.g, fire.b, 0.9f), 0.45f, dragonId == "blue");
             FX.Burst(at + new Vector3(0, 0.5f, 0), new Color(0.55f, 0.45f, 0.35f), 30, 13f, 0.6f);
             FX.Burst(at + new Vector3(0, 1f, 0), fire, 24, 10f, 0.5f);
             game.Shake(0.7f);
@@ -444,7 +473,7 @@ namespace Skyfall
                     {
                         var tgt = at + new Vector3(M.RandRange(-8f, 8f), 0.5f, M.RandRange(-8f, 8f));
                         var from = mouth + new Vector3(M.RandRange(-0.5f, 0.5f), 0, M.RandRange(-0.5f, 0.5f));
-                        Fireball.Spawn(game, null, from, (tgt - mouth).normalized * 36f, (38f + 14f * L) * DmgMult, (3f + 0.3f * L) * player.AreaMult, 0.35f, false);
+                        Fireball.Spawn(game, null, from, (tgt - mouth).normalized * 36f, (38f + 14f * L) * DmgMult, (3f + 0.3f * L) * player.AreaMult, 0.35f, false, fire);
                     }
                     Sfx.Play("flame", 2f, 0f);
                     Sfx.Play("whoosh", 0f, 0f);
@@ -454,8 +483,8 @@ namespace Skyfall
                     // Cataclysm: one massive blast, then a ring of aftershocks.
                     float rad = (7f + 0.5f * L) * player.AreaMult;
                     float dmg = (110f + 40f * L) * DmgMult;
-                    FX.Telegraph(at, rad, 0.6f, new Color(1f, 0.4f, 0.1f, 0.45f));
-                    FX.Bolt(mouth, at + new Vector3(0, 1, 0), new Color(1f, 0.55f, 0.2f), 0.5f, 0.6f, 1);
+                    FX.Telegraph(at, rad, 0.6f, new Color(fire.r, fire.g, fire.b, 0.45f));
+                    FX.Bolt(mouth, at + new Vector3(0, 1, 0), Color.Lerp(fire, Color.white, 0.1f), 0.5f, 0.6f, 1);
                     Tw.Run(CataclysmRoutine(at, rad, dmg));
                     Sfx.Play("roar", 2f, 0f);
                     break;
@@ -494,16 +523,17 @@ namespace Skyfall
 
         void Blast(Vector3 at, float rad, float dmg, float big)
         {
-            if (!FX.Vfx(big >= 1f ? "red_explosion" : "explosion", at, rad / 4f, 2.5f, null, 0f))
-                FX.Flash(at + new Vector3(0, 1f, 0), rad, new Color(1f, 0.5f, 0.15f, 0.9f), 0.4f);
-            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.2f, new Color(1f, 0.6f, 0.25f, 0.9f), 0.4f);
-            FX.Burst(at + new Vector3(0, 0.6f, 0), new Color(0.5f, 0.4f, 0.3f), (int)(30 * big), 14f * big, 0.6f * big);
+            if (!FX.Vfx(big >= 1f ? "red_explosion" : "explosion", at, rad / 4f, 2.5f, null, 0f, fire))
+                FX.Flash(at + new Vector3(0, 1f, 0), rad, new Color(fire.r, fire.g, fire.b, 0.9f), 0.4f);
+            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.2f, new Color(fire.r, fire.g, fire.b, 0.9f), 0.4f, dragonId == "blue");
+            if (big >= 1f) FX.Flash(at + new Vector3(0, 1.2f, 0), rad * 0.7f, new Color(fire.r, fire.g, fire.b, 0.55f), 0.45f);
+            FX.Burst(at + new Vector3(0, 0.6f, 0), Color.Lerp(new Color(0.5f, 0.4f, 0.3f), fire, 0.6f), (int)(30 * big), 14f * big, 0.6f * big);
             Sfx.Play("boom", at, 4f * big, 0.05f);
             game.Shake(0.9f * big);
             foreach (var e in game.EnemiesInRadius(at, rad, 6f))
             {
                 var outDir = M.Flat(e.Pos - at);
-                game.DamageEnemy(e, dmg, outDir.normalized, 14f * big, true, new Color(1f, 0.7f, 0.3f));
+                game.DamageEnemy(e, dmg, outDir.normalized, 14f * big, true, Color.Lerp(fire, Color.white, 0.4f));
                 if (!e.isBoss) e.stunT = Mathf.Max(e.stunT, 1f * big);
             }
         }

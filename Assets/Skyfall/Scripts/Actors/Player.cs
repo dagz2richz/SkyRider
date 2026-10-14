@@ -124,7 +124,7 @@ namespace Skyfall
         }
 
         public float JumpMult => 1f + 0.1f * B("utility");
-        public float DamageMult => (1f + 0.08f * B("offense")) * (1f + LevelDamageBonus);
+        public float DamageMult => (1f + 0.08f * B("offense")) * (1f + LevelDamageBonus) * (PowerActive("damage") ? 1f + Data.POWERUP_DAMAGE : 1f);
         public float AttackSpeedMult => Mathf.Pow(0.94f, B("offense")) / (1f + 0.05f * Tier("gloves"));
 
         /// Weapon damage per hit before the shared multipliers: base x weapon level (+15% per level).
@@ -143,7 +143,7 @@ namespace Skyfall
         /// Level of a passive, but only if it is the chosen passive.
         public int Plv(string id) => passiveId == id ? SpellLv(id, 0) : 0;
 
-        public float MoveMult => 1f + 0.07f * Plv("windwalker") + 0.06f * B("utility") + 0.05f * Tier("boots");
+        public float MoveMult => 1f + 0.07f * Plv("windwalker") + 0.06f * B("utility") + 0.05f * Tier("boots") + (PowerActive("speed") ? Data.POWERUP_SPEED : 0f);
 
         public float DodgeChance
         {
@@ -163,6 +163,50 @@ namespace Skyfall
             3f * (1f + 0.15f * B("mana")) * (1f + (Plv("spellblade") > 0 ? 0.6f + 0.25f * Plv("spellblade") : 0f));
 
         public float MagnetRadius => 5.5f * (1f + 0.25f * B("utility"));
+
+        // ---- power-ups (run only): seconds left per kind, in Data.POWERUP_ORDER
+
+        readonly float[] powerT = new float[3];
+
+        static int PowerIndex(string id) => System.Array.IndexOf(Data.POWERUP_ORDER, id);
+        public float PowerLeft(string id) { int i = PowerIndex(id); return i < 0 ? 0f : powerT[i]; }
+        public bool PowerActive(string id) => PowerLeft(id) > 0f;
+
+        /// Gold pickups are worth this many times their value (2x Gold power-up).
+        public float GoldMult => PowerActive("gold") ? Data.POWERUP_GOLD : 1f;
+
+        /// Chance that a regular ogre drops a power-up: 0.1% plus 0.1% per Utility rank.
+        public float PowerUpDropChance => Data.POWERUP_DROP + Data.POWERUP_DROP_RANK * B("utility");
+
+        /// Starts (or refreshes to the full time) a power-up.
+        public void GrantPowerUp(string id)
+        {
+            int i = PowerIndex(id);
+            if (i < 0) return;
+            powerT[i] = Data.POWERUP_TIME;
+            var d = Data.POWERUPS[id];
+            Sfx.Play("buy", -4f, 0.05f);
+            Sfx.Play("pickup", -6f, 0f);
+            FX.Flash(Center, 2.6f, new Color(d.color.r, d.color.g, d.color.b, 0.6f), 0.35f);
+            FX.Burst(Center, d.color, 16, 8f, 0.25f);
+            game.hud.Toast($"{d.name}! {d.desc} for {Mathf.RoundToInt(Data.POWERUP_TIME)} s");
+        }
+
+        void TickPowerUps(float delta)
+        {
+            for (int i = 0; i < powerT.Length; i++) powerT[i] = Mathf.Max(0f, powerT[i] - delta);
+        }
+
+        // ---- dragon flight rules
+
+        /// Seconds before flight stamina starts to refill after a flight ends.
+        public const float FLIGHT_REGEN_DELAY = 3f;
+        /// Seconds after the E leap-slam before Q can call the dragon again.
+        public const float FLIGHT_LOCK = 3f;
+        float flightRegenWait;
+        float flightLockT;
+        public float FlightRegenWait => flightRegenWait;
+        public float FlightLockLeft => flightLockT;
         public float MaxFlight => 4f * (1f + 0.2f * B("dragon") + 0.1f * Plv("windwalker"));
         public float Armor => 1.5f * B("defense") + 2f * Tier("chest");
         public float Regen => 0.5f * B("health");
@@ -335,6 +379,8 @@ namespace Skyfall
             spells[passive] = 1;
             spells["dragonfire"] = 1;
             spells["ride"] = 1;
+            System.Array.Clear(powerT, 0, powerT.Length);
+            flightLockT = flightRegenWait = 0f;
             if (hero != heroId || weaponNode == null || weaponNode.childCount == 0)
             {
                 heroId = hero;
@@ -569,6 +615,8 @@ namespace Skyfall
             Move(delta);
             UpdateCamera(delta);
             hurtTimer = Mathf.Max(hurtTimer - delta, 0f);
+            flightLockT = Mathf.Max(0f, flightLockT - delta);
+            TickPowerUps(delta);
             hp = Mathf.Min(maxHp, hp + Regen * delta);
             AddMana(ManaRegen * delta);
             attackTimer -= delta;
@@ -581,6 +629,7 @@ namespace Skyfall
             if (GameInput.FlyPressed && !leaping)
             {
                 if (flying) ReleaseDragon();
+                else if (flightLockT > 0f) game.hud.Toast($"Your dragon is circling back... ({Mathf.CeilToInt(flightLockT)}s)");
                 else if (flightStamina > 0.3f)
                 {
                     SummonDragon();
@@ -661,7 +710,10 @@ namespace Skyfall
             }
             else onGround = false;
             Pos = pos;
-            if (onGround) flightStamina = Mathf.Min(MaxFlight, flightStamina + delta * 1.2f);
+            // Flight stamina only starts to refill FLIGHT_REGEN_DELAY seconds after the flight ended (any new flight resets the wait).
+            if (flying) flightRegenWait = FLIGHT_REGEN_DELAY;
+            else flightRegenWait = Mathf.Max(0f, flightRegenWait - delta);
+            if (onGround && flightRegenWait <= 0f) flightStamina = Mathf.Min(MaxFlight, flightStamina + delta * 1.2f);
 
             float hspeed = new Vector2(velocity.x, velocity.z).magnitude;
             if (hspeed > 0.6f)
@@ -729,6 +781,7 @@ namespace Skyfall
         public void LeapSlam(Vector3 target)
         {
             ReleaseDragon();
+            flightLockT = FLIGHT_LOCK;
             leaping = true;
             var flat = M.Flat(target - Pos);
             if (flat.magnitude > 22f) flat = flat.normalized * 22f;
@@ -753,9 +806,11 @@ namespace Skyfall
                 Tw.To(() => armR.Rot, v => armR.Rot = v, new Vector3(0.9f, 0, 0), 0.06f, armR.t),
                 Tw.Wait(0.25f),
                 Tw.To(() => armR.Rot, v => armR.Rot = v, new Vector3(-0.5f, 0, 0), 0.25f, armR.t)));
-            if (!FX.Vfx("ground_explosion", at, rad / 6f, 2.5f))
-                FX.Flash(at + new Vector3(0, 0.8f, 0), rad * 0.8f, new Color(0.75f, 0.85f, 1f, 0.8f), 0.35f);
-            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.3f, new Color(0.8f, 0.9f, 1f, 0.9f), 0.45f);
+            // The slam is part of the dragon's signature, so it takes the dragon's color.
+            var dc = Data.DRAGONS[dragonId].breath;
+            if (!FX.Vfx("ground_explosion", at, rad / 6f, 2.5f, null, 0.04f, dc))
+                FX.Flash(at + new Vector3(0, 0.8f, 0), rad * 0.8f, new Color(dc.r, dc.g, dc.b, 0.8f), 0.35f);
+            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.3f, new Color(dc.r, dc.g, dc.b, 0.9f), 0.45f, dragonId == "blue");
             FX.Burst(at + new Vector3(0, 0.4f, 0), new Color(0.55f, 0.45f, 0.35f), 30, 13f, 0.6f);
             game.Shake(0.8f);
             Sfx.Play("boom", 3f, 0.05f);

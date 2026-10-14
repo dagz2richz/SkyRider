@@ -159,8 +159,12 @@ namespace Skyfall.EditorTools
                     ApplyGear();
                     game.StartRun(lo[2], lo[3], lo[0], lo[1]);
                     LogStats(game, "start");
-                    if (Arg("-skyfallIslandView", "") == "" && Arg("-skyfallFinale", "") == "" && Arg("-skyfallSolidTest", "") == "" && Arg("-skyfallKitView", "") == "") game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
+                    if (Arg("-skyfallIslandView", "") == "" && Arg("-skyfallFinale", "") == "" && Arg("-skyfallSolidTest", "") == "" && Arg("-skyfallKitView", "") == "" && Arg("-skyfallFeatureTest", "") == "") game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
                     game.player.hp = game.player.maxHp = 5000f;   // keep the hero alive for the whole test
+                }
+                else if (stage == 1 && Arg("-skyfallFeatureTest", "") != "")
+                {
+                    FeatureTest(game, Arg("-skyfallFeatureTest", ""));
                 }
                 else if (stage == 1 && Arg("-skyfallFinale", "") != "")
                 {

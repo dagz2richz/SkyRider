@@ -223,9 +223,9 @@ namespace Skyfall
                 desc = "Fire focus. Its flames leave a heavy burning debuff.",
                 sig = "Inferno Wave", sig_desc = "A torrent of fireballs sets the crowd ablaze." },
             ["red"] = new DragonDef { name = "Crimson Drake", focus = "Explosive", damage = 1.25f,
-                body = C(0.75f, 0.08f, 0.05f), edge = C(0.2f, 0.02f, 0.01f), belly = C(0.95f, 0.7f, 0.35f),
-                membrane = C(0.5f, 0.06f, 0.04f), horn = C(0.25f, 0.2f, 0.18f), eye = C(1.0f, 0.9f, 0.3f),
-                breath = C(1.0f, 0.55f, 0.15f),
+                body = C(0.5f, 0.03f, 0.05f), edge = C(0.12f, 0.01f, 0.02f), belly = C(0.72f, 0.38f, 0.22f),
+                membrane = C(0.32f, 0.02f, 0.04f), horn = C(0.25f, 0.2f, 0.18f), eye = C(1.0f, 0.9f, 0.3f),
+                breath = C(0.85f, 0.08f, 0.06f),
                 desc = "Explosive and physical. Deals 1.25x the damage of other dragons; its breath bursts on impact.",
                 sig = "Cataclysm", sig_desc = "A massive blast at the heart of the crowd, then a ring of aftershocks." },
             ["black"] = new DragonDef { name = "Night Wyrm", focus = "Blood", damage = 1.0f,
@@ -264,7 +264,33 @@ namespace Skyfall
             ["dragon"] = new BucketDef { name = "Dragon", color = C(0.35f, 0.65f, 1.0f),
                 stats = new[] { "+12% dragon damage", "+20% flight time", "-6% dragon cooldowns" } },
             ["utility"] = new BucketDef { name = "Utility", color = C(0.6f, 1.0f, 0.6f),
-                stats = new[] { "+10% jump height", "+6% movement speed", "+25% orb attract range" } },
+                stats = new[] { "+10% jump height", "+6% movement speed", "+25% orb attract range", "+0.1% power-up drop chance" } },
+        };
+
+        // ------------------------------------------------------------ power-ups
+
+        /// Temporary run-only boosts dropped by ogres. Each lasts POWERUP_TIME seconds; picking up the same kind refreshes it.
+        public class PowerUpDef
+        {
+            public string name, desc, glyph;
+            public Color color;
+        }
+
+        public const float POWERUP_TIME = 15f;
+        public const float POWERUP_SPEED = 0.4f;     // +40% move speed
+        public const float POWERUP_DAMAGE = 0.5f;    // +50% damage
+        public const float POWERUP_GOLD = 2f;        // gold pickups x2
+        /// Chance that a regular ogre drops a power-up (bosses always drop BOSS_POWERUPS); each Utility rank adds POWERUP_DROP_RANK.
+        public const float POWERUP_DROP = 0.001f;
+        public const float POWERUP_DROP_RANK = 0.001f;
+        public const int BOSS_POWERUPS = 2;
+
+        public static readonly string[] POWERUP_ORDER = { "speed", "damage", "gold" };
+        public static readonly Dictionary<string, PowerUpDef> POWERUPS = new Dictionary<string, PowerUpDef>
+        {
+            ["speed"] = new PowerUpDef { name = "Swiftness", glyph = "»", color = C(0.25f, 0.9f, 1f), desc = "+40% movement speed" },
+            ["damage"] = new PowerUpDef { name = "Fury", glyph = "†", color = C(1f, 0.2f, 0.18f), desc = "+50% damage" },
+            ["gold"] = new PowerUpDef { name = "Fortune", glyph = "x2", color = C(1f, 0.82f, 0.2f), desc = "Gold pickups doubled" },
         };
 
         /// Chance that a level-up swaps its usual type (ability <-> stats).

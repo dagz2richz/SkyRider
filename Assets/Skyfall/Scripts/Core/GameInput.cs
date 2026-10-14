@@ -44,8 +44,26 @@ namespace Skyfall
         public static bool JumpHeld => TestJumpHeld || Held(Key.Space);
         public static bool DescendHeld => Held(Key.LeftShift, Key.RightShift, Key.LeftCtrl, Key.RightCtrl);
         public static bool PausePressed => Pressed(Key.Escape, Key.P);
-        public static bool FlyPressed => Pressed(Key.Q);
-        public static bool AbilityPressed => Pressed(Key.E);
+        /// One-shot key presses injected by the automated tests (consumed when read).
+        public static bool TestFlyPress, TestAbilityPress;
+
+        public static bool FlyPressed
+        {
+            get
+            {
+                if (TestFlyPress) { TestFlyPress = false; return true; }
+                return Pressed(Key.Q);
+            }
+        }
+
+        public static bool AbilityPressed
+        {
+            get
+            {
+                if (TestAbilityPress) { TestAbilityPress = false; return true; }
+                return Pressed(Key.E);
+            }
+        }
         public static bool StatsPressed => Pressed(Key.Tab);
 
         /// 0, 1 or 2 when a level-up card key (1/2/3) was pressed this frame, else -1.

@@ -359,8 +359,8 @@ namespace Skyfall
                 e.dead = true;
                 if (puffs++ < 30)
                 {
-                    FX.Burst(e.Pos + new Vector3(0, e.size, 0), new Color(0.6f, 0.6f, 0.65f), 8, 4f * e.size, 0.3f * e.size);
-                    FX.Vfx("dust_puff", e.Pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.4f, null, 0.05f);
+                    FX.Burst(e.Pos + new Vector3(0, e.size, 0), FX.EnemyRed, 8, 4f * e.size, 0.3f * e.size);
+                    FX.Vfx("dust_puff", e.Pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.4f, null, 0.05f, FX.EnemyRed);
                 }
                 e.gameObject.SetActive(false);
             }
@@ -635,14 +635,14 @@ namespace Skyfall
             e.dead = true;
             kills++;
             var pos = e.Pos;
-            FX.Burst(pos + new Vector3(0, e.size, 0), new Color(0.45f, 0.5f, 0.3f), 10, 5f * e.size, 0.3f * e.size);
+            FX.Burst(pos + new Vector3(0, e.size, 0), FX.EnemyRed, 10, 5f * e.size, 0.3f * e.size);
             Sfx.Play("death", pos, -4f + e.size * 2f, 0.15f);
             if (e.isBoss)
             {
                 bosses.Remove(e);
                 bossesSlain++;
                 Shake(1f);
-                FX.Flash(pos + new Vector3(0, 3, 0), 10f, new Color(1f, 0.8f, 0.4f, 0.8f), 0.8f);
+                FX.Flash(pos + new Vector3(0, 3, 0), 10f, new Color(FX.EnemyRed.r, 0.25f, 0.12f, 0.8f), 0.8f);
                 for (int i = 0; i < 10; i++)
                 {
                     var gp = pos + new Vector3(M.RandRange(-4f, 4f), 0, M.RandRange(-4f, 4f));
@@ -650,6 +650,14 @@ namespace Skyfall
                     DropGem(gp, e.xpValue / 10f * 3f);
                 }
                 if (e != finalBoss) DropGoldPile(pos, Data.MINI_BOSS_GOLD, 10, e.size);
+                // Bosses always drop two random power-ups.
+                for (int i = 0; i < Data.BOSS_POWERUPS; i++)
+                {
+                    var pp = pos + new Vector3(M.RandRange(-3f, 3f), 0, M.RandRange(-3f, 3f));
+                    pp.y = terrain.SurfaceHeight(pp.x, pp.z, pos.y);
+                    DropPowerUp(Data.POWERUP_ORDER[Random.Range(0, Data.POWERUP_ORDER.Length)], pp);
+                    bossPowerUps++;
+                }
                 player.Heal(player.maxHp * 0.4f);
                 hud.Banner($"{e.displayName} has fallen!", "");
                 Sfx.Play("roar", 0f, 0f);
@@ -663,8 +671,9 @@ namespace Skyfall
                 float orbChance = Data.ORB_CHANCE * (0.6f + e.size * 0.6f);
                 if (e.lanceMarked) orbChance += Data.WEAPONS["blood_lance"].orb_bonus;
                 if (M.RandF() < orbChance) DropOrb(pos);
+                if (M.RandF() < player.PowerUpDropChance) DropPowerUp(Data.POWERUP_ORDER[Random.Range(0, Data.POWERUP_ORDER.Length)], pos);
             }
-            FX.Vfx("dust_puff", pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.6f, null, 0.25f);
+            FX.Vfx("dust_puff", pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.6f, null, 0.25f, FX.EnemyRed);
             e.gameObject.SetActive(false);
         }
 
@@ -752,6 +761,18 @@ namespace Skyfall
             }
         }
 
+        /// Total power-ups dropped this run, and how many of them came from bosses (the tests check these).
+        public int powerUpDrops, bossPowerUps;
+
+        /// A glowing power-up pickup (kind: speed, damage or gold) that bobs, spins and magnets to the player like a gem.
+        public PowerUpPickup DropPowerUp(string id, Vector3 pos)
+        {
+            powerUpDrops++;
+            var p = PowerUpPickup.Spawn(this, id, pos + new Vector3(0, 0.2f, 0));
+            p.transform.SetParent(transform, true);
+            return p;
+        }
+
         void DropOrb(Vector3 pos)
         {
             var n = new GameObject("HealthOrb").transform;
@@ -818,7 +839,7 @@ namespace Skyfall
                 node.rotation = Quaternion.Euler(0, spin + i * 40f, 0);
                 if (d < 1.6f)
                 {
-                    runGold += g.value;
+                    runGold += Mathf.RoundToInt(g.value * player.GoldMult);
                     if (g.value > 0) Sfx.Play("coin", g.value >= 8 ? -6f : -11f, 0.12f);
                     Destroy(node.gameObject);
                     coins.RemoveAt(i);

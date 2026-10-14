@@ -21,7 +21,7 @@ Ogres drop gold. Gold is banked when a run ends (death or victory) and spent in 
 | WASD | Move (relative to the camera) |
 | Mouse | Look around |
 | Space | Jump, double jump; hold to climb while flying |
-| Q | Call your dragon and take flight (Q again to drop off) |
+| Q | Call your dragon and take flight (Q again to drop off); unavailable for 3 s after an E leap-slam |
 | E | Dragon signature ability (from the air you also leap down and slam) |
 | Shift / Ctrl | Dive while flying |
 | Scroll | Zoom |
@@ -42,6 +42,28 @@ Ogres drop gold. Gold is banked when a run ends (death or victory) and spent in 
 - **Weapons** (one per hero, level 1 is free, upgrade to level 5 for 200 / 450 / 800 / 1300 gold): **Sword & Shield** (Knight), **Javelin** (Huntress), **Bow & Arrow** (Ember Mage). Each level gives +15% damage and 7% faster attacks; the Sword & Shield also gains reach and block chance, the Javelin and Bow throw +1 projectile at levels 3 and 5, and Bow arrows pierce one extra foe at level 5.
 - **Armor** (five slots shared by all heroes, tiers 0 to 5, costing 100 / 250 / 500 / 900 / 1500 per tier): **Helm** +6% max health, **Chest** +2 armor, **Gloves** +5% attack speed and +2% crit, **Legs** +1 defense level (block / dodge / Flame Ward chance and their perks at 3 and 5), **Boots** +5% move speed, per tier.
 - Level-ups no longer upgrade weapons or armor: they offer abilities and stat buckets only (the Defense bucket gives +2% block / dodge / ward, +1.5 armor and +2% parry).
+
+## Power-ups
+
+Ogres sometimes drop a glowing power-up that bobs, spins and flies to you like a gem. They last for the run only (never saved) and each lasts **15 s**; picking up the same kind again refreshes its timer, and different kinds stack. Active power-ups are listed with their seconds left under the level and gold at the top left.
+
+| Power-up | Icon | Effect |
+| --- | --- | --- |
+| **Swiftness** | cyan wings | +40% movement speed |
+| **Fury** | red sword | +50% damage from everything you and your dragon deal |
+| **Fortune** | gold coin stack with "x2" | gold pickups are worth double |
+
+- Every regular ogre has a **0.1%** chance to drop one (random kind). The mini boss and the Mountain King **always drop two**.
+- The Utility stat bucket's fourth stat is **+0.1% power-up drop chance** per rank (rank 5 = 0.6%); the Stats screen shows your current chance.
+
+## Dragon flight rules
+
+- Flight (Q) drains the flight bar while you fly. The bar only starts to refill **3 s after the flight ends** (landing or dropping off); any new flight resets that wait. The bar is dimmed and reads "Rest" while it waits.
+- Using the dragon signature (E) while mounted leaps you off and slams; **Q is unavailable for 3 s afterwards** ("Your dragon is circling back..."), shown on the flight bar.
+
+## Colors
+
+Anything an ogre blows up on death or on touch (death puffs, boulders, boss slams and charges) is red. Your dragon's abilities follow its color: the Azure Wyrm's Inferno Wave is blue fire, the Crimson Drake (a deeper, darker crimson) casts a deep red Cataclysm, and the Night Wyrm keeps its blood red and black.
 
 ## Asset Store packs (not included)
 

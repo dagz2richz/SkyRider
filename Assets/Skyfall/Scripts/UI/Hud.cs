@@ -289,12 +289,9 @@ namespace Skyfall
                 Bar(new Rect(W / 2 - 300, 138, 600, 20), bossFrac, new Color(0.75f, 0.1f, 0.08f));
             }
 
-            // Stats in the top right.
-            string dodge = p.DodgeChance > 0f ? $"\nDodge  {Mathf.RoundToInt(p.DodgeChance * 100)}%" : "";
-            string stats = $"Kills  {game.kills}\nFoes  {game.enemies.Count}\nFPS  {Mathf.RoundToInt(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f) * Time.timeScale)}\n\n" +
-                           $"Damage  +{Mathf.RoundToInt((p.DamageMult - 1f) * 100)}%\nHealth  {(int)p.maxHp}\nBlock  {Mathf.RoundToInt(p.BlockChance * 100)}%\n" +
-                           $"Parry  {p.ParryChance * 100f:0.0}%{dodge}";
-            DrawText(new Rect(W - 276, 28, 260, 260), stats, Text(16, TextAnchor.UpperRight), M.Darken(PARCHMENT, 0.15f), 5);
+            // Kills, foes and FPS in the top right (the character stats live on the Stats screen).
+            string stats = $"Kills  {game.kills}\nFoes  {game.enemies.Count}\nFPS  {Mathf.RoundToInt(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f) * Time.timeScale)}";
+            DrawText(new Rect(W - 276, 28, 260, 80), stats, Text(16, TextAnchor.UpperRight), M.Darken(PARCHMENT, 0.15f), 5);
 
             // Stat bucket ranks on the right.
             float y = H / 2 - 180;
@@ -310,15 +307,49 @@ namespace Skyfall
 
             // Health, mana and dragon stamina at bottom-left.
             float bx = 20, bw = 400, by = H - 20;
-            by -= 10; Bar(new Rect(bx + 80, by, bw - 80, 10), p.flightStamina / p.MaxFlight, new Color(0.35f, 0.7f, 1f));
-            DrawText(new Rect(bx, by - 6, 80, 20), "Flight (Q)", Text(15), new Color(0.6f, 0.85f, 1f), 5);
+            by -= 10; DrawFlightBar(p, bx, by, bw);
             by -= 5 + 16; Bar(new Rect(bx, by, bw, 16), p.mana / p.MaxMana, new Color(0.45f, 0.35f, 1f));
             by -= 5 + 20; DrawText(new Rect(bx, by, bw, 20), $"Mana {(int)p.mana} / {(int)p.MaxMana}", Text(16), new Color(0.75f, 0.7f, 1f));
             by -= 5 + 22; Bar(new Rect(bx, by, bw, 22), p.hp / p.maxHp, new Color(0.8f, 0.12f, 0.1f));
             by -= 5 + 22; DrawText(new Rect(bx, by, bw, 22), $"{Mathf.CeilToInt(p.hp)} / {(int)p.maxHp}", Text(18), PARCHMENT);
 
+            DrawPowerUps(p);
             DrawSlots();
             DrawIslandMarker();
+        }
+
+        /// The flight bar: dimmed while the stamina waits out its 3 s regen delay; after an E leap-slam it shows the Q lockout.
+        void DrawFlightBar(Player p, float bx, float by, float bw)
+        {
+            var blue = new Color(0.35f, 0.7f, 1f);
+            float lockT = p.FlightLockLeft, wait = p.FlightRegenWait;
+            bool resting = !p.flying && wait > 0f;
+            var fill = lockT > 0f ? new Color(0.55f, 0.45f, 0.35f) : (resting ? new Color(0.22f, 0.4f, 0.6f) : blue);
+            Bar(new Rect(bx + 80, by, bw - 80, 10), p.flightStamina / p.MaxFlight, fill);
+            string label = lockT > 0f ? $"Q in {Mathf.CeilToInt(lockT)}s" : (resting ? $"Rest {Mathf.CeilToInt(wait)}s" : "Flight (Q)");
+            var labelCol = lockT > 0f ? new Color(1f, 0.7f, 0.4f) : (resting ? new Color(0.55f, 0.65f, 0.8f) : new Color(0.6f, 0.85f, 1f));
+            DrawText(new Rect(bx, by - 6, 80, 20), label, Text(15), labelCol, 5);
+        }
+
+        /// Active power-ups under the level and gold: a glyph chip, the name and the seconds left, with a thin timer bar.
+        void DrawPowerUps(Player p)
+        {
+            float y = 56f;
+            foreach (var id in Data.POWERUP_ORDER)
+            {
+                float left = p.PowerLeft(id);
+                if (left <= 0f) continue;
+                var d = Data.POWERUPS[id];
+                float a = left < 3f ? 0.55f + 0.45f * Mathf.Sin(Time.unscaledTime * 10f) : 1f;
+                var r = new Rect(14, y, 190, 30);
+                Panel(r, INK, d.color, 5, 2, a);
+                UiKit.Rect(new Rect(r.x + 3, r.y + 3, 24, 24), M.WithA(M.Mul(d.color, 0.55f), 0.9f * a));
+                DrawText(new Rect(r.x + 3, r.y + 3, 24, 24), d.glyph, Text(d.glyph.Length > 1 ? 15 : 22, TextAnchor.MiddleCenter, false, true), Color.Lerp(d.color, Color.white, 0.4f), 3, a);
+                DrawText(new Rect(r.x + 34, r.y + 2, 110, 18), d.name, Text(15, TextAnchor.UpperLeft, false, true), Color.Lerp(d.color, PARCHMENT, 0.4f), 4, a);
+                DrawText(new Rect(r.x + 120, r.y + 2, 64, 18), $"{Mathf.CeilToInt(left)}s", Text(16, TextAnchor.UpperRight, false, true), PARCHMENT, 4, a);
+                UiKit.Rect(new Rect(r.x + 34, r.y + 22, 150 * Mathf.Clamp01(left / Data.POWERUP_TIME), 3), M.WithA(d.color, 0.9f * a));
+                y += 34f;
+            }
         }
 
         static Texture2D arrowTex;
@@ -691,7 +722,8 @@ namespace Skyfall
                 Label("Choose Your Abilities", 44, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
                 Label($"{Data.HEROES[pickHero].name} with the {Data.DRAGONS[pickDragon].name}.  Everything fights on its own; your spell casts whenever you have the mana.\n" +
-                      "Q takes flight on your dragon. E unleashes your dragon's signature, on the ground or in the air (from the air you leap down and slam).",
+                      "Q takes flight on your dragon. E unleashes your dragon's signature, on the ground or in the air (from the air you leap down and slam; Q is then unavailable for 3 s).\n" +
+                      "Ogres sometimes drop power-ups: speed, damage and double gold for 15 s.",
                     16, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperCenter);
                 Space(18);
                 ChoiceRow("Spell  ·  casts itself when you have the mana", Data.SPELL_ORDER, ref pickSpell, true);
@@ -982,8 +1014,8 @@ namespace Skyfall
             { "Mouse", "Look around; orbits all the way, stopping at the ground" },
             { "Scroll wheel", "Zoom in and out" },
             { "Space", "Jump; press again in the air to double jump; hold to climb while flying" },
-            { "Q", "Call your dragon and take flight (press again to drop off)" },
-            { "E", "Dragon signature ability (from the air you also leap down and slam)" },
+            { "Q", "Call your dragon and take flight (again to drop off); the flight bar refills 3 s after landing" },
+            { "E", "Dragon signature ability (from the air you leap down and slam; Q is locked for 3 s after)" },
             { "Shift / Ctrl", "Dive while flying" },
             { "Tab", "Stats screen" },
             { "Esc / P", "Pause" },
@@ -1198,6 +1230,7 @@ namespace Skyfall
                         Kv("Move speed", $"{Mathf.RoundToInt(p.MoveMult * 100)}%", 16);
                         Kv("Dragon cooldowns", $"{Mathf.RoundToInt(p.DragonCdMult * 100)}%", 16);
                         Kv("Dragon flight", $"{p.MaxFlight:0.0} s", 16);
+                        Kv("Power-up drop chance", $"{p.PowerUpDropChance * 100f:0.0}%", 16);
                     });
                     Space(18);
                     StatColumn("Abilities", () =>
@@ -1216,6 +1249,10 @@ namespace Skyfall
                         Space(6);
                         Label("Armor", 20, GOLD, 5);
                         foreach (var id in Data.ARMOR_ORDER) Kv(Data.ARMOR[id].name, p.Tier(id) == 0 ? "none" : $"Tier {p.Tier(id)}", 16);
+                        Space(6);
+                        Label("Power-ups", 20, GOLD, 5);
+                        foreach (var id in Data.POWERUP_ORDER)
+                            Kv(Data.POWERUPS[id].name, p.PowerActive(id) ? $"{Mathf.CeilToInt(p.PowerLeft(id))} s" : "-", 16);
                     });
                     Space(18);
                     StatColumn("This Run", () =>

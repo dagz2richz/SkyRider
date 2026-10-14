@@ -546,8 +546,10 @@ namespace Skyfall
         float damage = 40f, radius = 2.8f, life = 1.6f, burnMult = 0.12f;
         Player ownerPlayer;
         bool small;
+        Color fx = new Color(1f, 0.5f, 0.12f);
+        bool custom;
 
-        public static void Spawn(Game game, Player owner, Vector3 from, Vector3 velocity, float damage, float radius, float burnMult, bool small)
+        public static void Spawn(Game game, Player owner, Vector3 from, Vector3 velocity, float damage, float radius, float burnMult, bool small, Color? color = null)
         {
             var f = new GameObject("Fireball").AddComponent<Fireball>();
             f.transform.SetParent(game.spellbook.transform, false);
@@ -559,21 +561,27 @@ namespace Skyfall
             f.radius = radius;
             f.burnMult = burnMult;
             f.small = small;
-            var mi = FX.Part(f.transform, MeshGen.Sphere(12), FX.Glow(new Color(1f, 0.5f, 0.12f, small ? 1f : 0.55f), small ? 3f : 2.2f), Vector3.zero, Vector3.one * (small ? 0.4f : 0.7f));
+            f.custom = color.HasValue;
+            f.fx = color ?? new Color(1f, 0.5f, 0.12f);
+            var c = f.fx;
+            var core0 = f.custom ? Color.Lerp(c, Color.white, 0.7f) : new Color(1f, 0.9f, 0.6f);
+            var spark0 = f.custom ? Color.Lerp(c, Color.white, 0.5f) : new Color(1f, 0.85f, 0.4f);
+            var spark1 = f.custom ? M.WithA(M.Mul(c, 0.45f), 0f) : new Color(0.7f, 0.1f, 0f, 0f);
+            var mi = FX.Part(f.transform, MeshGen.Sphere(12), FX.Glow(new Color(c.r, c.g, c.b, small ? 1f : 0.55f), small ? 3f : 2.2f), Vector3.zero, Vector3.one * (small ? 0.4f : 0.7f));
             FX.NoShadow(mi);
-            var core = FX.Part(f.transform, MeshGen.Sphere(8), FX.Glow(new Color(1f, 0.9f, 0.6f, small ? 1f : 0.7f), small ? 3f : 2f), Vector3.zero, Vector3.one * (small ? 0.22f : 0.4f));
+            var core = FX.Part(f.transform, MeshGen.Sphere(8), FX.Glow(new Color(core0.r, core0.g, core0.b, small ? 1f : 0.7f), small ? 3f : 2f), Vector3.zero, Vector3.one * (small ? 0.22f : 0.4f));
             FX.NoShadow(core);
             FX.Particles(f.transform, new FX.ParticleSpec
             {
                 amount = small ? 16 : 40, lifetime = 0.35f, size = 0.7f, scaleMin = 0.6f, scaleMax = 1.4f, speedMin = 0.5f, speedMax = 2f, spread = 30f,
-                gravity = new Vector3(0, 2, 0), startColor = new Color(1f, 0.85f, 0.4f, 1f), endColor = new Color(0.7f, 0.1f, 0f, 0f),
+                gravity = new Vector3(0, 2, 0), startColor = spark0, endColor = spark1,
             });
             if (!small)
             {
                 var light = new GameObject("Light").AddComponent<Light>();
                 light.transform.SetParent(f.transform, false);
                 light.type = LightType.Point;
-                light.color = new Color(1f, 0.55f, 0.2f);
+                light.color = f.custom ? c : new Color(1f, 0.55f, 0.2f);
                 light.intensity = 2f;
                 light.range = 6f;
                 light.shadows = LightShadows.None;
@@ -594,16 +602,16 @@ namespace Skyfall
         void Explode()
         {
             var at = transform.position;
-            bool packFx = FX.Vfx("hit_fire", at, small ? 0.7f : radius / 2f, 1.8f, null, small ? 0.04f : 0f);
-            if (!packFx) FX.Flash(at, radius, new Color(1f, 0.5f, 0.12f, 0.85f), small ? 0.25f : 0.35f);
-            if (!small) FX.Shockwave(at - new Vector3(0, 0.5f, 0), radius * 1.2f, new Color(1f, 0.6f, 0.2f, 0.8f), 0.35f);
-            FX.Burst(at, new Color(1f, 0.6f, 0.2f), small ? 8 : 18, 10f, small ? 0.3f : 0.45f);
+            bool packFx = FX.Vfx("hit_fire", at, small ? 0.7f : radius / 2f, 1.8f, null, small ? 0.04f : 0f, custom ? fx : (Color?)null);
+            if (!packFx) FX.Flash(at, radius, new Color(fx.r, fx.g, fx.b, 0.85f), small ? 0.25f : 0.35f);
+            if (!small) FX.Shockwave(at - new Vector3(0, 0.5f, 0), radius * 1.2f, custom ? new Color(fx.r, fx.g, fx.b, 0.8f) : new Color(1f, 0.6f, 0.2f, 0.8f), 0.35f);
+            FX.Burst(at, custom ? fx : new Color(1f, 0.6f, 0.2f), small ? 8 : 18, 10f, small ? 0.3f : 0.45f);
             Sfx.Play(small ? "hit" : "boom", at, small ? -9f : -5f);
             int hits = 0;
             foreach (var e in game.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f))
             {
                 var outDir = M.Flat(e.Pos - at);
-                game.DamageEnemy(e, damage, outDir.normalized, small ? 2.5f : 6f, true, new Color(1f, 0.7f, 0.3f));
+                game.DamageEnemy(e, damage, outDir.normalized, small ? 2.5f : 6f, true, custom ? Color.Lerp(fx, Color.white, 0.4f) : new Color(1f, 0.7f, 0.3f));
                 e.Ignite(3f, damage * burnMult);
                 hits++;
             }
