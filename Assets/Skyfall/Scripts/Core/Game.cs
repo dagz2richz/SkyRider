@@ -427,25 +427,83 @@ namespace Skyfall
             return names[((i % 8) + 8) % 8];
         }
 
-        readonly Dictionary<Vector2Int, Enemy> grid = new Dictionary<Vector2Int, Enemy>();
+        // Spatial hash for ogre separation: linked lists of enemy indices per 5 m cell, positions cached in flat arrays.
+        readonly Dictionary<int, int> sepHead = new Dictionary<int, int>();
+        int[] sepNext = new int[512];
+        float[] sepX = new float[512], sepZ = new float[512], sepR = new float[512], sepDx = new float[512], sepDz = new float[512];
+        bool[] sepSkip = new bool[512];
+        const float SEP_CELL = 5f;
+
+        static int SepKey(int cx, int cz) => (cx + 512) * 1024 + (cz + 512);
+
+        /// Keeps ogres from overlapping: every pair closer than the sum of their radii is pushed apart, the smaller one more.
+        /// Bosses push others away but are never pushed themselves; ogres in mid-jump are left alone.
+        void SeparateEnemies(float delta)
+        {
+            int n = enemies.Count;
+            if (sepNext.Length < n)
+            {
+                int cap = n + 256;
+                sepNext = new int[cap]; sepX = new float[cap]; sepZ = new float[cap]; sepR = new float[cap];
+                sepDx = new float[cap]; sepDz = new float[cap]; sepSkip = new bool[cap];
+            }
+            sepHead.Clear();
+            for (int i = 0; i < n; i++)
+            {
+                var e = enemies[i];
+                var p = e.transform.position;
+                sepX[i] = p.x; sepZ[i] = p.z; sepR[i] = e.radius;
+                sepDx[i] = 0f; sepDz[i] = 0f;
+                sepSkip[i] = e.dead || e.Airborne;
+                if (sepSkip[i]) continue;
+                int key = SepKey(Mathf.FloorToInt(p.x / SEP_CELL), Mathf.FloorToInt(p.z / SEP_CELL));
+                sepNext[i] = sepHead.TryGetValue(key, out int h) ? h : -1;
+                sepHead[key] = i;
+            }
+            float stiff = Mathf.Min(1f, delta * 14f) * 0.8f;
+            for (int i = 0; i < n; i++)
+            {
+                if (sepSkip[i]) continue;
+                float ax = sepX[i], az = sepZ[i], ar = sepR[i];
+                bool aBoss = enemies[i].isBoss;
+                int cx = Mathf.FloorToInt(ax / SEP_CELL), cz = Mathf.FloorToInt(az / SEP_CELL);
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++)
+                    {
+                        if (!sepHead.TryGetValue(SepKey(cx + dx, cz + dz), out int j)) continue;
+                        for (; j >= 0; j = sepNext[j])
+                        {
+                            if (j <= i) continue;
+                            float vx = ax - sepX[j], vz = az - sepZ[j];
+                            float rr = ar + sepR[j];
+                            float d2 = vx * vx + vz * vz;
+                            if (d2 >= rr * rr) continue;
+                            bool bBoss = enemies[j].isBoss;
+                            if (aBoss && bBoss) continue;
+                            float d = Mathf.Sqrt(d2);
+                            if (d < 0.01f) { float ang = M.RandF() * M.TAU; vx = Mathf.Cos(ang); vz = Mathf.Sin(ang); d = 1f; }
+                            float o = (rr - d) * stiff;
+                            float fa;   // share of the correction the first one takes; the second takes the rest
+                            if (aBoss) fa = 0f;
+                            else if (bBoss) fa = 1f;
+                            else
+                            {
+                                float ma = ar * ar, mb = sepR[j] * sepR[j];
+                                fa = mb / (ma + mb);
+                            }
+                            float nx = vx / d * o, nz = vz / d * o;
+                            sepDx[i] += nx * fa; sepDz[i] += nz * fa;
+                            sepDx[j] -= nx * (1f - fa); sepDz[j] -= nz * (1f - fa);
+                        }
+                    }
+            }
+            for (int i = 0; i < n; i++)
+                if (sepDx[i] != 0f || sepDz[i] != 0f) enemies[i].Shove(new Vector3(sepDx[i], 0f, sepDz[i]));
+        }
 
         void TickEnemies(float delta)
         {
-            // Light separation using a coarse spatial hash.
-            grid.Clear();
-            foreach (var e in enemies)
-            {
-                if (e.dead || e.isBoss) continue;
-                var p = e.Pos;
-                var key = new Vector2Int(Mathf.FloorToInt(p.x / 1.6f), Mathf.FloorToInt(p.z / 1.6f));
-                if (grid.TryGetValue(key, out var other))
-                {
-                    var push = M.Flat(p - other.Pos);
-                    if (push.magnitude < 0.01f) push = new Vector3(M.RandF() - 0.5f, 0, M.RandF() - 0.5f);
-                    e.knock += push.normalized * 6f * delta * 10f;
-                }
-                else grid[key] = e;
-            }
+            SeparateEnemies(delta);
             for (int i = 0; i < enemies.Count; i++)
                 if (!enemies[i].dead) enemies[i].Tick(delta, player);
             // Sweep the dead; also cull stragglers who fell far behind.
@@ -457,7 +515,7 @@ namespace Skyfall
                     enemies.RemoveAt(i);
                     Destroy(e.gameObject);
                 }
-                else if (!e.isBoss && Vector3.Distance(e.Pos, player.Pos) > 90f)
+                else if (!e.isBoss && Vector3.Distance(e.Pos, player.Pos) > 90f && !e.OnFloatingIsland())
                 {
                     float a = M.RandF() * M.TAU;
                     var p = player.Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 45f;

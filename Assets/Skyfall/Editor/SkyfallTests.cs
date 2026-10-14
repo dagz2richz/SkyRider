@@ -9,7 +9,7 @@ namespace Skyfall.EditorTools
     /// headless for a few seconds while saving camera snapshots to Logs/.
     /// Usage: Unity.exe -batchmode -projectPath ... -executeMethod Skyfall.EditorTools.SkyfallTests.Run
     [InitializeOnLoad]
-    public static class SkyfallTests
+    public static partial class SkyfallTests
     {
         const string Key = "SkyfallTestsRunning";
         static int frame;
@@ -29,6 +29,21 @@ namespace Skyfall.EditorTools
             Time.captureDeltaTime = 1f / 60f;
             AudioListener.volume = 0f;
             EditorApplication.isPlaying = true;
+        }
+
+        /// -executeMethod Skyfall.EditorTools.SkyfallTests.KitReport: logs every Ruins kit piece's size and triangle count.
+        public static void KitReport()
+        {
+            var lib = AssetDatabase.LoadAssetAtPath<SkinLibrary>("Assets/Skyfall/Resources/Skyfall/SkinLibrary.asset");
+            foreach (var mf in lib.ruinsKit.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var b = mf.sharedMesh.bounds;
+                var m = mf.transform.localToWorldMatrix;
+                var wb = new Bounds(m.MultiplyPoint3x4(b.center), Vector3.zero);
+                for (int i = 0; i < 8; i++)
+                    wb.Encapsulate(m.MultiplyPoint3x4(b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1))));
+                Debug.Log($"SKYFALL_TEST kit {mf.name} size={wb.size:F2} tris={mf.sharedMesh.triangles.Length / 3} readable={mf.sharedMesh.isReadable} subs={mf.sharedMesh.subMeshCount} rot={mf.transform.localRotation.eulerAngles} scale={mf.transform.localScale}");
+            }
         }
 
         public static void CheckShaders()
@@ -144,7 +159,7 @@ namespace Skyfall.EditorTools
                     ApplyGear();
                     game.StartRun(lo[2], lo[3], lo[0], lo[1]);
                     LogStats(game, "start");
-                    if (Arg("-skyfallIslandView", "") == "" && Arg("-skyfallFinale", "") == "") game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
+                    if (Arg("-skyfallIslandView", "") == "" && Arg("-skyfallFinale", "") == "" && Arg("-skyfallSolidTest", "") == "" && Arg("-skyfallKitView", "") == "") game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
                     game.player.hp = game.player.maxHp = 5000f;   // keep the hero alive for the whole test
                 }
                 else if (stage == 1 && Arg("-skyfallFinale", "") != "")
@@ -155,6 +170,14 @@ namespace Skyfall.EditorTools
                 {
                     BowView(game);
                 }
+                else if (stage == 1 && Arg("-skyfallKitView", "") != "")
+                {
+                    KitView(game);
+                }
+                else if (stage == 1 && Arg("-skyfallSolidTest", "") != "")
+                {
+                    SolidTest(game);
+                }
                 else if (stage == 1 && Arg("-skyfallIslandView", "") != "")
                 {
                     IslandView(game);
@@ -162,6 +185,20 @@ namespace Skyfall.EditorTools
                 else if (stage == 1)
                 {
                     game.player.hp = game.player.maxHp;
+                    TimeFrame(game);
+                    if (frame == 200 && Arg("-skyfallStress", "") != "")
+                    {
+                        // Performance check: 300 tough ogres around the hero.
+                        int n = int.Parse(Arg("-skyfallStress", "300"));
+                        string[] kinds = { "runt", "ogre", "ogre", "brute", "hulk", "archer" };
+                        for (int i = 0; i < n; i++)
+                        {
+                            float a = i * 2.399f, r = 6f + 22f * Mathf.Sqrt(i / (float)n);
+                            var p = game.player.Pos + new Vector3(Mathf.Cos(a) * r, 0, Mathf.Sin(a) * r);
+                            var e = game.SpawnEnemy(kinds[i % kinds.Length], p);
+                            e.hp = e.maxHp = 1e7f;
+                        }
+                    }
                     if (frame % 300 == 0) game.pet.RideCommand();                       // E: dragon signature on the ground
                     if (frame == 400)
                         typeof(Player).GetMethod("SummonDragon", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
@@ -223,6 +260,7 @@ namespace Skyfall.EditorTools
                     {
                         Snap($"snap_{tag}_3_wide");
                         Log("wide", game);
+                        Debug.Log($"SKYFALL_TEST perf: avg frame {perfMs / Mathf.Max(1, perfFrames):0.00} ms over {perfFrames} frames, avg enemies {perfEnemies / Mathf.Max(1, perfFrames):0}");
                         if (Arg("-skyfallBank", "") != "") Bank(game);
                         Finish(0);
                     }
@@ -545,6 +583,22 @@ namespace Skyfall.EditorTools
                     Finish(0);
                 }
             }
+        }
+
+        static double perfMs, perfEnemies, perfLast;
+        static int perfFrames;
+
+        /// Averages the real time per frame between frames 300 and 1500 of the normal run (the field is full of ogres by then).
+        static void TimeFrame(Game game)
+        {
+            double now = EditorApplication.timeSinceStartup;
+            if (frame > 300 && frame <= 1500 && perfLast > 0)
+            {
+                perfMs += (now - perfLast) * 1000.0;
+                perfEnemies += game.enemies.Count;
+                perfFrames++;
+            }
+            perfLast = now;
         }
 
         static string tag = "run";

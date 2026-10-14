@@ -609,7 +609,7 @@ namespace Skyfall
             velocity.x = hv.x;
             velocity.z = hv.z;
 
-            float ground = terrain.SurfaceHeight(Pos.x, Pos.z, Pos.y);
+            float ground = terrain.GroundHeight(Pos.x, Pos.z, Pos.y);
             if (GameInput.JumpPressed && !leaping && !flying)
             {
                 if (onGround)
@@ -641,7 +641,16 @@ namespace Skyfall
             float lim = WorldTerrain.PLAY_LIMIT + 8f;
             pos.x = Mathf.Clamp(pos.x, -lim, lim);
             pos.z = Mathf.Clamp(pos.z, -lim, lim);
-            float g = terrain.SurfaceHeight(pos.x, pos.z, Pos.y);
+            // Solid islands and ruins, then the ogres; a push keeps only the speed along the surface (so you slide along walls).
+            var wanted = pos;
+            terrain.CollidePlayer(Pos, ref pos, PhysRadius, PhysHeight, ref velocity.y);
+            CollideEnemies(ref pos, delta);
+            if (delta > 0f && (Mathf.Abs(pos.x - wanted.x) + Mathf.Abs(pos.z - wanted.z)) > 1e-5f)
+            {
+                velocity.x = Mathf.Lerp(velocity.x, (pos.x - Pos.x) / delta, 0.8f);
+                velocity.z = Mathf.Lerp(velocity.z, (pos.z - Pos.z) / delta, 0.8f);
+            }
+            float g = terrain.GroundHeight(pos.x, pos.z, Pos.y);
             if (pos.y <= g)
             {
                 pos.y = g;
@@ -664,6 +673,56 @@ namespace Skyfall
             AnimateKnight(delta, hspeed);
         }
 
+        // ---------------------------------------------------------------- solid world
+
+        /// Body size used against islands, ruins and ogres (bigger on the dragon).
+        public float PhysRadius => flying ? 1.2f : 0.5f;
+        public float PhysHeight => flying ? 2.6f : 1.9f;
+
+        /// Small ogres get shoved aside (and slow you a little), big ogres and bosses are solid. Flying above them ignores them.
+        void CollideEnemies(ref Vector3 pos, float delta)
+        {
+            float pr = PhysRadius;
+            var back = Vector3.zero;
+            int shoved = 0;
+            var list = game.enemies;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var e = list[i];
+                if (e.dead) continue;
+                var ep = e.transform.position;
+                float dx = pos.x - ep.x, dz = pos.z - ep.z;
+                float rr = pr + e.radius;
+                float d2 = dx * dx + dz * dz;
+                if (d2 >= rr * rr) continue;
+                if (pos.y > ep.y + e.size * 1.7f || pos.y + PhysHeight < ep.y + 0.2f) continue;
+                float d = Mathf.Sqrt(d2);
+                float nx, nz;
+                if (d > 0.001f) { nx = dx / d; nz = dz / d; }
+                else { float a = M.RandF() * M.TAU; nx = Mathf.Cos(a); nz = Mathf.Sin(a); }
+                float o = rr - d;
+                if (e.Solid)
+                {
+                    pos.x += nx * o;
+                    pos.z += nz * o;
+                }
+                else
+                {
+                    e.Shove(new Vector3(-nx, 0f, -nz) * (o * 0.9f));
+                    back += new Vector3(nx, 0f, nz) * (o * 0.2f);
+                    shoved++;
+                }
+            }
+            if (shoved == 0) return;
+            // Pushing through a crowd costs speed, but never stops you completely.
+            float cap = 0.5f * new Vector2(velocity.x, velocity.z).magnitude * delta + 0.012f;
+            if (back.magnitude > cap) back = back.normalized * cap;
+            pos += back;
+            float keep = Mathf.Pow(0.3f, delta * Mathf.Min(shoved, 5));
+            velocity.x *= keep;
+            velocity.z *= keep;
+        }
+
         // ---------------------------------------------------------------- leap slam
 
         /// From the dragon's back: leap off toward the target and slam the ground.
@@ -674,7 +733,7 @@ namespace Skyfall
             var flat = M.Flat(target - Pos);
             if (flat.magnitude > 22f) flat = flat.normalized * 22f;
             const float t = 0.45f;
-            float drop = Pos.y - game.terrain.SurfaceHeight(Pos.x + flat.x, Pos.z + flat.z, Pos.y);
+            float drop = Pos.y - game.terrain.GroundHeight(Pos.x + flat.x, Pos.z + flat.z, Pos.y);
             velocity = new Vector3(flat.x / t, (0.5f * GRAVITY * t * t - drop) / t, flat.z / t);
             if (flat.magnitude > 0.5f) yaw = Mathf.Atan2(-flat.x, -flat.z);
             armR.Keys((new Vector3(-2.8f, 0, 0), 0.25f));
@@ -736,11 +795,15 @@ namespace Skyfall
                 {
                     float t = (float)i / steps;
                     var p = Vector3.Lerp(target, want, t);
-                    if (p.y < terrain.Height(p.x, p.z) + 0.4f)
+                    bool hitTerrain = p.y < terrain.Height(p.x, p.z) + 0.4f;
+                    if (hitTerrain || terrain.CameraBlocked(p))
                     {
                         want = Vector3.Lerp(target, want, Mathf.Max((float)(i - 1) / steps, 0.08f));
-                        float g2 = terrain.Height(want.x, want.z) + 0.6f;
-                        want.y = Mathf.Max(want.y, g2);
+                        if (hitTerrain)
+                        {
+                            float g2 = terrain.Height(want.x, want.z) + 0.6f;
+                            want.y = Mathf.Max(want.y, g2);
+                        }
                         break;
                     }
                 }
@@ -748,6 +811,7 @@ namespace Skyfall
             var ct = cam.transform;
             var basePos = ct.position - ct.rotation * shakeOffsetApplied;
             basePos = Vector3.Distance(basePos, want) < 40f ? Vector3.Lerp(basePos, want, Mathf.Clamp01(delta * 12f)) : want;
+            if (game && game.terrain && game.terrain.CameraBlocked(basePos)) basePos = want;
             if (Vector3.Distance(basePos, target) > 0.05f)
                 ct.rotation = Quaternion.LookRotation(target - basePos, Vector3.up);
             shakeOffsetApplied = shakeOffset;

@@ -418,7 +418,10 @@ namespace Skyfall
             else if (weakenT > 0f) SetEmission(new Color(0.6f, 0f, 0.05f), 0.5f);
             else if (buffT > 0f) SetEmission(new Color(0.25f, 1f, 0.35f), 0.35f + Mathf.Sin(animT * 6f) * 0.1f);
             else SetEmission(Color.black, 0f);
-            model.localScale = Vector3.one * (1f + pop * 0.18f);
+            // Crouch before a jump, stretch in the air, squash on landing.
+            squash = Mathf.MoveTowards(squash, jumpWind > 0f ? -0.25f : (airborne ? 0.15f : 0f), delta * 2.2f);
+            model.localScale = Vector3.one * (1f + pop * 0.18f) + new Vector3(-squash * 0.5f, squash, -squash * 0.5f);
+            jumpCd -= delta;
 
             var terrain = game.terrain;
             var to = M.Flat(player.Pos - Pos);
@@ -427,7 +430,17 @@ namespace Skyfall
             float spd = speed * (slowT > 0f ? slowF : 1f) * (buffT > 0f ? 1.3f : 1f);
 
             var move = Vector3.zero;
-            if (stunT > 0f) stunT -= delta;
+            if (stunT > 0f)
+            {
+                stunT -= delta;
+                jumpWind = 0f;
+            }
+            else if (airborne) { }
+            else if (jumpWind > 0f)
+            {
+                jumpWind -= delta;
+                if (jumpWind <= 0f) LaunchJump();
+            }
             else if (isBoss) move = BossAi(delta, player, dir, dist, spd);
             else if (role == "archer")
             {
@@ -456,25 +469,53 @@ namespace Skyfall
                 }
                 if (buffRing) buffRing.Rotate(0f, delta * Mathf.Rad2Deg, 0f, Space.Self);
             }
-            else move = dir * spd;
-
-            var p = Pos + (move + knock) * delta;
-            knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
-            if (islandBound && island != null)
+            else
             {
-                bool clamped = ClampToIsland(ref p);
-                if (clamped && state == "charge")
-                {
-                    // The charge ends at the edge with a crash.
-                    state = "";
-                    FX.Shockwave(p + new Vector3(0, 0.3f, 0), 7f, new Color(0.8f, 0.6f, 0.4f, 0.8f), 0.35f);
-                    FX.Burst(p + new Vector3(0, 0.5f, 0), new Color(0.5f, 0.4f, 0.3f), 14, 6f, 0.5f);
-                    game.Shake(0.3f);
-                }
-                p.y = terrain.SurfaceHeight(p.x, p.z, island.topY);
+                move = dir * spd;
+                if (role == "" && jumpCd <= 0f && frozenT <= 0f) TryJump(player, dir, dist);
             }
-            else p.y = terrain.SurfaceHeight(p.x, p.z, Pos.y);
-            Pos = p;
+
+            if (airborne) FlyStep(delta);
+            else
+            {
+                var p = Pos + (move + knock) * delta;
+                knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
+                float g;
+                if (islandBound && island != null)
+                {
+                    bool clamped = ClampToIsland(ref p);
+                    if (clamped && state == "charge")
+                    {
+                        // The charge ends at the edge with a crash.
+                        state = "";
+                        FX.Shockwave(p + new Vector3(0, 0.3f, 0), 7f, new Color(0.8f, 0.6f, 0.4f, 0.8f), 0.35f);
+                        FX.Burst(p + new Vector3(0, 0.5f, 0), new Color(0.5f, 0.4f, 0.3f), 14, 6f, 0.5f);
+                        game.Shake(0.3f);
+                    }
+                    g = terrain.SurfaceHeight(p.x, p.z, island.topY);
+                }
+                else g = terrain.SurfaceHeight(p.x, p.z, Pos.y);
+                if (perched)
+                {
+                    // Landed on a ruin top: stay up there until walking off its edge.
+                    float og = terrain.ObstacleTop(p.x, p.z, Pos.y);
+                    if (og > g) g = og;
+                    else perched = false;
+                }
+                if (Pos.y - g > 0.7f)
+                {
+                    // Walked off a ledge: fall.
+                    fallV -= JUMP_G * delta;
+                    p.y = Mathf.Max(g, Pos.y + fallV * delta);
+                    if (p.y <= g) fallV = 0f;
+                }
+                else
+                {
+                    fallV = 0f;
+                    p.y = g;
+                }
+                Pos = p;
+            }
             if (dist > 0.1f && state != "charge" && frozenT <= 0f)
             {
                 yaw = M.LerpAngle(yaw, M.YawTo(dir), Mathf.Clamp01(delta * 8f));
@@ -511,6 +552,113 @@ namespace Skyfall
                 if (rig) rig.Action(0.7f, "Attack01", "Attack02");
                 else armR.KeysX((-2f, 0.1f), (0.4f, 0.15f));
             }
+        }
+
+        // ---------------------------------------------------------------- jumping up to the player
+
+        /// Big ogres and bosses are solid for the player; the small ones get shoved aside.
+        public bool Solid => isBoss || kind == "brute" || kind == "hulk";
+        public bool Airborne => airborne;
+
+        /// Moves this ogre sideways (the player or another body pushing it).
+        public void Shove(Vector3 flat) => transform.position += flat;
+
+        /// True while this ogre stands on a floating island (it is bound to one, or its feet are on an island top).
+        public bool OnFloatingIsland()
+        {
+            if (islandBound) return true;
+            var isl = game.terrain.IslandAt(Pos.x, Pos.z, Pos.y);
+            return isl != null && Pos.y - isl.topY < 1f;
+        }
+
+        public static int jumpCount;
+        public static float highestJump;
+        const float JUMP_G = 24f;
+        float jumpCd = 1.5f, jumpWind, takeoffY, jumpLife, fallV, squash;
+        bool airborne, perched;
+        Vector3 jumpVel;
+
+        /// Leaps at a player who is above this ogre (on a ruin, a ledge or hovering low on the dragon). The landing spot is
+        /// always the terrain or a ruin top within about 4.6 m of the take-off height, never an island, so ground ogres can
+        /// not reach the floating islands.
+        void TryJump(Player player, Vector3 dir, float dist)
+        {
+            jumpCd = 0.3f;
+            if (isBoss || islandBound || dist > 6.5f) return;
+            var terrain = game.terrain;
+            float py = player.Pos.y, dy = py - Pos.y;
+            if (dy < 1.1f + 0.3f * dist || dy > (player.flying ? 3.6f : 4.6f)) return;
+            var isl = terrain.IslandAt(player.Pos.x, player.Pos.z, py);
+            if (isl != null && py - isl.topY < 0.8f && !OnFloatingIsland()) return;   // the player is up on an island
+            float reachY = Pos.y + 4.1f;
+            float Land(Vector3 q) => Mathf.Max(terrain.SurfaceHeight(q.x, q.z, Pos.y), terrain.ObstacleTop(q.x, q.z, reachY));
+            var near = player.Pos - dir * (radius + 0.5f);
+            Vector3 target;
+            float yL, h;
+            if (player.flying)
+            {
+                target = near;
+                yL = Land(near);
+                h = dy + 0.6f;
+            }
+            else
+            {
+                float y1 = Land(near);
+                float y2 = Land(player.Pos);
+                if (y1 >= py - 1f) { target = near; yL = y1; }
+                else if (y2 >= py - 1f) { target = player.Pos; yL = y2; }
+                else return;   // the player stands on something an ogre cannot get onto
+                h = Mathf.Max(yL - Pos.y, 0f) + 0.9f;
+            }
+            if (yL - Pos.y > 4.7f) return;
+            float vy0 = Mathf.Sqrt(2f * JUMP_G * h);
+            float disc = vy0 * vy0 - 2f * JUMP_G * (yL - Pos.y);
+            if (disc < 0f) return;
+            float flight = (vy0 + Mathf.Sqrt(disc)) / JUMP_G;
+            var d = new Vector3(target.x - Pos.x, 0f, target.z - Pos.z);
+            if (d.magnitude / flight > 15f) return;
+            jumpVel = new Vector3(d.x / flight, vy0, d.z / flight);
+            jumpWind = 0.4f;
+            jumpLife = flight + 0.6f;
+            if (rig) rig.Loop("Idle", "Idle01");
+            else armR.KeysX((-0.6f, 0.15f), (0.2f, 0.25f));
+        }
+
+        void LaunchJump()
+        {
+            airborne = true;
+            perched = false;
+            takeoffY = Pos.y;
+            jumpCd = M.RandRange(2.8f, 4.5f);
+            jumpCount++;
+            if (rig) rig.Action(0.9f, "Attack02", "Attack01");
+            else armR.KeysX((-2.4f, 0.1f), (0.4f, 0.5f));
+            FX.Burst(Pos + new Vector3(0, 0.3f, 0), new Color(0.5f, 0.42f, 0.32f), 6, 3f, 0.3f);
+        }
+
+        void FlyStep(float delta)
+        {
+            var terrain = game.terrain;
+            jumpVel.y -= JUMP_G * delta;
+            jumpLife -= delta;
+            var p = Pos + (jumpVel + new Vector3(knock.x, 0f, knock.z)) * delta;
+            knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
+            highestJump = Mathf.Max(highestJump, p.y - takeoffY);
+            float surface = terrain.SurfaceHeight(p.x, p.z, takeoffY);
+            float og = terrain.ObstacleTop(p.x, p.z, Pos.y);
+            float g = Mathf.Max(surface, og);
+            if ((jumpVel.y < 0f && p.y <= g) || jumpLife <= 0f)
+            {
+                p.y = g;
+                airborne = false;
+                perched = og > surface + 0.05f;
+                squash = -0.3f;
+                fallV = 0f;
+                jumpCd = Mathf.Max(jumpCd, 1.5f);
+                FX.Burst(p + new Vector3(0, 0.2f, 0), new Color(0.5f, 0.42f, 0.32f), 8, 4f * size, 0.35f);
+                if (Vector3.Distance(p, game.player.Pos) < 18f) game.Shake(0.08f * size);
+            }
+            Pos = p;
         }
 
         void ShootArrow(Player player)
@@ -668,7 +816,7 @@ namespace Skyfall
             Sfx.Play("boom", at, 2f);
             game.Shake(0.6f);
             var d = player.Pos - at;
-            float gh = game.terrain.SurfaceHeight(player.Pos.x, player.Pos.z, player.Pos.y);
+            float gh = game.terrain.GroundHeight(player.Pos.x, player.Pos.z, player.Pos.y);
             if (new Vector2(d.x, d.z).magnitude < rad && player.Pos.y - gh < 3f)
                 player.TakeDamage(damage * 1.4f * AtkMult);
         }

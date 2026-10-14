@@ -23,11 +23,16 @@ namespace Skyfall
             return false;
         }
 
+        /// Set by the automated tests to steer the hero without a keyboard (x = right, y = back; null = real input).
+        public static Vector2? TestMove;
+        public static bool TestJumpHeld;
+
         /// x = right - left, y = back - forward (like Godot's Input.get_vector).
         public static Vector2 Move
         {
             get
             {
+                if (TestMove.HasValue) return TestMove.Value;
                 float x = (Held(Key.D, Key.RightArrow) ? 1f : 0f) - (Held(Key.A, Key.LeftArrow) ? 1f : 0f);
                 float y = (Held(Key.S, Key.DownArrow) ? 1f : 0f) - (Held(Key.W, Key.UpArrow) ? 1f : 0f);
                 var v = new Vector2(x, y);
@@ -36,7 +41,7 @@ namespace Skyfall
         }
 
         public static bool JumpPressed => Pressed(Key.Space);
-        public static bool JumpHeld => Held(Key.Space);
+        public static bool JumpHeld => TestJumpHeld || Held(Key.Space);
         public static bool DescendHeld => Held(Key.LeftShift, Key.RightShift, Key.LeftCtrl, Key.RightCtrl);
         public static bool PausePressed => Pressed(Key.Escape, Key.P);
         public static bool FlyPressed => Pressed(Key.Q);

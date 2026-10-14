@@ -377,8 +377,11 @@ namespace Skyfall
             piece.position += new Vector3(pos.x - b.center.x, pos.y - sink * scale - b.min.y, pos.z - b.center.z);
             foreach (var r in rends) r.gameObject.layer = PROP_LAYER;
             holder.gameObject.layer = PROP_LAYER;
+            kitObstacleCount += RegisterKitObstacles(holder, name, pos.y, pos.y - sink * scale);
             return holder;
         }
+
+        public int kitObstacleCount;
 
         bool GroundOk(Vector3 p, float maxSlope)
         {
@@ -386,6 +389,68 @@ namespace Skyfall
             if (p.magnitude < 14f) return false;
             if (Height(p.x, p.z) < WATER_LEVEL + 1f) return false;
             return 1f - NormalAt(p.x, p.z).y <= maxSlope;
+        }
+
+        Vector3 GroundAt(Vector3 c, Vector3 offset)
+        {
+            float x = c.x + offset.x, z = c.z + offset.z;
+            return new Vector3(x, Height(x, z), z);
+        }
+
+        /// A small ruined house: three broken walls, an open doorway flanked by pillar stumps, a floor slab and some clutter.
+        void BuildKitHouse(Vector3 c)
+        {
+            kitHouses.Add(c);
+            float yaw = rng.Randf() * 360f;
+            var rot = Quaternion.Euler(0f, yaw, 0f);
+            float s = rng.Range(0.48f, 0.56f);
+            float half = 2.9f;
+            Vector3 At(float x, float z) => GroundAt(c, rot * new Vector3(x, 0f, z));
+            KitPiece("destroyed_floor_01", At(0, 0), yaw + (rng.Randf() < 0.5f ? 0f : 90f), 0.42f, 0.2f);
+            string wallA = rng.Randf() < 0.5f ? "destroyed_wall_01" : "destroyed_wall_02";
+            KitPiece(wallA, At(0, half), yaw, s, 0.3f);                      // back
+            KitPiece("destroyed_wall_02", At(-half, 0), yaw + 90f, s, 0.3f);  // sides
+            KitPiece(rng.Randf() < 0.6f ? "destroyed_wall_01" : "destroyed_wall_02", At(half, 0), yaw + 90f, s * rng.Range(0.7f, 1f), 0.3f);
+            // Front: a doorway between two broken pillar stumps and a low wall stub.
+            KitPiece("pillar_broke_01", At(-1.3f, -half), yaw, 0.5f, 0.3f);
+            KitPiece("pillar_broke_01", At(1.3f, -half), yaw + 180f, 0.45f, 0.3f);
+            KitPiece("destroyed_wall_01", At(-2.4f, -half), yaw, 0.2f, 0.2f);
+            if (rng.Randf() < 0.6f) KitPiece(rng.Randf() < 0.5f ? "tomb_01" : "pew_01", At(rng.Range(-1.2f, 1.2f), rng.Range(-0.8f, 1.2f)), rng.Randf() * 360f, 1.1f, 0.05f);
+            if (rng.Randf() < 0.6f) KitPiece("pillar_broke_part_01", At(rng.Range(-4.5f, 4.5f), -half - rng.Range(1.5f, 2.5f)), rng.Randf() * 360f, 0.5f, 0.2f);
+        }
+
+        public readonly List<Vector3> kitTowers = new List<Vector3>(), kitHouses = new List<Vector3>();
+
+        /// A ruined watchtower: a broken gatehouse for the core with fallen wall segments and pillar stumps around it, or a
+        /// square of tall pillars with half-fallen walls between them.
+        void BuildKitTower(Vector3 c)
+        {
+            kitTowers.Add(c);
+            float yaw = rng.Randf() * 360f;
+            var rot = Quaternion.Euler(0f, yaw, 0f);
+            Vector3 At(float x, float z) => GroundAt(c, rot * new Vector3(x, 0f, z));
+            if (rng.Randf() < 0.55f)
+            {
+                KitPiece(rng.Randf() < 0.5f ? "entrance_02" : "entrance_03", c, yaw, 0.6f, 0.5f);
+                for (int i = 0; i < 4; i++)
+                {
+                    float a = M.TAU * i / 4f + rng.Range(-0.3f, 0.3f);
+                    var off = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * rng.Range(5.2f, 6.2f);
+                    if (i % 2 == 0) KitPiece("destroyed_wall_02", At(off.x, off.z), yaw - a * Mathf.Rad2Deg + 90f, 0.4f, 0.3f);
+                    else KitPiece("pillar_broke_01", At(off.x, off.z), rng.Randf() * 360f, rng.Range(0.5f, 0.8f), 0.3f);
+                }
+            }
+            else
+            {
+                const float h = 3.2f;
+                foreach (int sx in new[] { -1, 1 })
+                    foreach (int sz in new[] { -1, 1 })
+                        KitPiece(rng.Randf() < 0.7f ? "pillar_02" : "pillar_broke_01", At(sx * h, sz * h), rng.Randf() * 360f, rng.Range(0.8f, 1.1f), 0.3f);
+                KitPiece("destroyed_wall_02", At(0, h), yaw, 0.5f, 0.3f);
+                KitPiece("destroyed_wall_01", At(-h, 0), yaw + 90f, 0.34f, 0.3f);
+                KitPiece("destroyed_floor_01", At(0, 0), yaw, 0.5f, 0.2f);
+                KitPiece("pillar_broke_part_01", At(rng.Range(-2f, 2f), -h - 2.5f), rng.Randf() * 360f, 0.6f, 0.2f);
+            }
         }
 
         /// A ruined settlement built from kit pieces: a chapel or gatehouse, broken walls and pillars around it.

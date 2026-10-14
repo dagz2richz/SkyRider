@@ -294,11 +294,13 @@ namespace Skyfall
                 if (M.IsInf(center)) continue;
                 bool kit = KitAvailable;
                 if (kit) BuildKitVillage(center);
-                int houses = kit ? rng.RangeInt(1, 2) : rng.RangeInt(4, 7);
+                int houses = kit ? rng.RangeInt(2, 3) : rng.RangeInt(4, 7);
                 for (int h = 0; h < houses; h++)
                 {
-                    var p = Spot(16f, 0.16f, center, 22f);
-                    if (!M.IsInf(p)) Place(Props.RuinedHouse(rng), p - new Vector3(0, 0.3f, 0));
+                    var p = Spot(16f, 0.12f, center, 22f);
+                    if (M.IsInf(p)) continue;
+                    if (kit) BuildKitHouse(p);
+                    else Place(Props.RuinedHouse(rng), p - new Vector3(0, 0.3f, 0));
                 }
                 int carts = rng.RangeInt(1, 3);
                 for (int c = 0; c < carts; c++)
@@ -345,7 +347,9 @@ namespace Skyfall
             for (int i = 0; i < 8; i++)
             {
                 var p = Spot(40f, 0.18f);
-                if (!M.IsInf(p)) Place(Props.Watchtower(rng), p - new Vector3(0, 0.5f, 0));
+                if (M.IsInf(p)) continue;
+                if (KitAvailable) BuildKitTower(p);
+                else Place(Props.Watchtower(rng), p - new Vector3(0, 0.5f, 0));
             }
             // Standing stones.
             for (int i = 0; i < 4; i++)
