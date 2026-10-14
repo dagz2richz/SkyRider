@@ -1,0 +1,172 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 62c560a6db4d2374eb736008b7fcd684, type: 3}
+  m_Name: SkinLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::Skyfall.SkinLibrary
+  knight: {fileID: 1319517528997712, guid: 1543549dcdf638d488bd40cb68dd9b8e, type: 3}
+  pyromancer: {fileID: 1248815240492774, guid: ccd8c3b89aa02e943a08ab9238a8a70c, type: 3}
+  huntress: {fileID: 0}
+  dragonBlue: {fileID: 971994670, guid: 31a77d5e57bdce243a1c38bc0ba2808f, type: 3}
+  dragonRed: {fileID: 101568, guid: 59c100dd669d88f46b60555886d4dae7, type: 3}
+  dragonBlack: {fileID: 116688, guid: 09ade59177310454ba3c93ae4b7dc125, type: 3}
+  ogres:
+  - {fileID: 5674075356657402348, guid: 7e38136a601fead4a9e3d91f1163ff27, type: 3}
+  - {fileID: 5674075356657402348, guid: e3b54a198a81ae947869418b3de8360d, type: 3}
+  - {fileID: 3490066330406847947, guid: b3150552364c03d4389a5eff5c4966a1, type: 3}
+  - {fileID: 5674075356657402348, guid: 8348dc9291b14eb45b981802e89559a1, type: 3}
+  bossOgres:
+  - {fileID: 5674075356657402348, guid: 5bf37a0727d14eb44b2a5435c908fcba, type: 3}
+  - {fileID: 4763784140287841885, guid: e2d7cbbebbef1a14a89bcfc31693f0a2, type: 3}
+  - {fileID: 5674075356657402348, guid: 8348dc9291b14eb45b981802e89559a1, type: 3}
+  ogreWeapon: {fileID: 5406128183402853294, guid: 1f7b1b9b5856ecd40b5c7743b6676c3b, type: 3}
+  ogreController: {fileID: 9100000, guid: e58bf4525b7cc80459d6f7ff033ea067, type: 2}
+  archer: {fileID: 3155058319838657794, guid: 176299a76ecfc7544b22a66fae200ac7, type: 3}
+  shaman: {fileID: 388476414, guid: 7df524699deb44341b3693c8538df185, type: 3}
+  golem: {fileID: 1067925524328404, guid: 6bbfea6690ef7724ba495c866081f855, type: 3}
+  golemKing: {fileID: 1077356408, guid: c6cfc32748fb5004aa11a1be074b5c58, type: 3}
+  deadTrees:
+  - {fileID: 1932841404346126693, guid: c7827efbbf7212f42803476ce3f9d082, type: 3}
+  - {fileID: 3611794222474779789, guid: 53e1939cdeda3f04caaa240bfd830e5e, type: 3}
+  - {fileID: 1215182899609276316, guid: c6a512d95615f534cbe31aba1aaa354c, type: 3}
+  - {fileID: 1779396640715740685, guid: 66d0615cc71cd48408b75ff3f99c97af, type: 3}
+  stumps:
+  - {fileID: 7098389285256826050, guid: fb070a2d31206d9499ecc8a77be0ebf0, type: 3}
+  - {fileID: 3125019525012259300, guid: c8b350551fbedc84c8025d7d29f3a018, type: 3}
+  - {fileID: 4026988788687868377, guid: c0c32672766a81647b04690fc9ed3595, type: 3}
+  - {fileID: 3010216212467657930, guid: 244ce2af788c0c346b86cbc0473811b0, type: 3}
+  rocks:
+  - {fileID: 4140774597986965270, guid: 58cd8dc8c2359174baa15aa31e302c8b, type: 3}
+  - {fileID: 1813357942169304022, guid: 3dd97330b2ebd884e9f796894e026064, type: 3}
+  - {fileID: 2549054593802932585, guid: bee651b89d6b3ef48b19cfe8a4c9fa42, type: 3}
+  - {fileID: 170636262904696776, guid: 4202bcf0261b7184381139880446dfd6, type: 3}
+  standingStones:
+  - {fileID: 2804321427668277467, guid: 0f3d14a9a6b2ceb469c15d151552a614, type: 3}
+  shrubs:
+  - {fileID: 3708295212793361695, guid: 8cf2966042f7c2f44ac97cda7cc59eff, type: 3}
+  - {fileID: 3708295212793361695, guid: 8cf2966042f7c2f44ac97cda7cc59eff, type: 3}
+  - {fileID: 5153741093904279990, guid: ef8374d642969b14baa54045236c5fb0, type: 3}
+  grass:
+  - {fileID: 6739804228592001243, guid: 6cdd667aa0034cd4dadc8d58a65fb098, type: 3}
+  - {fileID: 6739804228592001243, guid: 6cdd667aa0034cd4dadc8d58a65fb098, type: 3}
+  - {fileID: 6444807355431749394, guid: f593bc20677ebf14abd27a4853408c68, type: 3}
+  skybox: {fileID: 2100000, guid: de1d750fefeeac642bf9b11a3978ccf5, type: 2}
+  vfx:
+  - name: hit
+    prefab: {fileID: 5238538877814813142, guid: 47096eff328e11a418ace7db2d72aa97, type: 3}
+  - name: hit_fire
+    prefab: {fileID: 162584487599433031, guid: 39f852c28f9c3fd45a427c24f3564ba7, type: 3}
+  - name: hit_ice
+    prefab: {fileID: 7275548786892498063, guid: 5bc9a0bf98f67d240a936bf476ba2082, type: 3}
+  - name: hit_lightning
+    prefab: {fileID: 8762405910555896786, guid: fcb74f28d107e284e80af037bfec14ca, type: 3}
+  - name: hit_magic
+    prefab: {fileID: 362261158077530393, guid: 20fda529c996a334da7fd65b48ea40df, type: 3}
+  - name: explosion
+    prefab: {fileID: 358637981425055526, guid: 8eb503696b886e04faff8fc0f480d473, type: 3}
+  - name: snow_hit
+    prefab: {fileID: 4924508274929071776, guid: 0edef91621bb6b34384ccc9dbb98729c, type: 3}
+  - name: electro_hit
+    prefab: {fileID: 2965222256817593503, guid: a164e676dbbd6e54587237e619372c98, type: 3}
+  - name: stones_hit
+    prefab: {fileID: 1758473627833946668, guid: 9b21333b068a5084ba09535839bee3c8, type: 3}
+  - name: ground_explosion
+    prefab: {fileID: 4994997792314849709, guid: 3dd50886582244645be87adb42aa8528, type: 3}
+  - name: red_explosion
+    prefab: {fileID: 8378648546881499446, guid: 867c572a5be680d42a042d2349f10143, type: 3}
+  - name: dark_explosion
+    prefab: {fileID: 5034656251238326012, guid: 9de2fa19f0390d44491264d9cab8cec5, type: 3}
+  - name: magic_circle
+    prefab: {fileID: 3744133877081091469, guid: a2a060732547fe64581bb0cb3c2bdf1d, type: 3}
+  - name: healing
+    prefab: {fileID: 9017484664307500583, guid: 1245b8d2997d5b34fb1637be70a7eb05, type: 3}
+  - name: buff
+    prefab: {fileID: 7155335147208632822, guid: 97c43495f80a3244fad1301dfafbe252, type: 3}
+  - name: portal_red
+    prefab: {fileID: 4617036660772024948, guid: 52c7d057cba585641bb68312c10d7791, type: 3}
+  - name: dust_puff
+    prefab: {fileID: 5610010966355794069, guid: 803ecf87f61d9fb4f84ba6319ba95c9c, type: 3}
+  sounds:
+  - name: hit
+    clips:
+    - {fileID: 8300000, guid: 7c47b20bb9874304a809dc5580d403ba, type: 3}
+    - {fileID: 8300000, guid: 2b21ef916f6943c439b71a7c74568878, type: 3}
+    - {fileID: 8300000, guid: a37f44cbf8c2a7443a3c361efa2f233a, type: 3}
+  - name: clang
+    clips:
+    - {fileID: 8300000, guid: ebcbb664018f947728cb9b67468b0f48, type: 3}
+    - {fileID: 8300000, guid: 4ae4fe17d19c04e10920bfaca3bd8290, type: 3}
+    - {fileID: 8300000, guid: 958408b32ccf3714ea02821877b0870c, type: 3}
+  - name: block
+    clips:
+    - {fileID: 8300000, guid: b7b5a6156961bac44a67504d42ce6fcf, type: 3}
+    - {fileID: 8300000, guid: 0ecf18972377e4652ab7377a0993f14a, type: 3}
+  - name: parry
+    clips:
+    - {fileID: 8300000, guid: 07c38e0499aea4acd81b44991c0e4d07, type: 3}
+    - {fileID: 8300000, guid: f3645d7388d9f4efc88a56c59b3a70d4, type: 3}
+  - name: heal
+    clips:
+    - {fileID: 8300000, guid: cfce0cea076109f478783201b2a9f57f, type: 3}
+  - name: slash
+    clips:
+    - {fileID: 8300000, guid: 52fa067c25c5c401b811eb86d142287e, type: 3}
+    - {fileID: 8300000, guid: b76357a42d03a4722afcba74c3073136, type: 3}
+    - {fileID: 8300000, guid: 88b1cbe3caa3fee4b8b103b5edd7aba9, type: 3}
+  - name: bow
+    clips:
+    - {fileID: 8300000, guid: 8fd2d73dfe9e846679cfdf508258512f, type: 3}
+  - name: arrow_hit
+    clips:
+    - {fileID: 8300000, guid: 0805de7e4fb0f4d03a30ae90e7c64311, type: 3}
+    - {fileID: 8300000, guid: 34aca9e3f1ade4802b9062b1380aa523, type: 3}
+    - {fileID: 8300000, guid: 2bc8225a23eb945578cfd49d8ba0dd67, type: 3}
+  - name: boom
+    clips:
+    - {fileID: 8300000, guid: 8a44b12d3e3f24b1a89dc7f0b66756f4, type: 3}
+    - {fileID: 8300000, guid: cdfae31f0b58546d3ac1015effc38f01, type: 3}
+    - {fileID: 8300000, guid: a652877b012108e41871f867ada9f176, type: 3}
+  - name: whoosh
+    clips:
+    - {fileID: 8300000, guid: 2b26cbea232414fcfab41a84fc7a1c55, type: 3}
+    - {fileID: 8300000, guid: cc6699269b4c1d44ea1e860518b9bb73, type: 3}
+    - {fileID: 8300000, guid: c91fcf414acc0344cb03b13996f1bf3b, type: 3}
+  - name: frost
+    clips:
+    - {fileID: 8300000, guid: 7673fd575998f27458e9f50321c11401, type: 3}
+    - {fileID: 8300000, guid: 2df49f6bb18bd3247bd788e26695f4ff, type: 3}
+    - {fileID: 8300000, guid: 92f9c41020767e34a86a135a0e8185fc, type: 3}
+    - {fileID: 8300000, guid: 11b863097ffe397488a720d45e30e83c, type: 3}
+  - name: zap
+    clips:
+    - {fileID: 8300000, guid: a15c0f3fe74004cf89b51cfd5604f582, type: 3}
+    - {fileID: 8300000, guid: f1cb5d83282f2904a85f73111d068616, type: 3}
+  - name: hurt
+    clips:
+    - {fileID: 8300000, guid: 8b23b175a78d6b5458322e3a6c9905d0, type: 3}
+    - {fileID: 8300000, guid: 56703418e3aed4c47a5f6622816b8e41, type: 3}
+  - name: death
+    clips:
+    - {fileID: 8300000, guid: 566d2ea6240b489479a6e9fd608c2621, type: 3}
+  - name: levelup
+    clips:
+    - {fileID: 8300000, guid: a27ae245f760b4bf191c0234d3b43918, type: 3}
+    - {fileID: 8300000, guid: dddde2397affa4973880bcc238b6ad30, type: 3}
+  - name: roar
+    clips:
+    - {fileID: 8300000, guid: c55fb47f6865f480c989e8407de1d19c, type: 3}
+    - {fileID: 8300000, guid: ec834e3a0a9a041e58e015c0bf39ed52, type: 3}
+    - {fileID: 8300000, guid: 8a42266be58db4c518b5d4e47cc0f780, type: 3}
+    - {fileID: 8300000, guid: 98e09261f3a63460d93dda8792af907d, type: 3}
+    - {fileID: 8300000, guid: 9a2d033f7760b4ef09400945a538ccd9, type: 3}
+  - name: flame
+    clips:
+    - {fileID: 8300000, guid: 674258a055e994b72bbb15a28eb79838, type: 3}

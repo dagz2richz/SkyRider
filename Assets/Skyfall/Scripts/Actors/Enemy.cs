@@ -70,6 +70,7 @@ namespace Skyfall
             e.radius = 0.55f * s;
             e.animT = M.RandF() * 10f;
             e.role = d.role;
+            if (e.TrySkin(false, -1)) return e;
             switch (e.role)
             {
                 case "archer":
@@ -112,8 +113,93 @@ namespace Skyfall
             e.isBoss = true;
             e.xpValue = 60 + idx * 30;
             e.abilityCd = 3f;
-            e.BuildOgre(d.skin, true, true);
+            if (!e.TrySkin(true, idx)) e.BuildOgre(d.skin, true, true);
             return e;
+        }
+
+        // ---------------------------------------------------------------- Asset Store models
+
+        CharacterRig rig;
+
+        /// Uses an Asset Store model when the skin library has one for this ogre. Returns false to fall back
+        /// to the procedural model.
+        bool TrySkin(bool boss, int bossIdx)
+        {
+            var lib = Skins.Lib;
+            if (lib == null) return false;
+            GameObject prefab;
+            RuntimeAnimatorController ctrl = null;
+            bool isOgreModel = false;
+            if (boss)
+            {
+                if (bossIdx == 2 && lib.golem) prefab = lib.golem;
+                else if (bossIdx == 4 && lib.golemKing) prefab = lib.golemKing;
+                else { prefab = Skins.Pick(lib.bossOgres) ?? Skins.Pick(lib.ogres); isOgreModel = true; }
+            }
+            else if (role == "archer") prefab = lib.archer;
+            else if (role == "shaman") prefab = lib.shaman;
+            else { prefab = Skins.Pick(lib.ogres); isOgreModel = true; }
+            if (prefab == null) return false;
+            if (isOgreModel) ctrl = lib.ogreController;
+
+            model = FX.Node(transform, "Model");
+            rig = Skins.SpawnCharacter(prefab, model, 2.0f * size, ctrl);
+            var hand = rig.Bone(HumanBodyBones.RightHand);
+            var leftHand = rig.Bone(HumanBodyBones.LeftHand);
+            var headBone = rig.Bone(HumanBodyBones.Head);
+            float boneScale = rig.transform.localScale.x;
+            if (isOgreModel && lib.ogreWeapon && hand)
+            {
+                // The pack's demo scene places the club loose in the world, so it is attached here by hand:
+                // held in the right hand, pointing forward and a little down in the bind pose.
+                var w = Instantiate(lib.ogreWeapon, hand, false);
+                w.transform.localPosition = Vector3.zero;
+                w.transform.rotation = Quaternion.LookRotation(new Vector3(0f, -0.4f, -1f));
+                w.transform.localScale = Vector3.one * boneScale / Mathf.Max(0.0001f, hand.lossyScale.x);
+            }
+            if (role == "archer" && leftHand)
+            {
+                var wood = FX.Lit(new Color(0.32f, 0.2f, 0.1f));
+                var bow = FX.Node(leftHand, "Bow");
+                bow.localScale = Vector3.one * size / Mathf.Max(0.0001f, leftHand.lossyScale.x);
+                foreach (int k in new[] { -1, 1 })
+                    FX.Part(bow, MeshGen.Box(), wood, new Vector3(0, k * 0.45f, -0.12f), new Vector3(0.07f, 0.95f, 0.07f), new Vector3(k * -0.35f, 0, 0));
+                FX.Part(bow, MeshGen.Box(), FX.Lit(new Color(0.85f, 0.85f, 0.8f)), new Vector3(0, 0, 0.02f), new Vector3(0.015f, 1.7f, 0.015f));
+            }
+            if (role == "shaman")
+            {
+                if (hand)
+                {
+                    var st = FX.Node(hand, "Staff");
+                    st.localScale = Vector3.one * size / Mathf.Max(0.0001f, hand.lossyScale.x);
+                    FX.Part(st, MeshGen.Box(), FX.Lit(Props.BARK), new Vector3(0, 0.3f, 0), new Vector3(0.08f, 2.4f, 0.08f));
+                    FX.Part(st, MeshGen.Sphere(8), FX.Lit(new Color(0.9f, 0.86f, 0.75f)), new Vector3(0, 1.55f, 0), new Vector3(0.3f, 0.32f, 0.3f));
+                    FX.Part(st, MeshGen.Sphere(8), FX.Glow(new Color(0.3f, 1f, 0.4f), 3f), new Vector3(0, 1.55f, -0.12f), Vector3.one * 0.12f);
+                }
+                var ring = FX.Part(transform, MeshGen.Ring(), FX.Glow(new Color(0.3f, 1f, 0.4f, 0.5f), 1.3f), new Vector3(0, 0.2f, 0), new Vector3(9f, 0.5f, 9f));
+                FX.NoShadow(ring);
+                buffRing = ring.transform;
+            }
+            if (boss && headBone)
+            {
+                var gold = FX.Lit(new Color(0.95f, 0.75f, 0.25f), 0.3f, 0.9f);
+                var crown = FX.Node(headBone, "Crown");
+                crown.localScale = Vector3.one * size / Mathf.Max(0.0001f, headBone.lossyScale.x);
+                crown.position = headBone.position + Vector3.up * 0.32f * size;
+                crown.rotation = Quaternion.identity;
+                FX.Part(crown, MeshGen.Cylinder(0.24f, 0.24f, 10), gold, Vector3.zero, new Vector3(1f, 0.12f, 1f));
+                for (int i = 0; i < 6; i++)
+                {
+                    float a = M.TAU * i / 6f;
+                    FX.Part(crown, MeshGen.Cylinder(0f, 0.5f, 4), gold, new Vector3(Mathf.Cos(a) * 0.2f, 0.11f, Mathf.Sin(a) * 0.2f), new Vector3(0.06f, 0.16f, 0.06f));
+                }
+            }
+            ice = FX.Part(transform, MeshGen.Sphere(10), FX.Lit(new Color(0.55f, 0.8f, 1.0f, 0.3f), 0.05f, 0f, 0.5f),
+                new Vector3(0, 1.2f * size, 0), new Vector3(1.6f, 2.6f, 1.6f) * size);
+            FX.NoShadow(ice);
+            ice.enabled = false;
+            rig.Loop("Idle", "Idle01");
+            return true;
         }
 
         void OnDestroy()
@@ -287,7 +373,11 @@ namespace Skyfall
             stunT = Mathf.Max(stunT, t);
         }
 
-        void SetEmission(Color c, float energy) => FX.SetLin(skinMat, "_EmissionColor", c, energy);
+        void SetEmission(Color c, float energy)
+        {
+            if (rig) rig.SetEmission((Color)FX.Lin(c, energy));
+            else FX.SetLin(skinMat, "_EmissionColor", c, energy);
+        }
 
         // ---------------------------------------------------------------- update
 
@@ -374,7 +464,15 @@ namespace Skyfall
             }
 
             // Lumbering walk.
-            if (frozenT <= 0f)
+            if (rig)
+            {
+                rig.Speed = frozenT > 0f ? 0f : Mathf.Clamp(spd / 4.5f, 0.6f, 1.6f);
+                if (state == "charge") rig.Loop("Run", "Walk");
+                else if (stunT > 0f || move.magnitude <= 0.1f) rig.Loop("Idle", "Idle01");
+                else if (spd > 5.5f) rig.Loop("Run", "Walk");
+                else rig.Loop("Walk", "Run");
+            }
+            else if (frozenT <= 0f)
             {
                 float moving = move.magnitude > 0.1f ? 1f : 0.2f;
                 float w = animT * (spd * 1.4f + 1f);
@@ -392,7 +490,8 @@ namespace Skyfall
             {
                 attackCd = 1f;
                 player.TakeDamage(damage * AtkMult * (buffT > 0f ? 1.3f : 1f), this);
-                armR.KeysX((-2f, 0.1f), (0.4f, 0.15f));
+                if (rig) rig.Action(0.7f, "Attack01", "Attack02");
+                else armR.KeysX((-2f, 0.1f), (0.4f, 0.15f));
             }
         }
 
@@ -401,8 +500,9 @@ namespace Skyfall
             var from = Pos + new Vector3(0, 1.6f * size, 0);
             var target = player.Center + player.velocity * 0.25f;
             OgreArrow.Spawn(game, from, (target - from).normalized * 34f, damage * AtkMult * (buffT > 0f ? 1.3f : 1f));
-            armL.KeysX((-1.5f, 0.15f), (0f, 0.3f));
-            Sfx.Play("whoosh", Pos, -10f, 0.2f);
+            if (rig) rig.Action(0.6f, "Attack02", "Attack01");
+            else armL.KeysX((-1.5f, 0.15f), (0f, 0.3f));
+            Sfx.Play("bow", Pos, -8f, 0.2f);
         }
 
         // ---------------------------------------------------------------- bosses
@@ -413,7 +513,7 @@ namespace Skyfall
             {
                 case "windup":
                     stateT -= delta;
-                    armR.RotX = Mathf.Lerp(armR.RotX, -2.4f, delta * 8f);
+                    if (armR != null) armR.RotX = Mathf.Lerp(armR.RotX, -2.4f, delta * 8f);
                     if (stateT <= 0f)
                     {
                         state = "charge";
@@ -446,18 +546,25 @@ namespace Skyfall
                     var at = player.Pos;
                     float rad = 6f + size;
                     FX.Telegraph(at, rad, 1.1f);
-                    armR.Play(SlamRoutine(at, rad, player));
+                    if (rig)
+                    {
+                        rig.Action(1.3f, "Attack02", "Attack01");
+                        Tw.Run(SlamRoutine(at, rad, player));
+                    }
+                    else armR.Play(SlamRoutine(at, rad, player));
                     break;
                 }
                 case "charge":
                     state = "windup";
                     stateT = 0.7f;
                     chargeDir = dir;
+                    if (rig) rig.Action(0.7f, "Victory", "Attack02");
                     FX.Telegraph(Pos, radius + 1.5f, 0.7f, new Color(1f, 0.5f, 0.1f, 0.4f));
                     Sfx.Play("roar", Pos, -4f, 0.15f);
                     break;
                 case "boulders":
                 {
+                    if (rig) rig.Action(0.9f, "Attack01", "Attack02");
                     int count = 3 + (int)size;
                     for (int i = 0; i < count; i++)
                     {
@@ -481,9 +588,14 @@ namespace Skyfall
 
         IEnumerator SlamRoutine(Vector3 at, float rad, Player player)
         {
-            yield return Tw.To(() => armR.RotX, v => armR.RotX = v, -2.6f, 0.9f, this);
-            yield return Tw.To(() => armR.RotX, v => armR.RotX = v, 0.6f, 0.15f, this);
+            if (armR != null)
+            {
+                yield return Tw.To(() => armR.RotX, v => armR.RotX = v, -2.6f, 0.9f, this);
+                yield return Tw.To(() => armR.RotX, v => armR.RotX = v, 0.6f, 0.15f, this);
+            }
+            else yield return Tw.Wait(1.05f);
             if (this == null || dead || player == null) yield break;
+            FX.Vfx("ground_explosion", at, rad / 6f);
             FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad, new Color(1f, 0.4f, 0.2f, 0.9f), 0.4f);
             FX.Burst(at + new Vector3(0, 0.5f, 0), new Color(0.55f, 0.42f, 0.3f), 30, 12f, 0.7f);
             Sfx.Play("boom", at, 2f);
@@ -534,6 +646,7 @@ namespace Skyfall
                 FX.Burst(pos, new Color(0.45f, 0.4f, 0.35f), 14, 7f, 0.4f);
                 FX.Shockwave(pos + new Vector3(0, 0.2f, 0), 2.6f, new Color(0.7f, 0.5f, 0.3f, 0.7f), 0.3f);
                 Sfx.Play("arrow_hit", pos, 2f);
+                FX.Vfx("stones_hit", pos, 1f, 2f);
                 if (p != null && Vector3.Distance(p.Center, pos) < 2.6f) p.TakeDamage(damage);
                 Destroy(gameObject);
             }

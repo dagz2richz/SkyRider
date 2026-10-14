@@ -22,6 +22,9 @@ namespace Skyfall
         public Hud hud;
         Light sun;
         Material skyMat;
+        bool packSky;
+        Color skyTint;
+        float skyExposure = 1f;
         Volume volume;
         Transform fxRoot;
 
@@ -125,8 +128,14 @@ namespace Skyfall
 
         void SetupEnvironment()
         {
-            // Sky.
-            skyMat = new Material(Shader.Find("Skyfall/Sky"));
+            // Sky: the Fantasy Skybox pack when set up, else the built-in gradient sky.
+            packSky = Skins.Lib != null && Skins.Lib.skybox != null;
+            skyMat = packSky ? new Material(Skins.Lib.skybox) : new Material(Shader.Find("Skyfall/Sky"));
+            if (packSky)
+            {
+                skyTint = skyMat.HasProperty("_Tint") ? skyMat.GetColor("_Tint") : Color.gray;
+                skyExposure = skyMat.HasProperty("_Exposure") ? skyMat.GetFloat("_Exposure") : 1f;
+            }
             RenderSettings.skybox = skyMat;
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.fog = true;
@@ -304,6 +313,7 @@ namespace Skyfall
             Sfx.Play("roar", 2f, 0f);
             hud.Banner((final ? "FINAL BOSS" : "BOSS") + " — " + e.displayName, $"It approaches from the {Compass(p - player.Pos)}.");
             Shake(0.5f);
+            FX.Vfx("portal_red", e.Pos + new Vector3(0, e.size, 0), e.size / 2f, 2.5f, null, 0f);
         }
 
         static string Compass(Vector3 v)
@@ -486,6 +496,7 @@ namespace Skyfall
                 if (e.lanceMarked) orbChance += Data.WEAPONS["blood_lance"].orb_bonus;
                 if (M.RandF() < orbChance) DropOrb(pos);
             }
+            FX.Vfx("dust_puff", pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.6f, null, 0.25f);
             e.gameObject.SetActive(false);
         }
 
@@ -563,6 +574,7 @@ namespace Skyfall
                         player.Heal(player.maxHp * g.value);
                         FX.Flash(c, 1.5f, new Color(1f, 0.3f, 0.3f, 0.5f), 0.3f);
                         Sfx.Play("heal", -2f, 0.05f);
+                        FX.Vfx("healing", player.Pos, 1f, 1.5f, null, 0.3f);
                     }
                     else
                     {
@@ -603,6 +615,7 @@ namespace Skyfall
             SetPaused(true);
             GameInput.MouseCaptured = false;
             Sfx.Play("levelup", -3f, 0f);
+            FX.Vfx("buff", player.Pos, 1f, 2f, null, 0f);
             hud.ShowLevelUp(player.level, options, kind);
         }
 
@@ -714,7 +727,8 @@ namespace Skyfall
             var horizon = Color.Lerp(new Color(0.72f, 0.64f, 0.55f), new Color(0.85f, 0.35f, 0.15f), k);
             var groundHorizon = new Color(0.5f, 0.45f, 0.4f);
             var groundBottom = new Color(0.12f, 0.1f, 0.09f);
-            var fog = Color.Lerp(new Color(0.62f, 0.58f, 0.52f), new Color(0.55f, 0.25f, 0.15f), k);
+            // Warmer haze under the sunset skybox so the distance blends into it.
+            var fog = Color.Lerp(packSky ? new Color(0.8f, 0.58f, 0.44f) : new Color(0.62f, 0.58f, 0.52f), new Color(0.55f, 0.25f, 0.15f), k);
             var sunCol = Color.Lerp(new Color(1f, 0.9f, 0.78f), new Color(1f, 0.55f, 0.3f), k);
             float pitch = Mathf.Lerp(-38f, -14f, k);
             // Godot rotated the light by (pitch, -40) with the light shining down its -Z; Unity lights shine down +Z.
@@ -724,12 +738,21 @@ namespace Skyfall
             RenderSettings.ambientSkyColor = M.Mul(top, 0.9f);
             RenderSettings.ambientEquatorColor = M.Mul(horizon, 0.75f);
             RenderSettings.ambientGroundColor = M.Mul(groundHorizon, 0.45f);
-            FX.SetLin(skyMat, "_TopColor", top);
-            FX.SetLin(skyMat, "_HorizonColor", horizon);
-            FX.SetLin(skyMat, "_GroundHorizonColor", groundHorizon);
-            FX.SetLin(skyMat, "_GroundBottomColor", groundBottom);
-            FX.SetLin(skyMat, "_SunColor", sunCol);
-            skyMat.SetVector("_SunDir", -sun.transform.forward);
+            if (packSky)
+            {
+                // Burn the pack sky toward a red dusk.
+                if (skyMat.HasProperty("_Tint")) skyMat.SetColor("_Tint", Color.Lerp(skyTint, new Color(0.62f, 0.34f, 0.28f, skyTint.a), k));
+                if (skyMat.HasProperty("_Exposure")) skyMat.SetFloat("_Exposure", Mathf.Lerp(skyExposure, skyExposure * 0.7f, k));
+            }
+            else
+            {
+                FX.SetLin(skyMat, "_TopColor", top);
+                FX.SetLin(skyMat, "_HorizonColor", horizon);
+                FX.SetLin(skyMat, "_GroundHorizonColor", groundHorizon);
+                FX.SetLin(skyMat, "_GroundBottomColor", groundBottom);
+                FX.SetLin(skyMat, "_SunColor", sunCol);
+                skyMat.SetVector("_SunDir", -sun.transform.forward);
+            }
             UpdateAmbientProbe(M.Mul(top, 0.9f), M.Mul(horizon, 0.75f), M.Mul(groundHorizon, 0.45f));
         }
 

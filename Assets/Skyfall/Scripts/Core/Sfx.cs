@@ -80,6 +80,8 @@ namespace Skyfall
 
         AudioClip Clip(string sound)
         {
+            var packClips = Skins.Lib ? Skins.Lib.Sound(sound) : null;
+            if (packClips != null) return packClips[Random.Range(0, packClips.Length)];
             if (!overrides.TryGetValue(sound, out var list))
             {
                 list = Resources.LoadAll<AudioClip>("Skyfall/Sounds/" + sound);

@@ -403,6 +403,63 @@ namespace Skyfall
             });
         }
 
+        // ---------------------------------------------------------------- Asset Store effects
+
+        public static int liveVfx;
+        static readonly Dictionary<string, float> vfxLast = new Dictionary<string, float>();
+
+        /// Plays a one-shot effect prefab from the skin library (does nothing when the packs are not set up).
+        /// minGap throttles how often the same effect can start, so big fights stay readable and fast.
+        public static bool Vfx(string name, Vector3 pos, float scale = 1f, float life = 2f, Quaternion? rot = null, float minGap = 0.04f)
+        {
+            var lib = Skins.Lib;
+            if (lib == null || root == null || liveVfx >= 45) return false;
+            var prefab = lib.Vfx(name);
+            if (prefab == null) return false;
+            float now = Time.time;
+            if (vfxLast.TryGetValue(name, out float last) && now - last < minGap && now >= last) return false;
+            vfxLast[name] = now;
+            var go = Object.Instantiate(prefab, pos, rot ?? prefab.transform.rotation, root);
+            go.transform.localScale = prefab.transform.localScale * scale;
+            foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
+            {
+                // Ground crater decals in these packs are very large and pile up across a busy battlefield.
+                if (ps.name == "Crater")
+                {
+                    ps.gameObject.SetActive(false);
+                    continue;
+                }
+                var m = ps.main;
+                m.loop = false;
+                m.scalingMode = ParticleSystemScalingMode.Hierarchy;
+            }
+            liveVfx++;
+            Tw.After(life, () =>
+            {
+                liveVfx--;
+                if (go) Object.Destroy(go);
+            });
+            return true;
+        }
+
+        /// Attaches a looping effect prefab to a parent (for auras and circles); the caller destroys it.
+        public static GameObject VfxLoop(string name, Transform parent, Vector3 localPos, float scale = 1f)
+        {
+            var lib = Skins.Lib;
+            if (lib == null) return null;
+            var prefab = lib.Vfx(name);
+            if (prefab == null) return null;
+            var go = Object.Instantiate(prefab, parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localScale = prefab.transform.localScale * scale;
+            foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
+            {
+                var m = ps.main;
+                m.scalingMode = ParticleSystemScalingMode.Hierarchy;
+            }
+            return go;
+        }
+
         // Floating combat text is drawn by the HUD in screen space (fixed size, always on top).
         public class FloatText
         {

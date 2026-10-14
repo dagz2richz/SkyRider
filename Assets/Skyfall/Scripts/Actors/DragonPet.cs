@@ -75,6 +75,7 @@ namespace Skyfall
             go.transform.SetParent(transform, false);
             model = go.AddComponent<DragonModel>().Setup(d);
             fire = d.breath;
+            ApplySkin(id);
             if (breathFx)
             {
                 var start = Color.Lerp(Color.white, fire, 0.4f);
@@ -82,6 +83,87 @@ namespace Skyfall
                 breathFx.GetComponent<ParticleSystemRenderer>().material = FX.ParticleMat(id != "black", 1.5f);
             }
             if (breathLight) breathLight.color = fire;
+        }
+
+        // ---------------------------------------------------------------- Asset Store dragon model
+
+        CharacterRig skin;
+        Transform skinMouth, skinChest;
+        float skinBack;
+
+
+        /// The procedural dragon is 12 units long at scale 1; pack dragons are scaled to match.
+        const float DRAGON_LENGTH = 12f;
+
+        void ApplySkin(string id)
+        {
+            if (skin) DestroyImmediate(skin.gameObject);
+            skin = null;
+            skinMouth = skinChest = null;
+            var prefab = Skins.Lib ? Skins.Lib.Dragon(id) : null;
+            if (prefab == null) return;
+            // Measure in a neutral pose so the rotation and current scale don't skew the bounds.
+            var savedRot = transform.rotation;
+            var savedScale = transform.localScale;
+            transform.rotation = Quaternion.identity;
+            transform.localScale = Vector3.one;
+            var holder = FX.Node(transform, "DragonSkin");
+            var go = Instantiate(prefab, holder, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            skin = holder.gameObject.AddComponent<CharacterRig>();
+            skin.Init(go, null);
+            var b = skin.Bounds();
+            float len = Mathf.Max(b.size.z, 0.01f);
+            holder.localScale = Vector3.one * (DRAGON_LENGTH / len);
+            skinMouth = Skins.Find(go.transform, "UpperMouth", "UpperMouth01", "JawTip", "Head");
+            skinChest = Skins.Find(go.transform, "Chest");
+            if (skinChest) skinBack = (skinChest.position.y - transform.position.y) * 0.4f;
+            transform.rotation = savedRot;
+            transform.localScale = savedScale;
+            foreach (var r in model.GetComponentsInChildren<Renderer>(true)) r.enabled = false;
+            skin.Loop("Idle", "Idle01");
+        }
+
+        /// The mouth the breath comes from.
+        public Vector3 MouthPos
+        {
+            get
+            {
+                if (skinMouth) return skinMouth.position + transform.forward * -0.6f * transform.lossyScale.z;
+                return model.mouth.position;
+            }
+        }
+
+        /// Where the rider sits on a pack dragon (null for the procedural dragon, which uses its own seat).
+        public Vector3? SeatWorld
+        {
+            get
+            {
+                if (skin == null || skinChest == null) return null;
+                return skinChest.position + Vector3.up * skinBack * transform.lossyScale.y;
+            }
+        }
+
+        static readonly string[] SK_IDLE = { "Idle", "Idle01" };
+        static readonly string[] SK_HOVER = { "Fly Float", "Fly Forward" };
+        static readonly string[] SK_FLY = { "Fly Forward", "Fly Glide", "Fly Float" };
+        static readonly string[] SK_GLIDE = { "Fly Glide", "Fly Forward" };
+        static readonly string[] SK_BREATH = { "Fly Fireball Shoot", "Fly Flame Attack", "Fly Forward" };
+        static readonly string[] SK_ROAR = { "Fly Fireball Shoot", "Fly Flame Attack", "Scream" };
+
+        void AnimateSkin(float speed, bool perched)
+        {
+            if (skin == null) return;
+            if (perched)
+            {
+                skin.Loop(SK_IDLE);
+                return;
+            }
+            if (state == "dive") skin.Loop(SK_GLIDE);
+            else if (breathActive > 0f) skin.Loop(SK_BREATH);
+            else if (speed > 6f) skin.Loop(SK_FLY);
+            else skin.Loop(SK_HOVER);
         }
 
         Data.DragonDef DataDef => Data.DRAGONS[dragonId];
@@ -151,6 +233,7 @@ namespace Skyfall
                     transform.rotation = Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0);
                     transform.localScale = Vector3.Lerp(transform.localScale, Vector3.one * MOUNT_SCALE, Mathf.Clamp01(delta * 8f));
                     model.Animate(delta, new Vector2(player.velocity.x, player.velocity.z).magnitude, true, player.velocity.y);
+                    AnimateSkin(new Vector2(player.velocity.x, player.velocity.z).magnitude, false);
                     break;
                 case "dive":
                     Dive(delta);
@@ -188,6 +271,7 @@ namespace Skyfall
             if (new Vector2(faceDir.x, faceDir.z).magnitude > 0.1f) yaw = Mathf.Atan2(-faceDir.x, -faceDir.z);
             transform.rotation = Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0);
             model.Animate(delta, new Vector2(vel.x, vel.z).magnitude, true, vel.y);
+            AnimateSkin(new Vector2(vel.x, vel.z).magnitude, !game.running);
         }
 
         // ---------------------------------------------------------------- passive: breath
@@ -195,7 +279,7 @@ namespace Skyfall
         void Breath(float delta)
         {
             int L = Lvl("dragonfire");
-            var mouth = model.mouth.position;
+            var mouth = MouthPos;
             float reach = (11f + L * 1.2f) * player.AreaMult;
             var hitCol = Color.Lerp(fire, Color.white, 0.4f);
             if (breathActive > 0f)
@@ -316,6 +400,7 @@ namespace Skyfall
                 transform.rotation = Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0);
             }
             model.Animate(delta, 20f, true, dir.y / Mathf.Max(delta, 0.001f));
+            AnimateSkin(20f, false);
         }
 
         void DiveImpact()
@@ -324,7 +409,8 @@ namespace Skyfall
             float rad = (5f + 0.5f * L) * player.AreaMult * (dragonId == "red" ? 1.2f : 1f);
             float dmg = (70f + 30f * L) * DmgMult;
             var at = diveTo;
-            FX.Flash(at + new Vector3(0, 1, 0), rad, new Color(fire.r, fire.g, fire.b, 0.85f), 0.45f);
+            if (!FX.Vfx(dragonId == "black" ? "dark_explosion" : dragonId == "red" ? "red_explosion" : "explosion", at, rad / 4f, 2.5f))
+                FX.Flash(at + new Vector3(0, 1, 0), rad, new Color(fire.r, fire.g, fire.b, 0.85f), 0.45f);
             FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.3f, new Color(fire.r, fire.g, fire.b, 0.9f), 0.45f);
             FX.Burst(at + new Vector3(0, 0.5f, 0), new Color(0.55f, 0.45f, 0.35f), 30, 13f, 0.6f);
             FX.Burst(at + new Vector3(0, 1f, 0), fire, 24, 10f, 0.5f);
@@ -349,7 +435,7 @@ namespace Skyfall
             if (M.IsInf(at)) at = player.AimPoint();
             int L = Lvl("ride");
             if (state == "mount") player.LeapSlam(at);
-            var mouth = model.mouth.position;
+            var mouth = MouthPos;
             switch (dragonId)
             {
                 case "blue":
@@ -385,6 +471,7 @@ namespace Skyfall
                 }
             }
             model.jawOpen = 1f;
+            if (skin) skin.Action(1.2f, SK_ROAR);
             rideCd = RideCooldown;
             return true;
         }
@@ -407,7 +494,8 @@ namespace Skyfall
 
         void Blast(Vector3 at, float rad, float dmg, float big)
         {
-            FX.Flash(at + new Vector3(0, 1f, 0), rad, new Color(1f, 0.5f, 0.15f, 0.9f), 0.4f);
+            if (!FX.Vfx(big >= 1f ? "red_explosion" : "explosion", at, rad / 4f, 2.5f, null, 0f))
+                FX.Flash(at + new Vector3(0, 1f, 0), rad, new Color(1f, 0.5f, 0.15f, 0.9f), 0.4f);
             FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.2f, new Color(1f, 0.6f, 0.25f, 0.9f), 0.4f);
             FX.Burst(at + new Vector3(0, 0.6f, 0), new Color(0.5f, 0.4f, 0.3f), (int)(30 * big), 14f * big, 0.6f * big);
             Sfx.Play("boom", at, 4f * big, 0.05f);

@@ -331,6 +331,63 @@ namespace Skyfall
             maxHp = Data.HEROES[heroId].hp;
             hp = maxHp;
             if (pet) pet.SetDragon(dragon);
+            BuildWeapon();
+            ApplySkin();
+            AnimateKnight(0f, 0f);
+        }
+
+        // ---------------------------------------------------------------- Asset Store hero model
+
+        CharacterRig rig;
+        Transform skinRoot;
+        string skinHero = "";
+
+        static readonly string[] IDLE = { "Idle_SwordShield", "Idle01", "Idle" };
+        static readonly string[] WALK = { "Walk_SwordShield", "WalkForward", "BattleWalkForward", "Walk" };
+        static readonly string[] RUN = { "Run_SwordShield", "BattleRunForward", "Run" };
+        static readonly string[] AIR = { "JumpAir", "Idle_SwordShield", "Idle01" };
+        static readonly string[] SWING = { "NormalAttack01_SwordShield", "Attack01" };
+        static readonly string[] CAST = { "Attack01" };
+        static readonly string[] HURT = { "GetHit_SwordShield", "GetHit" };
+        static readonly string[] LEAP = { "JumpUpAttack", "NormalAttack02_SwordShield" };
+
+        /// Swaps the procedural hero for the Asset Store model when the skin library has one for this hero.
+        void ApplySkin()
+        {
+            var prefab = Skins.Lib ? Skins.Lib.Hero(heroId) : null;
+            if (skinHero != heroId || (prefab == null && skinRoot != null))
+            {
+                if (skinRoot) DestroyImmediate(skinRoot.gameObject);
+                skinRoot = null;
+                rig = null;
+                skinHero = heroId;
+                if (prefab)
+                {
+                    skinRoot = FX.Node(transform, "HeroSkin");
+                    rig = Skins.SpawnCharacter(prefab, skinRoot, 1.8f);
+                    rig.Loop(IDLE);
+                }
+            }
+            // With a skin, the procedural body stays (its joints still drive the casting hand) but is hidden.
+            bool hide = rig != null;
+            foreach (var r in knight.GetComponentsInChildren<Renderer>(true))
+                if (r != handGlow) r.enabled = !hide;
+        }
+
+        void AnimateSkin(float hspeed)
+        {
+            if (rig == null) return;
+            skinRoot.localPosition = knight.localPosition;
+            rig.Speed = hspeed > 0.6f && onGround ? Mathf.Clamp(hspeed / 9f, 0.7f, 1.6f) : 1f;
+            if (flying) rig.Loop(IDLE);
+            else if (!onGround) rig.Loop(AIR);
+            else if (hspeed > 6f) rig.Loop(RUN);
+            else if (hspeed > 0.6f) rig.Loop(WALK);
+            else rig.Loop(IDLE);
+        }
+
+        void BuildWeapon()
+        {
             var steel = FX.Lit(new Color(0.78f, 0.8f, 0.85f), 0.2f, 0.95f);
             var gold = FX.Lit(new Color(0.9f, 0.72f, 0.3f), 0.35f, 0.9f);
             var w = FX.Node(weaponNode, "Held", Vector3.zero, new Vector3(-1.1f, 0, 0));
@@ -369,11 +426,16 @@ namespace Skyfall
             }
         }
 
-        void SwingAnim() => armR.Keys((new Vector3(-2.2f, 0.4f, -0.3f), 0.08f), (new Vector3(0.6f, -0.7f, 0.3f), 0.12f), (new Vector3(-0.5f, 0, 0), 0.25f));
+        void SwingAnim()
+        {
+            armR.Keys((new Vector3(-2.2f, 0.4f, -0.3f), 0.08f), (new Vector3(0.6f, -0.7f, 0.3f), 0.12f), (new Vector3(-0.5f, 0, 0), 0.25f));
+            if (rig) rig.Action(0.45f, SWING);
+        }
 
         public void CastAnim()
         {
             armL.Keys((new Vector3(-1.6f, 0, 0.2f), 0.07f), (Vector3.zero, 0.3f));
+            if (rig && IsPyro && !rig.InAction) rig.Action(0.4f, CAST);
             var hg = handGlow.transform;
             hg.localScale = Vector3.one * 0.4f;
             Tw.Run(Tw.To(() => hg.localScale, v => hg.localScale = v, Vector3.one * 0.16f, 0.3f, hg));
@@ -394,7 +456,10 @@ namespace Skyfall
             legL.Rot = Vector3.Lerp(walkL, rideL, mountT);
             legR.Rot = Vector3.Lerp(walkR, rideR, mountT);
             float bob = onGround ? Mathf.Abs(Mathf.Sin(walkT)) * 0.06f * moving * (1f - mountT) : 0f;
-            knight.localPosition = Vector3.Lerp(new Vector3(0, bob, 0), SEAT, mountT);
+            var seat = SEAT;
+            if (pet != null && pet.SeatWorld.HasValue) seat = transform.InverseTransformPoint(pet.SeatWorld.Value);
+            knight.localPosition = Vector3.Lerp(new Vector3(0, bob, 0), seat, mountT);
+            AnimateSkin(hspeed);
             cape.RotX = Mathf.Lerp(cape.RotX, Mathf.Clamp(hspeed * 0.06f, 0f, 1.2f) + Mathf.Sin(Time.time * 12f) * 0.05f, delta * 6f);
             blockAnim = Mathf.MoveTowards(blockAnim, 0f, delta * 4f);
             if (blockAnim > 0f) armL.Rot = new Vector3(-1.3f * blockAnim, 0.4f * blockAnim, 0);
@@ -552,6 +617,7 @@ namespace Skyfall
             velocity = new Vector3(flat.x / t, (0.5f * GRAVITY * t * t - drop) / t, flat.z / t);
             if (flat.magnitude > 0.5f) yaw = Mathf.Atan2(-flat.x, -flat.z);
             armR.Keys((new Vector3(-2.8f, 0, 0), 0.25f));
+            if (rig) rig.Action(0.7f, LEAP);
             Sfx.Play("whoosh", 0f);
         }
 
@@ -567,7 +633,8 @@ namespace Skyfall
                 Tw.To(() => armR.Rot, v => armR.Rot = v, new Vector3(0.9f, 0, 0), 0.06f, armR.t),
                 Tw.Wait(0.25f),
                 Tw.To(() => armR.Rot, v => armR.Rot = v, new Vector3(-0.5f, 0, 0), 0.25f, armR.t)));
-            FX.Flash(at + new Vector3(0, 0.8f, 0), rad * 0.8f, new Color(0.75f, 0.85f, 1f, 0.8f), 0.35f);
+            if (!FX.Vfx("ground_explosion", at, rad / 6f, 2.5f))
+                FX.Flash(at + new Vector3(0, 0.8f, 0), rad * 0.8f, new Color(0.75f, 0.85f, 1f, 0.8f), 0.35f);
             FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.3f, new Color(0.8f, 0.9f, 1f, 0.9f), 0.45f);
             FX.Burst(at + new Vector3(0, 0.4f, 0), new Color(0.55f, 0.45f, 0.35f), 30, 13f, 0.6f);
             game.Shake(0.8f);
@@ -668,7 +735,8 @@ namespace Skyfall
                 if (arc < 359f && dist > 0.5f && Vector3.Dot(to.normalized, dir) < cosHalf) continue;
                 var knockDir = dist > 0.01f ? to.normalized : dir;
                 game.DamageEnemy(e, dmg, knockDir, w.knock);
-                FX.Burst(e.Pos + new Vector3(0, e.size, 0), new Color(1f, 0.9f, 0.7f), 5, 6f, 0.15f);
+                if (hits >= 2 || !FX.Vfx("hit", e.Pos + new Vector3(0, e.size, 0), 0.8f, 1.2f, null, 0f))
+                    FX.Burst(e.Pos + new Vector3(0, e.size, 0), new Color(1f, 0.9f, 0.7f), 5, 6f, 0.15f);
                 hits++;
             }
             WeaponHits(hits, dmg);
@@ -846,6 +914,7 @@ namespace Skyfall
             hp -= dmg;
             hurtTimer = 0.12f;
             game.hud.HurtFlash();
+            if (rig && !rig.InAction) rig.Action(0.3f, HURT);
             game.Shake(0.25f);
             Sfx.Play("hurt", 0f);
             FX.Number(at, dmg, new Color(1f, 0.3f, 0.3f));

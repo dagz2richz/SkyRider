@@ -33,7 +33,10 @@ namespace Skyfall
             BuildWater();
             propsRoot = new GameObject("Props").transform;
             propsRoot.SetParent(transform, false);
+            packRoot = new GameObject("PackProps").transform;
+            packRoot.SetParent(transform, false);
             ScatterProps();
+            ScatterGreenery();
             // Merge the static scenery into big batches so thousands of small parts render cheaply.
             StaticBatchingUtility.Combine(propsRoot.gameObject);
         }
@@ -195,6 +198,92 @@ namespace Skyfall
             node.gameObject.layer = PROP_LAYER;
         }
 
+        // ---------------------------------------------------------------- Asset Store scenery
+
+        Transform packRoot;
+
+        /// Places a pack prop scaled so its largest dimension is targetSize (0 keeps the prefab's size).
+        bool PlacePack(GameObject[] options, Vector3 p, float targetSize, bool align = false)
+        {
+            var prefab = Skins.Pick(options, rng);
+            if (prefab == null) return false;
+            var t = Skins.SpawnProp(prefab, packRoot, p, rng.Randf() * 360f, 1f);
+            if (targetSize > 0f)
+            {
+                var rends = t.GetComponentsInChildren<Renderer>();
+                if (rends.Length > 0)
+                {
+                    var b = rends[0].bounds;
+                    foreach (var r in rends) b.Encapsulate(r.bounds);
+                    float size = Mathf.Max(b.size.x, Mathf.Max(b.size.y, b.size.z));
+                    if (size > 0.01f) t.localScale *= targetSize / size;
+                }
+            }
+            if (align) t.rotation = Quaternion.FromToRotation(Vector3.up, NormalAt(p.x, p.z)) * t.rotation;
+            foreach (var r in t.GetComponentsInChildren<Renderer>()) r.gameObject.layer = PROP_LAYER;
+            return true;
+        }
+
+        SkinLibrary Lib => Skins.Lib;
+
+        void PlaceTree(Vector3 p)
+        {
+            if (Lib && PlacePack(Lib.deadTrees, p - new Vector3(0, 0.2f, 0), rng.Range(6f, 10f))) return;
+            Place(Props.DeadTree(rng), p - new Vector3(0, 0.2f, 0));
+        }
+
+        void PlaceRock(Vector3 p)
+        {
+            if (Lib && PlacePack(Lib.rocks, p - new Vector3(0, 0.25f, 0), rng.Range(0.8f, 3.4f), true)) return;
+            Place(Props.Rock(rng), p - new Vector3(0, 0.3f, 0), true);
+        }
+
+        void PlaceStoneCircle(Vector3 c)
+        {
+            if (Lib == null || Lib.standingStones == null || Lib.standingStones.Length == 0)
+            {
+                Place(Props.StoneCircle(rng), c - new Vector3(0, 0.3f, 0));
+                return;
+            }
+            int count = rng.RangeInt(7, 10);
+            for (int i = 0; i < count; i++)
+            {
+                if (rng.Randf() < 0.15f) continue;
+                float a = M.TAU * i / count;
+                var p = c + new Vector3(Mathf.Cos(a) * 6f, 0, Mathf.Sin(a) * 6f);
+                p.y = Height(p.x, p.z) - 0.3f;
+                PlacePack(Lib.standingStones, p, rng.Range(2.6f, 4.2f));
+            }
+            // Glowing rune altar at the center.
+            var altar = new GameObject("Altar").transform;
+            Props.StoneCircleAltar(altar);
+            Place(altar, c - new Vector3(0, 0.3f, 0));
+        }
+
+        /// Grass, shrubs and stumps from the nature pack (nothing without it).
+        void ScatterGreenery()
+        {
+            if (Lib == null) return;
+            for (int i = 0; i < 420; i++)
+            {
+                var p = Spot(6f, 0.22f);
+                if (M.IsInf(p) || p.y > 24f || scorch.Get(p.x, p.z) > 0.4f) continue;
+                PlacePack(Lib.grass, p - new Vector3(0, 0.05f, 0), rng.Range(0.9f, 1.8f), true);
+            }
+            for (int i = 0; i < 140; i++)
+            {
+                var p = Spot(8f, 0.3f);
+                if (M.IsInf(p)) continue;
+                PlacePack(Lib.shrubs, p - new Vector3(0, 0.1f, 0), rng.Range(1.2f, 2.2f));
+            }
+            for (int i = 0; i < 60; i++)
+            {
+                var p = Spot(8f, 0.3f);
+                if (M.IsInf(p)) continue;
+                PlacePack(Lib.stumps, p - new Vector3(0, 0.05f, 0), rng.Range(0.8f, 1.6f));
+            }
+        }
+
         void ScatterProps()
         {
             // Ruined villages.
@@ -259,7 +348,7 @@ namespace Skyfall
             for (int i = 0; i < 4; i++)
             {
                 var c = Spot(35f, 0.12f);
-                if (!M.IsInf(c)) Place(Props.StoneCircle(rng), c - new Vector3(0, 0.3f, 0));
+                if (!M.IsInf(c)) PlaceStoneCircle(c);
             }
             // Dead forests.
             for (int f = 0; f < 12; f++)
@@ -270,14 +359,14 @@ namespace Skyfall
                 for (int t = 0; t < n; t++)
                 {
                     var p = Spot(10f, 0.35f, center, 18f);
-                    if (!M.IsInf(p)) Place(Props.DeadTree(rng), p - new Vector3(0, 0.2f, 0));
+                    if (!M.IsInf(p)) PlaceTree(p);
                 }
             }
             // Rocks everywhere.
             for (int i = 0; i < 140; i++)
             {
                 var p = Spot(8f, 0.6f);
-                if (!M.IsInf(p)) Place(Props.Rock(rng), p - new Vector3(0, 0.3f, 0), true);
+                if (!M.IsInf(p)) PlaceRock(p);
             }
         }
     }

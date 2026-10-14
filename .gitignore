@@ -49,3 +49,40 @@ crashlytics-buildid.txt
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Third-party Asset Store packs: large, and their license doesn't allow redistributing them.
+# Re-download them from Package Manager > My Assets, then run Skyfall > Set Up Asset Packs.
+/[Aa]ssets/A.M.P. DEMO/
+/[Aa]ssets/A.M.P. DEMO.meta
+/[Aa]ssets/Fantasy Skybox FREE/
+/[Aa]ssets/Fantasy Skybox FREE.meta
+/[Aa]ssets/FourEvilDragonsPBR/
+/[Aa]ssets/FourEvilDragonsPBR.meta
+/[Aa]ssets/Free Frost Mage - SFX/
+/[Aa]ssets/Free Frost Mage - SFX.meta
+/[Aa]ssets/Free Pack/
+/[Aa]ssets/Free Pack.meta
+/[Aa]ssets/Hovl Studio/
+/[Aa]ssets/Hovl Studio.meta
+/[Aa]ssets/Leohpaz/
+/[Aa]ssets/Leohpaz.meta
+/[Aa]ssets/LightningBolt/
+/[Aa]ssets/LightningBolt.meta
+/[Aa]ssets/Matthew Guz/
+/[Aa]ssets/Matthew Guz.meta
+/[Aa]ssets/Medieval Action - FX Pack 2.0/
+/[Aa]ssets/Medieval Action - FX Pack 2.0.meta
+/[Aa]ssets/Mini Legion Grunt PBR HP Polyart/
+/[Aa]ssets/Mini Legion Grunt PBR HP Polyart.meta
+/[Aa]ssets/Mini Legion Rock Golem PBR HP Polyart/
+/[Aa]ssets/Mini Legion Rock Golem PBR HP Polyart.meta
+/[Aa]ssets/Monster Roars/
+/[Aa]ssets/Monster Roars.meta
+/[Aa]ssets/Ogre/
+/[Aa]ssets/Ogre.meta
+/[Aa]ssets/Polytope Studio/
+/[Aa]ssets/Polytope Studio.meta
+/[Aa]ssets/RPGHero/
+/[Aa]ssets/RPGHero.meta
+/[Aa]ssets/WizardPolyArt/
+/[Aa]ssets/WizardPolyArt.meta

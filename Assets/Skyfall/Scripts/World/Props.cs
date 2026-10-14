@@ -238,10 +238,15 @@ namespace Skyfall
                 float y = fallen ? 0.4f : h * 0.5f;
                 Bx(n, new Vector3(1f, h, 0.6f), new Vector3(Mathf.Cos(a) * 6f, y, Mathf.Sin(a) * 6f), Mt(STONE_DARK), rot);
             }
-            // Glowing rune altar at the center.
+            StoneCircleAltar(n);
+            return n;
+        }
+
+        /// The glowing rune altar at the center of a stone circle.
+        public static void StoneCircleAltar(Transform n)
+        {
             Bx(n, new Vector3(2f, 0.8f, 1.2f), new Vector3(0, 0.4f, 0), Mt(STONE));
             Bx(n, new Vector3(1.4f, 0.05f, 0.6f), new Vector3(0, 0.82f, 0), FX.Glow(new Color(0.3f, 0.7f, 1f), 1.2f));
-            return n;
         }
 
         public static Transform DeadTree(Rng rng)

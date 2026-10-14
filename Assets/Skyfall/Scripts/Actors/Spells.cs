@@ -110,6 +110,7 @@ namespace Skyfall
                 var top = e.Pos + new Vector3(M.RandRange(-2f, 2f), 24f, M.RandRange(-2f, 2f));
                 var hitAt = e.Pos + new Vector3(0, e.size, 0);
                 FX.Bolt(top, hitAt, new Color(0.8f, 0.85f, 1f), 0.3f, 0.22f);
+                FX.Vfx("electro_hit", e.Pos + new Vector3(0, e.size, 0), 0.8f, 1.5f, null, 0f);
                 FX.Flash(hitAt, 1.6f, new Color(0.7f, 0.8f, 1f, 0.7f), 0.2f);
                 game.DamageEnemy(e, (14f + 7f * L) * player.DamageMult, Vector3.zero, 0f, true, SHOCK_COLOR);
                 if (M.RandF() < 0.55f + 0.07f * L) e.Shock(1f);
@@ -248,6 +249,7 @@ namespace Skyfall
         void Zap(Enemy e, float dmg, float shockChance)
         {
             game.DamageEnemy(e, dmg, Vector3.zero, 0f, true, SHOCK_COLOR);
+            FX.Vfx("hit_lightning", e.Pos + new Vector3(0, e.size, 0), 0.8f, 1.3f, null, 0.02f);
             if (M.RandF() < shockChance) e.Shock(1f);
         }
 
@@ -309,6 +311,7 @@ namespace Skyfall
             halo = h.transform;
             var floorRing = FX.Part(transform, MeshGen.Ring(), FX.Glow(new Color(0.5f, 0.2f, 0.9f, 0.35f), 1.2f), new Vector3(0, -1f, 0), new Vector3(radius, 0.4f, radius));
             FX.NoShadow(floorRing);
+            FX.VfxLoop("magic_circle", transform, new Vector3(0, -1.1f, 0), radius / 3.5f);
             FX.Particles(transform, new FX.ParticleSpec
             {
                 amount = 60, lifetime = 0.8f, size = 0.5f, sphereRadius = radius, radialSpeed = -10f, worldSpace = false,
@@ -339,7 +342,8 @@ namespace Skyfall
             if (life <= 0f)
             {
                 var pos = transform.position;
-                FX.Flash(pos, radius * 0.8f, new Color(0.6f, 0.2f, 1f, 0.8f), 0.4f);
+                if (!FX.Vfx("hit_magic", pos, radius / 3f, 1.8f, null, 0f))
+                    FX.Flash(pos, radius * 0.8f, new Color(0.6f, 0.2f, 1f, 0.8f), 0.4f);
                 FX.Shockwave(pos - new Vector3(0, 1f, 0), radius, new Color(0.7f, 0.3f, 1f, 0.9f), 0.4f);
                 Sfx.Play("boom", pos, 0f);
                 foreach (var e in g.EnemiesInRadius(pos, radius * 0.75f, 8f))
@@ -396,7 +400,8 @@ namespace Skyfall
         {
             var g = book.game;
             var at = transform.position;
-            FX.Flash(at, radius, new Color(0.6f, 0.9f, 1f, 0.8f), 0.3f);
+            if (!FX.Vfx("snow_hit", at, radius / 2f, 2f))
+                FX.Flash(at, radius, new Color(0.6f, 0.9f, 1f, 0.8f), 0.3f);
             FX.Burst(at, new Color(0.85f, 0.97f, 1f), 16, 9f, 0.3f);
             Sfx.Play("frost", at, -2f, 0.1f);
             foreach (var e in g.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f))
@@ -517,7 +522,8 @@ namespace Skyfall
         void Impact()
         {
             var g = book.game;
-            FX.Flash(target + new Vector3(0, 0.5f, 0), radius, new Color(1f, 0.55f, 0.15f, 0.8f), 0.35f);
+            if (!FX.Vfx("explosion", target, radius / 2.5f, 2f, null, 0f))
+                FX.Flash(target + new Vector3(0, 0.5f, 0), radius, new Color(1f, 0.55f, 0.15f, 0.8f), 0.35f);
             FX.Shockwave(target + new Vector3(0, 0.3f, 0), radius * 1.2f, new Color(1f, 0.6f, 0.2f, 0.8f), 0.4f);
             FX.Burst(target + new Vector3(0, 0.5f, 0), new Color(1f, 0.6f, 0.2f), 16, 10f, 0.4f);
             Sfx.Play("boom", target, -3f + size * 2f);
@@ -553,9 +559,9 @@ namespace Skyfall
             f.radius = radius;
             f.burnMult = burnMult;
             f.small = small;
-            var mi = FX.Part(f.transform, MeshGen.Sphere(12), FX.Glow(new Color(1f, 0.55f, 0.15f), 3f), Vector3.zero, Vector3.one * (small ? 0.4f : 0.7f));
+            var mi = FX.Part(f.transform, MeshGen.Sphere(12), FX.Glow(new Color(1f, 0.5f, 0.12f, small ? 1f : 0.55f), small ? 3f : 2.2f), Vector3.zero, Vector3.one * (small ? 0.4f : 0.7f));
             FX.NoShadow(mi);
-            var core = FX.Part(f.transform, MeshGen.Sphere(8), FX.Glow(new Color(1f, 0.95f, 0.7f), 3f), Vector3.zero, Vector3.one * (small ? 0.22f : 0.4f));
+            var core = FX.Part(f.transform, MeshGen.Sphere(8), FX.Glow(new Color(1f, 0.9f, 0.6f, small ? 1f : 0.7f), small ? 3f : 2f), Vector3.zero, Vector3.one * (small ? 0.22f : 0.4f));
             FX.NoShadow(core);
             FX.Particles(f.transform, new FX.ParticleSpec
             {
@@ -588,7 +594,8 @@ namespace Skyfall
         void Explode()
         {
             var at = transform.position;
-            FX.Flash(at, radius, new Color(1f, 0.5f, 0.12f, 0.85f), small ? 0.25f : 0.35f);
+            bool packFx = FX.Vfx("hit_fire", at, small ? 0.7f : radius / 2f, 1.8f, null, small ? 0.04f : 0f);
+            if (!packFx) FX.Flash(at, radius, new Color(1f, 0.5f, 0.12f, 0.85f), small ? 0.25f : 0.35f);
             if (!small) FX.Shockwave(at - new Vector3(0, 0.5f, 0), radius * 1.2f, new Color(1f, 0.6f, 0.2f, 0.8f), 0.35f);
             FX.Burst(at, new Color(1f, 0.6f, 0.2f), small ? 8 : 18, 10f, small ? 0.3f : 0.45f);
             Sfx.Play(small ? "hit" : "boom", at, small ? -9f : -5f);
