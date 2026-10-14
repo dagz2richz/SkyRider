@@ -27,6 +27,7 @@ namespace Skyfall.EditorTools
             SessionState.SetBool(Key, true);
             EditorApplication.update += Tick;
             Time.captureDeltaTime = 1f / 60f;
+            AudioListener.volume = 0f;
             EditorApplication.isPlaying = true;
         }
 
@@ -86,6 +87,8 @@ namespace Skyfall.EditorTools
             if (!EditorApplication.isPlaying) return;
             frame++;
             Time.captureDeltaTime = 1f / 60f;
+            // Test runs are silent: the game sets the master volume when it starts, so hold it at zero every frame.
+            AudioListener.volume = 0f;
             var game = Game.I;
             try
             {
