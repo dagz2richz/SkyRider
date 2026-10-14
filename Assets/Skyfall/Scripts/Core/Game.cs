@@ -86,6 +86,7 @@ namespace Skyfall
         public void SetPaused(bool p)
         {
             paused = p;
+            if (p) GameInput.StopRumble();
             Time.timeScale = p ? 0f : (running ? Save.game_speed : 1f);
         }
 
@@ -141,6 +142,7 @@ namespace Skyfall
         void OnDestroy()
         {
             if (I == this) I = null;
+            GameInput.StopRumble();
             Time.timeScale = 1f;
             foreach (var m in gemMats.Values) if (m) Destroy(m);
             if (coinMat) Destroy(coinMat);
@@ -677,7 +679,11 @@ namespace Skyfall
             e.gameObject.SetActive(false);
         }
 
-        public void Shake(float amount) => shakeAmt = Mathf.Max(shakeAmt, amount);
+        public void Shake(float amount)
+        {
+            shakeAmt = Mathf.Max(shakeAmt, amount);
+            if (amount >= 0.25f && !paused && running) GameInput.Rumble(amount, 0.15f);   // hurt, boss slams, hero slam
+        }
 
         void ApplyShake(float delta)
         {

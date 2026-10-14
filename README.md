@@ -12,7 +12,7 @@ Ogres drop gold. Gold is banked when a run ends (death or victory) and spent in 
 
 1. Open the project in Unity Hub with Unity **6000.6.5f1**.
 2. Open `Assets/Skyfall/Scenes/Skyfall.unity` and press **Play**.
-3. Click inside the Game view so it captures the mouse.
+3. Click inside the Game view so it captures the mouse. With a gamepad plugged in you do not need the mouse at all.
 
 ## Controls
 
@@ -28,6 +28,28 @@ Ogres drop gold. Gold is banked when a run ends (death or victory) and spent in 
 | Tab | Stats screen |
 | Esc / P | Pause |
 | 1 / 2 / 3 | Pick a level-up card |
+
+### Gamepad
+
+Any Xbox, PlayStation or generic controller works alongside the keyboard and mouse.
+
+| Control | Action |
+| --- | --- |
+| Left stick | Move |
+| Right stick | Look around (scaled by the look-sensitivity setting); click it to reset the zoom |
+| A / Cross | Jump, double jump; hold to climb while flying |
+| Y / Triangle | Call your dragon and take flight (same 3 s lockout after a leap-slam as Q) |
+| RB / R1 or X / Square | Dragon signature ability (E) |
+| LT / L2 or B / Circle (held) | Dive while flying |
+| D-pad up / down | Zoom in / out |
+| Start / Options | Pause |
+| Select / View / Share | Stats screen |
+| D-pad or left stick + A | Menus: move the gold focus frame and choose; level-up cards too |
+| B / Circle | Menus: Back (shop, hero select, loadout, settings, controls, pause = resume, stats = close, quit = stay) |
+| LB / RB | Shop: switch between the Weapons and Armor tabs |
+| D-pad left / right on a slider | Adjust volume, game speed, look sensitivity |
+
+Moving the mouse hides the focus frame; pressing any gamepad button shows it again. Hits and boss slams give a short rumble.
 
 ## Content
 
@@ -93,6 +115,7 @@ into the game (see `Assets/Skyfall/Resources/Skyfall/SkinLibrary.asset`). Anythi
 | `Actors/Spells.cs` | Auto-cast spells and passives |
 | `World/WorldTerrain.cs`, `World/Props.cs` | Heightmap world and scenery |
 | `UI/Hud.cs`, `UI/UiKit.cs` | Menus, HUD, level-up cards, pause and end screens |
+| `UI/UiNav.cs` | Gamepad menu focus: registered rects, nearest-in-direction picking, activation queue |
 | `Core/FX.cs`, `Core/Sfx.cs` | Visual effects and sound |
 | `Core/SkinLibrary.cs`, `Core/Skins.cs` | Swapping in the Asset Store models, effects and sounds |
 

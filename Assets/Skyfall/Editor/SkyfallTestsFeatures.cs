@@ -28,6 +28,8 @@ namespace Skyfall.EditorTools
             else if (mode == "logic") LogicTest(game);
             else if (mode == "vfxcmp") VfxCompare(game);
             else if (mode == "pickups") PickupView(game);
+            else if (mode == "gamepad") GamepadTest(game);
+            else if (mode == "padprobe") PadProbe(game);
         }
 
         static Vector3 FlatFwd(Player pl) { var d = pl.CamFwd; d.y = 0; return d.normalized; }

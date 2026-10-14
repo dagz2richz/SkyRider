@@ -202,7 +202,7 @@ namespace Skyfall
         }
 
         /// A gold button. With enabled = false it is greyed out and never reports a click.
-        public static bool Button(string text, int size = 22, float width = 0f, bool enabled = true)
+        public static bool Button(string text, int size = 22, float width = 0f, bool enabled = true, System.Action act = null)
         {
             var st = ButtonStyle(size);
             var prevEnabled = GUI.enabled;
@@ -216,7 +216,12 @@ namespace Skyfall
             GUI.enabled = prevEnabled;
             GUI.color = prevColor;
             clicked &= enabled;
-            if (clicked) Sfx.Play("click", -4f, 0f);
+            if (Event.current.type == EventType.Repaint) UiNav.Register(text, GUILayoutUtility.GetLastRect(), enabled, act);
+            if (clicked)
+            {
+                Sfx.Play("click", -4f, 0f);
+                act?.Invoke();
+            }
             return clicked;
         }
 
@@ -285,17 +290,41 @@ namespace Skyfall
         }
 
         /// Hover tint and click detection for the last layout group (cards).
-        public static bool Clickable(Rect r)
+        public static bool Clickable(Rect r, string key = "card", System.Action act = null)
         {
             var e = Event.current;
-            if (e.type == EventType.Repaint && r.Contains(e.mousePosition)) Rect(r, new Color(1f, 0.95f, 0.8f, 0.08f));
+            if (e.type == EventType.Repaint)
+            {
+                if (r.Contains(e.mousePosition)) Rect(r, new Color(1f, 0.95f, 0.8f, 0.08f));
+                UiNav.Register(key, r, true, act);
+            }
             if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
             {
                 e.Use();
                 Sfx.Play("click", -4f, 0f);
+                act?.Invoke();
                 return true;
             }
             return false;
+        }
+
+        /// A settings slider row: focusable with the gamepad, where left/right calls adjust(-1 / +1). Call right after the row's layout group ends.
+        public static void SliderRow(string key, System.Action<int> adjust)
+        {
+            if (Event.current.type == EventType.Repaint) UiNav.Register(key, GUILayoutUtility.GetLastRect(), true, null, adjust);
+        }
+
+        /// The gamepad focus outline: a pulsing gold frame and a faint glow around the focused element (drawn last, on top of every screen).
+        public static void DrawFocus()
+        {
+            if (Event.current.type != EventType.Repaint || !UiNav.Visible || !GameInput.PadConnected) return;
+            if (!UiNav.FocusedRect(out var r)) return;
+            float pulse = 0.8f + 0.2f * Mathf.Sin(Time.unscaledTime * 6f);
+            var g = new Color(1f, 0.9f, 0.45f);
+            Rect(r, new Color(g.r, g.g, g.b, 0.10f * pulse));
+            var outer = new Rect(r.x - 5, r.y - 5, r.width + 10, r.height + 10);
+            Panel(outer, new Color(g.r, g.g, g.b, 0f), g, 8, 4, pulse);
+            Panel(new Rect(r.x - 9, r.y - 9, r.width + 18, r.height + 18), new Color(g.r, g.g, g.b, 0f), new Color(g.r, g.g, g.b, 0.35f), 10, 3, pulse);
         }
 
         public static void Overlay(float alpha) => Rect(new Rect(0, 0, W, H), new Color(0.02f, 0.01f, 0.01f, alpha));

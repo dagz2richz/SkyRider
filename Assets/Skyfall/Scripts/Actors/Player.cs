@@ -605,6 +605,25 @@ namespace Skyfall
                 if (sc > 0f) camDistTarget = Mathf.Clamp(camDistTarget * 0.87f, 2.5f, 60f);
                 else if (sc < 0f) camDistTarget = Mathf.Clamp(camDistTarget * 1.15f, 2.5f, 60f);
             }
+            if (!game.Paused && game.running)
+            {
+                // Gamepad: the right stick looks around (frame-rate independent, unaffected by the game speed), D-pad zooms.
+                var look = GameInput.LookStick;
+                if (look.sqrMagnitude > 0f)
+                {
+                    float ud = Time.timeScale > 0f ? Time.deltaTime / Time.timeScale : 0f;   // real seconds, whatever the game speed
+                    camYaw += look.x * 2.8f * Save.mouse_sens * ud;
+                    camPitch = Mathf.Clamp(camPitch - look.y * 1.8f * Save.mouse_sens * ud, -1.35f, 1.48f);
+                    Cursor.visible = false;
+                }
+                if (!GameInput.MouseCaptured)
+                {
+                    float sc = GameInput.Scroll;
+                    if (sc > 0f) camDistTarget = Mathf.Clamp(camDistTarget * 0.87f, 2.5f, 60f);
+                    else if (sc < 0f) camDistTarget = Mathf.Clamp(camDistTarget * 1.15f, 2.5f, 60f);
+                }
+                if (GameInput.ZoomResetPressed) camDistTarget = 9f;
+            }
             if (game.Paused) return;
             if (!game.running)
             {

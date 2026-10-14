@@ -41,15 +41,108 @@ namespace Skyfall
         string pendingBuy = "";
         Vector2 scroll;
 
+        // Gamepad: selection changes queued by cards (run at the start of the next Update, never inside an OnGUI pass).
+        readonly Queue<System.Action> deferred = new Queue<System.Action>();
+
+        void Awake()
+        {
+            UiNav.Reset();
+            UiNav.DefaultKeyFor = DefaultFocusKey;
+        }
+
+        void OnDestroy() => GameInput.StopRumble();
+
+        /// The topmost screen that takes menu input, or null during play.
+        string TopScreen()
+        {
+            if (game == null) return null;
+            if (controlsOpen) return "controls";
+            switch (menu)
+            {
+                case Menu.Main: return "main";
+                case Menu.HeroSelect: return "hero";
+                case Menu.Loadout: return "loadout";
+                case Menu.Settings: return "settings";
+                case Menu.Shop: return "shop";
+                case Menu.Quit: return "quit";
+                case Menu.Farewell: return null;
+            }
+            if (endOpen) return "end";
+            if (statsOpen) return "stats";
+            if (levelOptions != null) return "level";
+            if (pauseOpen) return "pause";
+            return null;
+        }
+
+        /// The element the gamepad focus starts on when a screen opens.
+        string DefaultFocusKey(string screen)
+        {
+            switch (screen)
+            {
+                case "main": return "Play#0";
+                case "hero": return "Continue#0";
+                case "loadout": return "Ride Forth#0";
+                case "settings": return "Volume#0";
+                case "shop": return shopArmorTab ? "Armor#0" : "Weapons#0";
+                case "quit": return "Stay#0";
+                case "controls": return "Back#0";
+                case "pause": return "Resume#0";
+                case "stats": return "Close#0";
+                case "level": return "Choose#0";
+                case "end": return "Ride Again#0";
+            }
+            return null;
+        }
+
+        /// Set by the automated tests: a fake screen name that takes gamepad input, and what Back / the shop tab buttons do on it.
+        public static string TestTop;
+        public static System.Action TestBack;
+
+        /// B / East on each screen.
+        void GamepadBack()
+        {
+            if (TestTop != null) { TestBack?.Invoke(); return; }
+            switch (TopScreen())
+            {
+                case "controls": controlsOpen = false; break;
+                case "hero": ShowMainMenu(); break;
+                case "loadout": ShowHeroSelect(); break;
+                case "shop": LeaveShop(); break;
+                case "settings": Save.Write(); ShowMainMenu(); break;
+                case "quit": StayFromQuit(); break;
+                case "pause": TogglePause(); break;
+                case "stats": ToggleStats(); break;
+            }
+        }
+
+        /// LB / RB on the shop switch between the Weapons and Armor tabs.
+        void GamepadTab(int dir)
+        {
+            if (TopScreen() == "shop") pendingTab = dir > 0 ? 1 : 0;
+        }
+
+        void StayFromQuit()
+        {
+            if (game.running)
+            {
+                menu = Menu.None;
+                pauseOpen = true;
+            }
+            else ShowMainMenu();
+        }
+
         void Update()
         {
             float udt = Time.unscaledDeltaTime;
             bannerT += udt;
             shopMsgT += udt;
+            while (deferred.Count > 0) deferred.Dequeue()();
             ApplyPendingBuy();
             toastT += udt;
             hurtA = Mathf.MoveTowards(hurtA, 0f, Time.deltaTime * 1.5f);
+            GameInput.TickRumble();
             if (game == null) return;
+            UiNav.Tick(TestTop ?? TopScreen(), udt, GamepadBack, GamepadTab);
 
             if (GameInput.StatsPressed && game.running && !game.leveling && menu == Menu.None)
             {
@@ -232,24 +325,31 @@ namespace Skyfall
         {
             if (game == null) return;
             BeginScaled();
+            bool repaint = Event.current.type == EventType.Repaint;
+            if (repaint) UiNav.BeginFrame(TopScreen());
             if (hudVisible) DrawHud();
             DrawFloatingTexts();
             DrawBannerAndToast();
-            if (levelOptions != null) DrawLevelUp();
-            if (pauseOpen) DrawPause();
-            if (statsOpen) DrawStats();
-            if (endOpen) DrawEnd();
+            if (levelOptions != null) { UiNav.Layer = "level"; DrawLevelUp(); }
+            if (pauseOpen) { UiNav.Layer = "pause"; DrawPause(); }
+            if (statsOpen) { UiNav.Layer = "stats"; DrawStats(); }
+            if (endOpen) { UiNav.Layer = "end"; DrawEnd(); }
             switch (menu)
             {
-                case Menu.Main: DrawMainMenu(); break;
-                case Menu.HeroSelect: DrawHeroSelect(); break;
-                case Menu.Loadout: DrawLoadout(); break;
-                case Menu.Settings: DrawSettings(); break;
-                case Menu.Shop: DrawShop(); break;
-                case Menu.Quit: DrawQuit(); break;
+                case Menu.Main: UiNav.Layer = "main"; DrawMainMenu(); break;
+                case Menu.HeroSelect: UiNav.Layer = "hero"; DrawHeroSelect(); break;
+                case Menu.Loadout: UiNav.Layer = "loadout"; DrawLoadout(); break;
+                case Menu.Settings: UiNav.Layer = "settings"; DrawSettings(); break;
+                case Menu.Shop: UiNav.Layer = "shop"; DrawShop(); break;
+                case Menu.Quit: UiNav.Layer = "quit"; DrawQuit(); break;
                 case Menu.Farewell: DrawFarewell(); break;
             }
-            if (controlsOpen) DrawControls();
+            if (controlsOpen) { UiNav.Layer = "controls"; DrawControls(); }
+            if (repaint)
+            {
+                DrawFocus();
+                UiNav.EndFrame();
+            }
         }
 
         static string Clock(float seconds)
@@ -574,15 +674,15 @@ namespace Skyfall
                     Label("The ogre clans pour out of the hills.\nYou are the last battlemage of the Dragonguard.\nSurvive eight minutes of the long night, then face the Mountain King.",
                         16, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperLeft, 270, true);
                     Space(14);
-                    if (Button("Play", 28)) ShowHeroSelect();
+                    Button("Play", 28, 0, true, ShowHeroSelect);
                     Space(14);
-                    if (Button("Shop", 22)) ShowShop(Menu.Main);
+                    Button("Shop", 22, 0, true, () => ShowShop(Menu.Main));
                     Space(14);
-                    if (Button("Settings", 22)) menu = Menu.Settings;
+                    Button("Settings", 22, 0, true, () => menu = Menu.Settings);
                     Space(14);
-                    if (Button("Controls", 22)) controlsOpen = true;
+                    Button("Controls", 22, 0, true, () => controlsOpen = true);
                     Space(14);
-                    if (Button("Quit", 22)) ShowQuit();
+                    Button("Quit", 22, 0, true, ShowQuit);
                     GUILayout.EndVertical();
                     Space(28);
                     GUILayout.BeginVertical(PanelStyle(), GUILayout.Width(400));
@@ -604,6 +704,8 @@ namespace Skyfall
                 Space(18);
                 Label("Everything attacks on its own.   WASD move · Mouse look · SPACE jump / double jump · Q take flight · E riding ability · Scroll zoom · TAB stats · ESC pause",
                     15, M.Darken(PARCHMENT, 0.2f), 5, TextAnchor.UpperCenter);
+                Label("Gamepad:  L-stick move · R-stick look · A jump · Y take flight · RB / X riding ability · LT / B dive · D-pad zoom · Start pause · Select stats    (menus: D-pad + A, B back)",
+                    15, M.Darken(PARCHMENT, 0.2f), 5, TextAnchor.UpperCenter);
             });
         }
 
@@ -618,7 +720,7 @@ namespace Skyfall
 
         // ---------------------------------------------------------------- hero & dragon select
 
-        bool SelectCard(string title, string desc, List<string> lines, Color c, bool sel, float width)
+        void SelectCard(string title, string desc, List<string> lines, Color c, bool sel, float width, System.Action onPick = null)
         {
             var bg = sel ? new Color(0.16f, 0.12f, 0.06f, 0.95f) : INK;
             var border = sel ? c : M.Darken(GOLD, 0.45f);
@@ -639,7 +741,7 @@ namespace Skyfall
                 Label(ln, 14, Color.Lerp(GOLD, PARCHMENT, 0.4f), 3, TextAnchor.UpperLeft, width - 30, true);
             }
             GUILayout.EndVertical();
-            return Clickable(GUILayoutUtility.GetLastRect());
+            Clickable(GUILayoutUtility.GetLastRect(), "card:" + title, onPick == null ? null : () => deferred.Enqueue(onPick));
         }
 
         void DrawHeroSelect()
@@ -667,11 +769,8 @@ namespace Skyfall
                             case "huntress": lines.Add("Javelins pierce, cause bleeding, deal 1.25x damage, cost 2% current health, no mana"); break;
                             case "pyromancer": lines.Add("Fast fire-tipped arrows, long range, ignite foes; ward sets attackers on fire"); break;
                         }
-                        if (SelectCard(h.name, h.desc, lines, h.color, id == pickHero, heroW))
-                        {
-                            pickHero = id;
-                            ShowHeroSelect();
-                        }
+                        string hid = id;
+                        SelectCard(h.name, h.desc, lines, h.color, id == pickHero, heroW, () => { pickHero = hid; ShowHeroSelect(); });
                         Space(18);
                     }
                 });
@@ -694,10 +793,10 @@ namespace Skyfall
                             SelectCard(d.name, "LOCKED — defeat the Mountain King to find its egg", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW);
                             GUI.color = prev;
                         }
-                        else if (SelectCard(d.name, d.desc, lines, M.Lighten(d.body, 0.25f), id == pickDragon, dragonW))
+                        else
                         {
-                            pickDragon = id;
-                            ShowHeroSelect();
+                            string did = id;
+                            SelectCard(d.name, d.desc, lines, M.Lighten(d.body, 0.25f), id == pickDragon, dragonW, () => { pickDragon = did; ShowHeroSelect(); });
                         }
                         Space(16);
                     }
@@ -705,9 +804,9 @@ namespace Skyfall
                 Space(18);
                 CenterRow(() =>
                 {
-                    if (Button("Back", 22)) ShowMainMenu();
+                    Button("Back", 22, 0, true, ShowMainMenu);
                     Space(16);
-                    if (Button("Continue", 28)) ShowLoadout();
+                    Button("Continue", 28, 0, true, ShowLoadout);
                 });
             });
         }
@@ -722,36 +821,35 @@ namespace Skyfall
                 Label("Choose Your Abilities", 44, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
                 Label($"{Data.HEROES[pickHero].name} with the {Data.DRAGONS[pickDragon].name}.  Everything fights on its own; your spell casts whenever you have the mana.\n" +
-                      "Q takes flight on your dragon. E unleashes your dragon's signature, on the ground or in the air (from the air you leap down and slam; Q is then unavailable for 3 s).\n" +
+                      "Q (gamepad Y) takes flight on your dragon. E (RB / X) unleashes your dragon's signature, on the ground or in the air (from the air you leap down and slam; Q is then unavailable for 3 s).\n" +
                       "Ogres sometimes drop power-ups: speed, damage and double gold for 15 s.",
                     16, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperCenter);
                 Space(18);
-                ChoiceRow("Spell  ·  casts itself when you have the mana", Data.SPELL_ORDER, ref pickSpell, true);
+                ChoiceRow("Spell  ·  casts itself when you have the mana", Data.SPELL_ORDER, true);
                 Space(18);
-                ChoiceRow("Passive", Data.PASSIVE_ORDER, ref pickPassive, false);
+                ChoiceRow("Passive", Data.PASSIVE_ORDER, false);
                 Space(18);
                 CenterRow(() =>
                 {
-                    if (Button("Back", 22)) ShowHeroSelect();
+                    Button("Back", 22, 0, true, ShowHeroSelect);
                     Space(16);
-                    if (Button("Shop", 22)) ShowShop(Menu.Loadout);
+                    Button("Shop", 22, 0, true, () => ShowShop(Menu.Loadout));
                     Space(16);
-                    if (Button("Ride Forth", 28))
+                    Button("Ride Forth", 28, 0, true, () =>
                     {
                         menu = Menu.None;
                         game.StartRun(pickSpell, pickPassive, pickHero, pickDragon);
-                    }
+                    });
                 });
             });
         }
 
-        void ChoiceRow(string heading, string[] ids, ref string selected, bool spells)
+        void ChoiceRow(string heading, string[] ids, bool spells)
         {
             const float sep = 14f;
             float cardW = Mathf.Min(330f, (W - 60f) / ids.Length - sep);
             Label(heading, 19, GOLD, 6);
             Space(4);
-            string picked = selected;
             GUILayout.BeginHorizontal();
             foreach (var id in ids)
             {
@@ -769,7 +867,7 @@ namespace Skyfall
                     var d = Data.PASSIVES[id];
                     name = d.name; desc = d.desc; c = d.color;
                 }
-                bool sel = id == selected;
+                bool sel = id == (spells ? pickSpell : pickPassive);
                 var bg = sel ? new Color(0.16f, 0.12f, 0.06f, 0.95f) : INK;
                 var border = sel ? c : M.Darken(GOLD, 0.45f);
                 GUILayout.BeginVertical(PanelStyle(bg, border, 8, sel ? 4 : 2), GUILayout.Width(cardW), GUILayout.MinHeight(150));
@@ -783,11 +881,11 @@ namespace Skyfall
                 GUILayout.FlexibleSpace();
                 if (extra != null) Label(extra, 14, new Color(0.7f, 0.65f, 1f), 6);
                 GUILayout.EndVertical();
-                if (Clickable(GUILayoutUtility.GetLastRect())) picked = id;
+                string pid = id;
+                Clickable(GUILayoutUtility.GetLastRect(), (spells ? "spell:" : "passive:") + name, () => deferred.Enqueue(() => { if (spells) pickSpell = pid; else pickPassive = pid; }));
                 Space(sep);
             }
             GUILayout.EndHorizontal();
-            selected = picked;
         }
 
         // ---------------------------------------------------------------- shop
@@ -817,9 +915,9 @@ namespace Skyfall
                 Space(8);
                 CenterRow(() =>
                 {
-                    if (ShopTab("Weapons", !armor)) pendingTab = 0;
+                    ShopTab("Weapons", !armor, () => pendingTab = 0);
                     Space(14);
-                    if (ShopTab("Armor", armor)) pendingTab = 1;
+                    ShopTab("Armor", armor, () => pendingTab = 1);
                 });
                 Space(16);
                 CenterRow(() =>
@@ -834,17 +932,16 @@ namespace Skyfall
                                    : "Each hero is locked to one weapon. Weapon levels also strengthen the Knight's shield block.",
                     15, M.Darken(PARCHMENT, 0.2f), 4, TextAnchor.UpperCenter);
                 Space(10);
-                CenterRow(() => { if (Button("Back", 24)) LeaveShop(); });
+                CenterRow(() => Button("Back", 24, 0, true, LeaveShop));
             });
         }
 
-        bool ShopTab(string text, bool selected)
+        void ShopTab(string text, bool selected, System.Action act)
         {
             var prev = GUI.color;
             if (!selected) GUI.color = new Color(0.62f, 0.62f, 0.62f, 1f);
-            bool clicked = Button(text, 24, 180);
+            Button(text, 24, 180, true, act);
             GUI.color = prev;
-            return clicked;
         }
 
         void ApplyPendingBuy()
@@ -906,7 +1003,7 @@ namespace Skyfall
             GUILayout.FlexibleSpace();
             if (cost >= 0)
             {
-                if (Button($"Upgrade  ·  {cost} gold", 20, 0, Save.gold >= cost)) pendingBuy = "w:" + id;
+                Button($"Upgrade  ·  {cost} gold", 20, 0, Save.gold >= cost, () => pendingBuy = "w:" + id);
             }
             else Label("MAX LEVEL", 22, GOLD, 6, TextAnchor.UpperCenter, 0, false, true);
             GUILayout.EndVertical();
@@ -937,13 +1034,24 @@ namespace Skyfall
             GUILayout.FlexibleSpace();
             if (cost >= 0)
             {
-                if (Button($"{(tier == 0 ? "Buy" : "Upgrade")}  ·  {cost}", 20, 0, Save.gold >= cost)) pendingBuy = "a:" + slot;
+                Button($"{(tier == 0 ? "Buy" : "Upgrade")}  ·  {cost}", 20, 0, Save.gold >= cost, () => pendingBuy = "a:" + slot);
             }
             else Label("MAX TIER", 22, GOLD, 6, TextAnchor.UpperCenter, 0, false, true);
             GUILayout.EndVertical();
         }
 
         // ---------------------------------------------------------------- settings
+
+        void AdjustVolume(int d)
+        {
+            Save.volume = Mathf.Clamp01(Mathf.Round((Save.volume + d * 0.05f) * 20f) / 20f);
+            Sfx.SetVolume(Save.volume);
+            Save.Write();
+        }
+
+        void AdjustSpeed(int d) => Save.game_speed = Mathf.Clamp(Mathf.Round((Save.game_speed + d * 0.25f) / 0.25f) * 0.25f, 0.5f, 2f);
+
+        void AdjustSens(int d) => Save.mouse_sens = Mathf.Clamp(Mathf.Round((Save.mouse_sens + d * 0.05f) / 0.05f) * 0.05f, 0.2f, 3f);
 
         void VolumeRow()
         {
@@ -952,6 +1060,7 @@ namespace Skyfall
             float v = GUILayout.HorizontalSlider(Save.volume, 0f, 1f, GUILayout.Width(260));
             Label($"{(int)(v * 100)}%", 20, GOLD, 6, TextAnchor.UpperLeft, 70);
             GUILayout.EndHorizontal();
+            SliderRow("Volume", AdjustVolume);
             if (!Mathf.Approximately(v, Save.volume))
             {
                 Save.volume = v;
@@ -968,17 +1077,19 @@ namespace Skyfall
             v = Mathf.Round(v / 0.25f) * 0.25f;
             Label($"{v:0.00}x", 20, GOLD, 6, TextAnchor.UpperLeft, 70);
             GUILayout.EndHorizontal();
+            SliderRow("Game speed", AdjustSpeed);
             if (!Mathf.Approximately(v, Save.game_speed)) Save.game_speed = v;
         }
 
         void SensRow()
         {
             GUILayout.BeginHorizontal();
-            Label("Mouse sensitivity", 20, PARCHMENT, 6, TextAnchor.UpperLeft, 190);
+            Label("Look sensitivity", 20, PARCHMENT, 6, TextAnchor.UpperLeft, 190);
             float v = GUILayout.HorizontalSlider(Save.mouse_sens, 0.2f, 3f, GUILayout.Width(260));
             v = Mathf.Round(v / 0.05f) * 0.05f;
             Label($"{v:0.00}x", 20, GOLD, 6, TextAnchor.UpperLeft, 70);
             GUILayout.EndHorizontal();
+            SliderRow("Look sensitivity", AdjustSens);
             if (!Mathf.Approximately(v, Save.mouse_sens)) Save.mouse_sens = v;
         }
 
@@ -999,11 +1110,11 @@ namespace Skyfall
                 Space(18);
                 CenterRow(() =>
                 {
-                    if (Button("Back", 22))
+                    Button("Back", 22, 0, true, () =>
                     {
                         Save.Write();
                         ShowMainMenu();
-                    }
+                    });
                 });
             });
         }
@@ -1023,27 +1134,46 @@ namespace Skyfall
             { "(automatic)", "Your attacks, spell, passive, defense and dragon breath all fire on their own" },
         };
 
+        static readonly string[,] PAD_CONTROLS =
+        {
+            { "Left stick", "Move" },
+            { "Right stick", "Look around (R-stick click resets the zoom)" },
+            { "A / Cross", "Jump, double jump; hold to climb while flying" },
+            { "Y / Triangle", "Call your dragon and take flight (again to drop off)" },
+            { "RB / X", "Dragon signature ability" },
+            { "LT / B", "Dive while flying" },
+            { "D-pad up / down", "Zoom in and out" },
+            { "Start / Select", "Pause / Stats screen" },
+            { "Menus", "D-pad / stick + A choose · B back · LB / RB shop tabs · left / right sliders" },
+        };
+
         void DrawControls()
         {
             Overlay(0.8f);
             Centered(() =>
             {
-                Label("Controls", 54, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
-                Space(18);
-                GUILayout.BeginVertical(PanelStyle());
-                for (int i = 0; i < CONTROLS.GetLength(0); i++)
-                {
-                    GUILayout.BeginHorizontal();
-                    Label(CONTROLS[i, 0], 20, GOLD, 5, TextAnchor.UpperLeft, 160);
-                    Space(30);
-                    Label(CONTROLS[i, 1], 18, PARCHMENT, 4, TextAnchor.UpperLeft, 700);
-                    GUILayout.EndHorizontal();
-                    Space(8);
-                }
+                Label("Controls", 44, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
+                Space(8);
+                GUILayout.BeginVertical(PanelStyle(null, null, 6, 2, 10));
+                Label("Keyboard and mouse", 20, M.Darken(GOLD, 0.1f), 5);
+                for (int i = 0; i < CONTROLS.GetLength(0); i++) ControlRow(CONTROLS[i, 0], CONTROLS[i, 1]);
+                Space(6);
+                Label("Gamepad", 20, M.Darken(GOLD, 0.1f), 5);
+                for (int i = 0; i < PAD_CONTROLS.GetLength(0); i++) ControlRow(PAD_CONTROLS[i, 0], PAD_CONTROLS[i, 1]);
                 GUILayout.EndVertical();
-                Space(18);
-                CenterRow(() => { if (Button("Back", 22)) controlsOpen = false; });
+                Space(10);
+                CenterRow(() => Button("Back", 22, 0, true, () => controlsOpen = false));
             });
+        }
+
+        static void ControlRow(string key, string text)
+        {
+            GUILayout.BeginHorizontal();
+            Label(key, 18, GOLD, 5, TextAnchor.UpperLeft, 170);
+            Space(24);
+            Label(text, 17, PARCHMENT, 4, TextAnchor.UpperLeft, 700);
+            GUILayout.EndHorizontal();
+            Space(3);
         }
 
         // ---------------------------------------------------------------- quit
@@ -1059,17 +1189,9 @@ namespace Skyfall
                 Space(18);
                 CenterRow(() =>
                 {
-                    if (Button("Stay", 24))
-                    {
-                        if (game.running)
-                        {
-                            menu = Menu.None;
-                            pauseOpen = true;
-                        }
-                        else ShowMainMenu();
-                    }
+                    Button("Stay", 24, 0, true, StayFromQuit);
                     Space(20);
-                    if (Button("Quit Game", 24)) Farewell();
+                    Button("Quit Game", 24, 0, true, Farewell);
                 });
             });
         }
@@ -1108,13 +1230,9 @@ namespace Skyfall
                         Space(10);
                         Label(o.desc, 17, PARCHMENT, 6, TextAnchor.UpperLeft, 280, true);
                         GUILayout.FlexibleSpace();
-                        bool pick = Button("Choose", 22);
+                        bool pick = Button("Choose", 22, 0, true, () => { if (levelOptions == options) Choose(o); });
                         GUILayout.EndVertical();
-                        if (pick && levelOptions == options)
-                        {
-                            Choose(o);
-                            GUIUtility.ExitGUI();
-                        }
+                        if (pick) GUIUtility.ExitGUI();
                         if (i < options.Count - 1) Space(20);
                     }
                 });
@@ -1130,7 +1248,7 @@ namespace Skyfall
             {
                 Label("PAUSED", 60, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
-                CenterRow(() => { if (Button("Resume", 26)) TogglePause(); });
+                CenterRow(() => Button("Resume", 26, 0, true, TogglePause));
                 Space(18);
                 GUILayout.BeginVertical(PanelStyle());
                 VolumeRow();
@@ -1140,13 +1258,13 @@ namespace Skyfall
                 SensRow();
                 GUILayout.EndVertical();
                 Space(18);
-                CenterRow(() => { if (Button("Stats", 22)) ToggleStats(); });
+                CenterRow(() => Button("Stats", 22, 0, true, ToggleStats));
                 Space(18);
-                CenterRow(() => { if (Button("Controls", 22)) controlsOpen = true; });
+                CenterRow(() => Button("Controls", 22, 0, true, () => controlsOpen = true));
                 Space(18);
-                CenterRow(() => { if (Button("Main Menu", 22)) { Save.Write(); game.Restart(false); } });
+                CenterRow(() => Button("Main Menu", 22, 0, true, () => { Save.Write(); game.Restart(false); }));
                 Space(18);
-                CenterRow(() => { if (Button("Quit", 22)) { Save.Write(); ShowQuit(); } });
+                CenterRow(() => Button("Quit", 22, 0, true, () => { Save.Write(); ShowQuit(); }));
             });
         }
 
@@ -1184,15 +1302,15 @@ namespace Skyfall
                 Space(18);
                 CenterRow(() =>
                 {
-                    if (Button("Ride Again", 26)) game.Restart(true);
+                    Button("Ride Again", 26, 0, true, () => game.Restart(true));
                     Space(16);
-                    if (Button("Main Menu", 22)) game.Restart(false);
+                    Button("Main Menu", 22, 0, true, () => game.Restart(false));
                     Space(16);
-                    if (Button("Quit", 22))
+                    Button("Quit", 22, 0, true, () =>
                     {
                         endOpen = false;
                         ShowQuit();
-                    }
+                    });
                 });
             });
         }
@@ -1269,7 +1387,9 @@ namespace Skyfall
                     });
                 });
                 Space(18);
-                Label("TAB or ESC to close", 16, M.Darken(PARCHMENT, 0.3f), 4, TextAnchor.UpperCenter);
+                CenterRow(() => Button("Close", 22, 0, true, ToggleStats));
+                Space(6);
+                Label("TAB or ESC to close  (gamepad: Select, Start or B)", 16, M.Darken(PARCHMENT, 0.3f), 4, TextAnchor.UpperCenter);
             });
         }
 
