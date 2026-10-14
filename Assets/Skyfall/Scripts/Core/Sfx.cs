@@ -46,15 +46,18 @@ namespace Skyfall
             if (inst == this) inst = null;
         }
 
+        /// Batch-mode (headless/automated) runs are always silent so tests never play through the speakers.
+        static bool Silent => Application.isBatchMode;
+
         public static void SetVolume(float v)
         {
-            AudioListener.volume = Mathf.Clamp01(v);
+            AudioListener.volume = Silent ? 0f : Mathf.Clamp01(v);
         }
 
         /// Play a sound. Pass a world position to make it quieter with distance from the player.
         public static void Play(string sound, Vector3 pos, float volumeDb = 0f, float pitchVar = 0.1f)
         {
-            if (inst == null) return;
+            if (inst == null || Silent) return;
             var clip = inst.Clip(sound);
             if (clip == null) return;
             float now = Time.unscaledTime * 1000f;
