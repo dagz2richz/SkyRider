@@ -12,6 +12,7 @@ namespace Skyfall
     {
         const int MAX_ENEMIES = 320;
         const int MAX_GEMS = 450;
+        const int MAX_COINS = 180;
 
         public static Game I;
 
@@ -37,6 +38,17 @@ namespace Skyfall
             public bool orb;
         }
         readonly List<Gem> gems = new List<Gem>();
+        class Coin
+        {
+            public Transform node;
+            public int value;
+            public bool pulled;
+        }
+        readonly List<Coin> coins = new List<Coin>();
+        Mesh coinMesh;
+        Material coinMat, coinRimMat;
+        /// Gold picked up this run; banked into Save.gold when the run ends.
+        public int runGold;
         public readonly List<Enemy> bosses = new List<Enemy>();
         public bool running;
         public bool ended;
@@ -131,6 +143,8 @@ namespace Skyfall
             if (I == this) I = null;
             Time.timeScale = 1f;
             foreach (var m in gemMats.Values) if (m) Destroy(m);
+            if (coinMat) Destroy(coinMat);
+            if (coinRimMat) Destroy(coinRimMat);
             if (skyMat) Destroy(skyMat);
             if (volume && volume.profile) Destroy(volume.profile);
         }
@@ -196,6 +210,9 @@ namespace Skyfall
                 gemMats[kv.Key] = mat;
                 gemMeshes[kv.Key] = MeshGen.Sphere(4);
             }
+            coinMesh = MeshGen.Cylinder(0.5f, 0.5f, 14);
+            coinMat = FX.NewLit(new Color(1f, 0.88f, 0.3f), 0.3f, 0f, 0.9f);
+            coinRimMat = FX.NewLit(new Color(0.9f, 0.62f, 0.1f), 0.4f, 0f, 0.5f);
         }
 
         // ---------------------------------------------------------------- run flow
@@ -574,6 +591,7 @@ namespace Skyfall
                     gp.y = terrain.SurfaceHeight(gp.x, gp.z, pos.y);
                     DropGem(gp, e.xpValue / 10f * 3f);
                 }
+                if (e != finalBoss) DropGoldPile(pos, Data.MINI_BOSS_GOLD, 10, e.size);
                 player.Heal(player.maxHp * 0.4f);
                 hud.Banner($"{e.displayName} has fallen!", "");
                 Sfx.Play("roar", 0f, 0f);
@@ -582,6 +600,7 @@ namespace Skyfall
             else
             {
                 DropGem(pos, e.xpValue);
+                if (Data.OGRES.TryGetValue(e.kind, out var od)) DropCoin(pos + new Vector3(M.RandRange(-0.9f, 0.9f), 0, M.RandRange(-0.9f, 0.9f)), od.gold);
                 // Random health orbs; bigger ogres drop them more often.
                 float orbChance = Data.ORB_CHANCE * (0.6f + e.size * 0.6f);
                 if (e.lanceMarked) orbChance += Data.WEAPONS["blood_lance"].orb_bonus;
@@ -624,6 +643,55 @@ namespace Skyfall
             r.gameObject.name = "Gem";
             r.transform.position = pos + new Vector3(0, 0.6f, 0);
             gems.Add(new Gem { node = r.transform, value = value });
+        }
+
+        /// A small spinning gold coin that magnets to the player. Nearby loose coins merge into one so counts stay sane.
+        void DropCoin(Vector3 pos, int value, bool pulled = false)
+        {
+            if (value <= 0 && !pulled) return;
+            if (value > 0)
+            {
+                for (int i = coins.Count - 1; i >= 0 && i >= coins.Count - 40; i--)
+                {
+                    var c = coins[i];
+                    if (c.pulled || c.value >= 8 || (c.node.position - pos).sqrMagnitude > 1.4f) continue;
+                    c.value += value;
+                    SizeCoin(c);
+                    return;
+                }
+                if (coins.Count >= MAX_COINS)
+                {
+                    var c = coins[Random.Range(0, coins.Count)];
+                    c.value += value;
+                    SizeCoin(c);
+                    return;
+                }
+            }
+            var n = new GameObject("Coin").transform;
+            n.SetParent(transform, false);
+            FX.NoShadow(FX.Part(n, coinMesh, coinRimMat, Vector3.zero, new Vector3(1f, 0.14f, 1f), new Vector3(M.PI * 0.5f, 0, 0)));
+            FX.NoShadow(FX.Part(n, coinMesh, coinMat, Vector3.zero, new Vector3(0.72f, 0.2f, 0.72f), new Vector3(M.PI * 0.5f, 0, 0)));
+            n.position = pos + new Vector3(0, 0.9f, 0);
+            var coin = new Coin { node = n, value = value, pulled = pulled };
+            SizeCoin(coin);
+            coins.Add(coin);
+        }
+
+        static void SizeCoin(Coin c)
+        {
+            float s = c.value >= 50 ? 1.3f : (c.value >= 8 ? 0.95f : (c.value >= 4 ? 0.75f : 0.6f));
+            c.node.localScale = Vector3.one * s;
+        }
+
+        /// A big pile of gold: count coins worth value in total, scattered around pos on the surface.
+        void DropGoldPile(Vector3 pos, int value, int count, float spread, bool pulled = false)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var gp = pos + new Vector3(M.RandRange(-spread, spread), 0, M.RandRange(-spread, spread));
+                gp.y = terrain.SurfaceHeight(gp.x, gp.z, pos.y);
+                DropCoin(gp + new Vector3(0, 0.4f, 0), value / count + (i < value % count ? 1 : 0), pulled);
+            }
         }
 
         void DropOrb(Vector3 pos)
@@ -676,6 +744,28 @@ namespace Skyfall
                     gems.RemoveAt(i);
                 }
             }
+            TickCoins(delta, c, mag, spin);
+        }
+
+        void TickCoins(float delta, Vector3 c, float mag, float spin)
+        {
+            for (int i = coins.Count - 1; i >= 0; i--)
+            {
+                var g = coins[i];
+                var node = g.node;
+                var to = c - node.position;
+                float d = to.magnitude;
+                if (!g.pulled && d < mag) g.pulled = true;
+                if (g.pulled) node.position += to.normalized * Mathf.Min(d, delta * (18f + 30f / Mathf.Max(d, 0.5f)));
+                node.rotation = Quaternion.Euler(0, spin + i * 40f, 0);
+                if (d < 1.6f)
+                {
+                    runGold += g.value;
+                    if (g.value > 0) Sfx.Play("coin", g.value >= 8 ? -6f : -11f, 0.12f);
+                    Destroy(node.gameObject);
+                    coins.RemoveAt(i);
+                }
+            }
         }
 
         // ---------------------------------------------------------------- level ups
@@ -716,16 +806,11 @@ namespace Skyfall
             return pool.GetRange(0, Mathf.Min(3, pool.Count));
         }
 
-        /// Ability upgrades: auto attack, passive, spell, dragon breath and dragon signature.
+        /// Ability upgrades: passive, spell, dragon breath and dragon signature (weapons are upgraded in the shop).
         List<LevelOption> AbilityOptions()
         {
             var pool = new List<LevelOption>();
             var p = player;
-            if (p.swordLevel < Data.MAX_LEVEL)
-            {
-                var w = p.Weapon;
-                pool.Add(new LevelOption { type = "sword", id = "weapon", name = w.name, level = p.swordLevel + 1, desc = w.up, tag = "AUTO ATTACK", color = w.color });
-            }
             int pl = p.spells.TryGetValue(p.passiveId, out int v1) ? v1 : 1;
             if (pl < Data.MAX_LEVEL)
             {
@@ -768,7 +853,6 @@ namespace Skyfall
             switch (o.type)
             {
                 case "spell": player.spells[o.id] = o.level; break;
-                case "sword": player.swordLevel = o.level; break;
                 case "bucket": player.AddBucket(o.id); break;
             }
             Sfx.Play("click", -4f, 0f);
@@ -787,6 +871,7 @@ namespace Skyfall
             running = false;
             Time.timeScale = 1f;
             GameInput.MouseCaptured = false;
+            Save.gold += runGold;
             bool best = Save.RecordRun(timeElapsed, kills, player.level, false);
             hud.ShowEnd(false, Save.last_score, best);
         }
@@ -825,7 +910,10 @@ namespace Skyfall
         /// Reward for beating the Mountain King when every dragon is already owned (no egg drops).
         public void GrantBossReward()
         {
-            // TODO step 3: gold pile
+            runGold += Data.FINAL_BOSS_GOLD;
+            hud.Banner("The Mountain King's hoard!", $"+{Data.FINAL_BOSS_GOLD} gold");
+            Sfx.Play("buy", -4f, 0f);
+            DropGoldPile(finalBoss ? finalBoss.Pos : player.Pos, 0, 24, 5f, true);
         }
 
         void Victory()
@@ -835,6 +923,7 @@ namespace Skyfall
             running = false;
             Time.timeScale = 1f;
             GameInput.MouseCaptured = false;
+            Save.gold += runGold;
             bool best = Save.RecordRun(timeElapsed, kills, player.level, true);
             hud.ShowEnd(true, Save.last_score, best);
         }

@@ -6,6 +6,8 @@ Ported from the Godot game *Skyfall: Dragon Riders*.
 Survive eight minutes against growing waves of ogres. A mini boss arrives at 4:00; at 0:00 the field clears and the Mountain King waits on a floating island, guarding a dragon egg.
 Everything attacks on its own: you move, fly your dragon and pick upgrades.
 
+Ogres drop gold. Gold is banked when a run ends (death or victory) and spent in the **Shop** (main menu, and on the loadout screen before you ride) on weapons and armor.
+
 ## Play
 
 1. Open the project in Unity Hub with Unity **6000.6.5f1**.
@@ -29,10 +31,17 @@ Everything attacks on its own: you move, fly your dragon and pick upgrades.
 
 ## Content
 
-- **Heroes:** Dragonguard Knight, Blood Huntress, Ember Mage
+- **Heroes:** Dragonguard Knight (Sword & Shield), Blood Huntress (Javelin), Ember Mage (Bow & Arrow)
 - **Dragons:** Azure Wyrm (fire), Crimson Drake (explosive), Night Wyrm (blood)
 - **Spells:** Gravity Well, Frost Bolt, Chain Lightning, Meteor Storm
 - **Passives:** Blood Aura, Lightning Storm, Bloodthirst, Spellblade, Windwalker
+
+## Gold, weapons and armor
+
+- **Gold:** every ogre drops spinning coins that fly to you like XP gems (runts 1, ogres 2, brutes 4, hulks 8, archers and shamans 3). The mini boss drops a pile of 150; the Mountain King adds 500 when you already own every dragon. The HUD shows gold earned this run; the end screen shows the total banked.
+- **Weapons** (one per hero, level 1 is free, upgrade to level 5 for 200 / 450 / 800 / 1300 gold): **Sword & Shield** (Knight), **Javelin** (Huntress), **Bow & Arrow** (Ember Mage). Each level gives +15% damage and 7% faster attacks; the Sword & Shield also gains reach and block chance, the Javelin and Bow throw +1 projectile at levels 3 and 5, and Bow arrows pierce one extra foe at level 5.
+- **Armor** (five slots shared by all heroes, tiers 0 to 5, costing 100 / 250 / 500 / 900 / 1500 per tier): **Helm** +6% max health, **Chest** +2 armor, **Gloves** +5% attack speed and +2% crit, **Legs** +1 defense level (block / dodge / Flame Ward chance and their perks at 3 and 5), **Boots** +5% move speed, per tier.
+- Level-ups no longer upgrade weapons or armor: they offer abilities and stat buckets only (the Defense bucket gives +2% block / dodge / ward, +1.5 armor and +2% parry).
 
 ## Asset Store packs (not included)
 

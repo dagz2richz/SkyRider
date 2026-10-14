@@ -10,7 +10,7 @@ namespace Skyfall
     {
         public Game game;
 
-        enum Menu { None, Main, HeroSelect, Loadout, Settings, Quit, Farewell }
+        enum Menu { None, Main, HeroSelect, Loadout, Settings, Quit, Farewell, Shop }
         Menu menu = Menu.None;
         bool hudVisible;
         bool controlsOpen, pauseOpen, statsOpen, endOpen;
@@ -31,12 +31,22 @@ namespace Skyfall
         float bossFrac;
 
         string pickHero = "", pickDragon = "", pickSpell = "", pickPassive = "";
+
+        // Shop state: which tab, where Back returns to, the last purchase message, and a purchase queued for after layout.
+        bool shopArmorTab;
+        int pendingTab = -1;
+        Menu shopReturn = Menu.Main;
+        string shopMsg = "";
+        float shopMsgT = 999f;
+        string pendingBuy = "";
         Vector2 scroll;
 
         void Update()
         {
             float udt = Time.unscaledDeltaTime;
             bannerT += udt;
+            shopMsgT += udt;
+            ApplyPendingBuy();
             toastT += udt;
             hurtA = Mathf.MoveTowards(hurtA, 0f, Time.deltaTime * 1.5f);
             if (game == null) return;
@@ -78,6 +88,21 @@ namespace Skyfall
             }
             // Preview the picks on the menu backdrop.
             game.player.SetupLoadout(game.player.spellId, game.player.passiveId, pickHero, pickDragon);
+        }
+
+        /// Opens the shop from the main menu or the loadout screen; Back returns there.
+        void ShowShop(Menu from)
+        {
+            shopReturn = from;
+            menu = Menu.Shop;
+            shopMsg = "";
+            GameInput.MouseCaptured = false;
+        }
+
+        void LeaveShop()
+        {
+            if (shopReturn == Menu.Loadout) ShowLoadout();
+            else ShowMainMenu();
         }
 
         void ShowLoadout()
@@ -220,6 +245,7 @@ namespace Skyfall
                 case Menu.HeroSelect: DrawHeroSelect(); break;
                 case Menu.Loadout: DrawLoadout(); break;
                 case Menu.Settings: DrawSettings(); break;
+                case Menu.Shop: DrawShop(); break;
                 case Menu.Quit: DrawQuit(); break;
                 case Menu.Farewell: DrawFarewell(); break;
             }
@@ -244,6 +270,8 @@ namespace Skyfall
             // XP bar along the top.
             Bar(new Rect(10, 8, W - 20, 14), p.xp / p.xpNext, new Color(0.3f, 0.75f, 1f));
             DrawText(new Rect(14, 26, 200, 26), $"Lv {p.level}", Text(20), GOLD);
+            CoinIcon(new Rect(88, 28, 22, 22));
+            DrawText(new Rect(116, 26, 200, 26), game.runGold.ToString(), Text(20, TextAnchor.UpperLeft, false, true), new Color(1f, 0.85f, 0.35f));
 
             // Timer + wave at top center.
             float left = Mathf.Max(0f, Data.RUN_LENGTH - game.timeElapsed);
@@ -517,6 +545,8 @@ namespace Skyfall
                     Space(14);
                     if (Button("Play", 28)) ShowHeroSelect();
                     Space(14);
+                    if (Button("Shop", 22)) ShowShop(Menu.Main);
+                    Space(14);
                     if (Button("Settings", 22)) menu = Menu.Settings;
                     Space(14);
                     if (Button("Controls", 22)) controlsOpen = true;
@@ -532,6 +562,7 @@ namespace Skyfall
                     Kv("Most kills", Save.best_kills.ToString());
                     Kv("Highest level", Save.best_level.ToString());
                     Kv("Runs / Victories", $"{Save.runs} / {Save.wins}");
+                    Kv("Gold", Save.gold.ToString());
                     Space(6);
                     Label("Recent runs", 18, M.Darken(GOLD, 0.1f), 4);
                     if (Save.history.Count == 0) Label("No runs yet. Ride forth!", 15, M.Darken(PARCHMENT, 0.3f), 4);
@@ -595,13 +626,15 @@ namespace Skyfall
                     {
                         var h = Data.HEROES[id];
                         var w = Data.WEAPONS[h.weapon];
-                        string def = h.defense == "shield" ? "Shield (12% block)" : (h.defense == "evasion" ? "Evasion (15% dodge)" : "Flame Ward (10% ward)");
-                        var lines = new List<string> { $"Auto attack:  {w.name}", $"Defense:  {def}", $"Health:  {(int)h.hp}" };
+                        int legs = Save.ArmorTier("legs");
+                        string def = h.defense == "shield" ? $"Shield ({Mathf.RoundToInt(100f * (0.12f + 0.05f * (Mathf.Min(Save.WeaponLevel(h.weapon) + legs, 8) - 1)))}% block)"
+                            : (h.defense == "evasion" ? $"Evasion ({Mathf.RoundToInt(100f * (0.15f + 0.05f * legs))}% dodge)" : $"Flame Ward ({Mathf.RoundToInt(100f * (0.10f + 0.05f * legs))}% ward)");
+                        var lines = new List<string> { $"Weapon:  {w.shopName}  Lv {Save.WeaponLevel(h.weapon)}", $"Defense:  {def}", $"Health:  {(int)(h.hp * (1f + 0.06f * Save.ArmorTier("helm")))}" };
                         switch (id)
                         {
                             case "knight": lines.Add("Sword deals 1.25x damage"); break;
                             case "huntress": lines.Add("Javelins pierce, cause bleeding, deal 1.25x damage, cost 2% current health, no mana"); break;
-                            case "pyromancer": lines.Add("Small fireballs that burst and burn; ward sets attackers on fire"); break;
+                            case "pyromancer": lines.Add("Fast fire-tipped arrows, long range, ignite foes; ward sets attackers on fire"); break;
                         }
                         if (SelectCard(h.name, h.desc, lines, h.color, id == pickHero, heroW))
                         {
@@ -669,6 +702,8 @@ namespace Skyfall
                 {
                     if (Button("Back", 22)) ShowHeroSelect();
                     Space(16);
+                    if (Button("Shop", 22)) ShowShop(Menu.Loadout);
+                    Space(16);
                     if (Button("Ride Forth", 28))
                     {
                         menu = Menu.None;
@@ -721,6 +756,159 @@ namespace Skyfall
             }
             GUILayout.EndHorizontal();
             selected = picked;
+        }
+
+        // ---------------------------------------------------------------- shop
+
+        static readonly Color GOLD_TEXT = new Color(1f, 0.85f, 0.35f);
+
+        /// Weapons and armor bought with the gold earned in runs. Purchases are queued (pendingBuy) and applied in Update,
+        /// so the controls drawn never change in the middle of a layout pass.
+        void DrawShop()
+        {
+            Overlay(0.7f);
+            bool armor = shopArmorTab;   // fixed for this whole pass; a tab click only queues a change
+            float cardW = armor ? Mathf.Min(300f, (W - 80f) / 5f - 14f) : Mathf.Min(420f, (W - 80f) / 3f - 18f);
+            Centered(() =>
+            {
+                Label("Shop", 54, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
+                Space(6);
+                CenterRow(() =>
+                {
+                    var r = GUILayoutUtility.GetRect(30, 30, GUILayout.Width(30), GUILayout.Height(30));
+                    CoinIcon(new Rect(r.x, r.y + 2, 26, 26));
+                    Space(8);
+                    Label($"{Save.gold} gold", 30, GOLD_TEXT, 8, TextAnchor.UpperLeft, 0, false, true);
+                });
+                if (shopMsgT < 3f && shopMsg != "") Label(shopMsg, 18, new Color(0.6f, 1f, 0.6f), 5, TextAnchor.UpperCenter, 0, false, false, Mathf.Clamp01(3f - shopMsgT));
+                else Label(" ", 18, PARCHMENT, 0, TextAnchor.UpperCenter);
+                Space(8);
+                CenterRow(() =>
+                {
+                    if (ShopTab("Weapons", !armor)) pendingTab = 0;
+                    Space(14);
+                    if (ShopTab("Armor", armor)) pendingTab = 1;
+                });
+                Space(16);
+                CenterRow(() =>
+                {
+                    if (!armor)
+                        foreach (var id in Data.WEAPON_ORDER) { WeaponCard(id, cardW); Space(18); }
+                    else
+                        foreach (var id in Data.ARMOR_ORDER) { ArmorCard(id, cardW); Space(14); }
+                });
+                Space(14);
+                Label(armor ? "Armor is shared by every hero. Each slot has five tiers."
+                                   : "Each hero is locked to one weapon. Weapon levels also strengthen the Knight's shield block.",
+                    15, M.Darken(PARCHMENT, 0.2f), 4, TextAnchor.UpperCenter);
+                Space(10);
+                CenterRow(() => { if (Button("Back", 24)) LeaveShop(); });
+            });
+        }
+
+        bool ShopTab(string text, bool selected)
+        {
+            var prev = GUI.color;
+            if (!selected) GUI.color = new Color(0.62f, 0.62f, 0.62f, 1f);
+            bool clicked = Button(text, 24, 180);
+            GUI.color = prev;
+            return clicked;
+        }
+
+        void ApplyPendingBuy()
+        {
+            if (pendingTab >= 0)
+            {
+                shopArmorTab = pendingTab == 1;
+                pendingTab = -1;
+            }
+            if (pendingBuy == "") return;
+            var parts = pendingBuy.Split(':');
+            pendingBuy = "";
+            bool ok;
+            string what;
+            if (parts[0] == "w")
+            {
+                ok = Save.BuyWeapon(parts[1]);
+                what = $"{Data.WEAPONS[parts[1]].shopName} upgraded to Lv {Save.WeaponLevel(parts[1])}";
+            }
+            else
+            {
+                ok = Save.BuyArmor(parts[1]);
+                what = $"{Data.ARMOR[parts[1]].name} is now tier {Save.ArmorTier(parts[1])}";
+            }
+            if (!ok) return;
+            Sfx.Play("buy", -2f, 0f);
+            shopMsg = what;
+            shopMsgT = 0f;
+        }
+
+        GUIStyle ShopCard(Color accent, float width) =>
+            PanelStyle(INK, Color.Lerp(accent, GOLD, 0.35f), 8, 3);
+
+        void WeaponCard(string id, float width)
+        {
+            var w = Data.WEAPONS[id];
+            var hero = Data.HEROES[w.hero];
+            int lvl = Save.WeaponLevel(id);
+            int cost = Save.WeaponUpgradeCost(id);
+            var c = w.color;
+            GUILayout.BeginVertical(ShopCard(c, width), GUILayout.Width(width), GUILayout.MinHeight(420));
+            Label(w.shopName, 28, Color.Lerp(c, PARCHMENT, 0.3f), 6, TextAnchor.UpperLeft, width - 30, false, true);
+            Label($"Used by {hero.name}", 15, Color.Lerp(hero.color, PARCHMENT, 0.4f), 4);
+            Space(8);
+            GUILayout.BeginHorizontal();
+            Pips(lvl, Data.MAX_LEVEL, c);
+            Space(10);
+            Label($"Level {lvl} / {Data.MAX_LEVEL}", 17, GOLD, 5);
+            GUILayout.EndHorizontal();
+            Space(10);
+            Label("Now", 17, GOLD, 5);
+            foreach (var ln in Data.WeaponStats(id, lvl)) Label(ln, 15, PARCHMENT, 4, TextAnchor.UpperLeft, width - 30, true);
+            Space(10);
+            if (cost >= 0)
+            {
+                Label($"Level {lvl + 1}", 17, new Color(0.6f, 1f, 0.6f), 5);
+                foreach (var ln in Data.WeaponStats(id, lvl + 1)) Label(ln, 15, new Color(0.75f, 1f, 0.75f), 4, TextAnchor.UpperLeft, width - 30, true);
+            }
+            GUILayout.FlexibleSpace();
+            if (cost >= 0)
+            {
+                if (Button($"Upgrade  ·  {cost} gold", 20, 0, Save.gold >= cost)) pendingBuy = "w:" + id;
+            }
+            else Label("MAX LEVEL", 22, GOLD, 6, TextAnchor.UpperCenter, 0, false, true);
+            GUILayout.EndVertical();
+        }
+
+        void ArmorCard(string slot, float width)
+        {
+            var a = Data.ARMOR[slot];
+            int tier = Save.ArmorTier(slot);
+            int cost = Save.ArmorUpgradeCost(slot);
+            var c = new Color(0.55f, 0.75f, 1f);
+            GUILayout.BeginVertical(ShopCard(c, width), GUILayout.Width(width), GUILayout.MinHeight(420));
+            Label(a.name, 28, Color.Lerp(c, PARCHMENT, 0.3f), 6, TextAnchor.UpperLeft, width - 30, false, true);
+            Label(a.desc, 14, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperLeft, width - 30, true);
+            Space(8);
+            Pips(tier, Data.MAX_ARMOR_TIER, c);
+            Space(4);
+            Label(tier == 0 ? "Not owned" : $"Tier {tier} / {Data.MAX_ARMOR_TIER}", 17, GOLD, 5);
+            Space(10);
+            Label("Now", 17, GOLD, 5);
+            Label(tier == 0 ? "No bonus" : Data.ArmorBonus(slot, tier), 15, PARCHMENT, 4, TextAnchor.UpperLeft, width - 30, true);
+            Space(10);
+            if (cost >= 0)
+            {
+                Label($"Tier {tier + 1}", 17, new Color(0.6f, 1f, 0.6f), 5);
+                Label(Data.ArmorBonus(slot, tier + 1), 15, new Color(0.75f, 1f, 0.75f), 4, TextAnchor.UpperLeft, width - 30, true);
+            }
+            GUILayout.FlexibleSpace();
+            if (cost >= 0)
+            {
+                if (Button($"{(tier == 0 ? "Buy" : "Upgrade")}  ·  {cost}", 20, 0, Save.gold >= cost)) pendingBuy = "a:" + slot;
+            }
+            else Label("MAX TIER", 22, GOLD, 6, TextAnchor.UpperCenter, 0, false, true);
+            GUILayout.EndVertical();
         }
 
         // ---------------------------------------------------------------- settings
@@ -947,6 +1135,15 @@ namespace Skyfall
                 }
                 Space(18);
                 Label($"Survived {Clock(game.timeElapsed)}   ·   Level {p.level}   ·   {game.kills} ogres slain", 24, PARCHMENT, 6, TextAnchor.UpperCenter);
+                Space(10);
+                GUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                var gr = GUILayoutUtility.GetRect(30, 30, GUILayout.Width(30), GUILayout.Height(30));
+                CoinIcon(new Rect(gr.x, gr.y + 2, 26, 26));
+                Space(8);
+                Label($"Gold earned  +{game.runGold}   (total {Save.gold})", 26, new Color(1f, 0.85f, 0.35f), 6, TextAnchor.UpperLeft, 0, false, true);
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
                 Space(18);
                 Label($"Score  {endScore}", 48, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
@@ -1006,7 +1203,7 @@ namespace Skyfall
                     StatColumn("Abilities", () =>
                     {
                         Kv(Data.HEROES[p.heroId].name, "", 16);
-                        Kv(p.Weapon.name, $"Lv {p.swordLevel}", 16);
+                        Kv(p.Weapon.shopName, $"Lv {p.swordLevel}", 16);
                         var def = p.IsKnight ? Data.SHIELD : (p.IsPyro ? Data.WARD : Data.EVASION);
                         Kv(def.name, $"Lv {p.shieldLevel}", 16);
                         Kv(Data.SPELLS[p.spellId].name, $"Lv {Lv(p.spellId)}", 16);
@@ -1016,6 +1213,9 @@ namespace Skyfall
                         Space(6);
                         Label("Stat buckets", 20, GOLD, 5);
                         foreach (var id in Data.BUCKET_ORDER) Kv(Data.BUCKETS[id].name, $"Rank {p.B(id)}", 16);
+                        Space(6);
+                        Label("Armor", 20, GOLD, 5);
+                        foreach (var id in Data.ARMOR_ORDER) Kv(Data.ARMOR[id].name, p.Tier(id) == 0 ? "none" : $"Tier {p.Tier(id)}", 16);
                     });
                     Space(18);
                     StatColumn("This Run", () =>
@@ -1023,6 +1223,7 @@ namespace Skyfall
                         Kv("Time", Clock(game.timeElapsed), 16);
                         Kv("Wave", game.finalStarted ? "Final battle" : $"{game.wave} / {Data.WAVE_NAMES.Length}", 16);
                         Kv("Ogres slain", game.kills.ToString(), 16);
+                        Kv("Gold", game.runGold.ToString(), 16);
                         Kv("Damage dealt", ((int)game.damageDealt).ToString(), 16);
                         Kv("Biggest hit", ((int)game.biggestHit).ToString(), 16);
                         Kv("Bosses slain", game.bossesSlain.ToString(), 16);

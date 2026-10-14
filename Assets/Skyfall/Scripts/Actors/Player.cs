@@ -42,7 +42,9 @@ namespace Skyfall
         public int level = 1;
         public float xp, xpNext = 6f;
         public int pendingLevels;
-        public int swordLevel = 1, shieldLevel = 1;
+        /// Shop level of the hero's weapon (set at run start).
+        public int swordLevel = 1;
+        Transform bowNode, bowBone;
         bool leaping;
         public string heroId = "";
         public string dragonId = "blue";
@@ -94,14 +96,21 @@ namespace Skyfall
 
         /// Permanent growth every level: +5% damage, +2% health, +0.5% parry.
         public float LevelDamageBonus => 0.05f * (level - 1);
-        public float CritChance => 0.08f + 0.03f * B("offense");
+        public float CritChance => 0.08f + 0.03f * B("offense") + 0.02f * Tier("gloves");
         public float ParryChance => Mathf.Min(0.03f + 0.005f * (level - 1) + 0.02f * B("defense"), 0.4f);
         public bool IsKnight => heroId == "knight";
         public bool IsHuntress => heroId == "huntress";
         public bool IsPyro => heroId == "pyromancer";
 
-        /// Defense picks past level 5 keep adding +2% block/dodge.
-        float DefenseExtra => 0.02f * Mathf.Max(0, B("defense") - 4);
+        /// Each Defense pick adds a flat +2% block / dodge / ward.
+        float DefenseExtra => 0.02f * B("defense");
+
+        /// Armor tier (0..5) of a slot, from the save (set in the shop).
+        public int Tier(string slot) => Save.ArmorTier(slot);
+
+        /// Defense level behind block / dodge / ward and their perks at 3 and 5: the Knight's weapon level (his shield) plus
+        /// Legs tiers; the Huntress and the Ember Mage start at 1 and gain a level per Legs tier.
+        public int shieldLevel => Mathf.Min((IsKnight ? swordLevel : 1) + Tier("legs"), 8);
 
         /// Knight: shield block. Ember Mage: Flame Ward (same roll, different flavor).
         public float BlockChance
@@ -116,7 +125,16 @@ namespace Skyfall
 
         public float JumpMult => 1f + 0.1f * B("utility");
         public float DamageMult => (1f + 0.08f * B("offense")) * (1f + LevelDamageBonus);
-        public float AttackSpeedMult => Mathf.Pow(0.94f, B("offense"));
+        public float AttackSpeedMult => Mathf.Pow(0.94f, B("offense")) / (1f + 0.05f * Tier("gloves"));
+
+        /// Weapon damage per hit before the shared multipliers: base x weapon level (+15% per level).
+        public float WeaponBaseDamage => Weapon.damage * (1f + 0.15f * (swordLevel - 1));
+
+        /// Seconds between attacks: weapon cooldown, faster with weapon level (0.93 per level), Offense and Gloves.
+        public float AttackInterval => Weapon.cooldown * AttackSpeedMult * Mathf.Pow(0.93f, swordLevel - 1);
+
+        /// Projectiles per volley: +1 at weapon level 3 and 5 (Javelin, Bow).
+        public int ShotCount => 1 + (swordLevel >= 3 ? 1 : 0) + (swordLevel >= 5 ? 1 : 0);
         public float CooldownMult => 1f;
         public float DragonCdMult => Mathf.Pow(0.94f, B("dragon"));
         public float DragonDamageMult => 1f + 0.12f * B("dragon");
@@ -125,7 +143,7 @@ namespace Skyfall
         /// Level of a passive, but only if it is the chosen passive.
         public int Plv(string id) => passiveId == id ? SpellLv(id, 0) : 0;
 
-        public float MoveMult => 1f + 0.07f * Plv("windwalker") + 0.06f * B("utility");
+        public float MoveMult => 1f + 0.07f * Plv("windwalker") + 0.06f * B("utility") + 0.05f * Tier("boots");
 
         public float DodgeChance
         {
@@ -146,7 +164,7 @@ namespace Skyfall
 
         public float MagnetRadius => 5.5f * (1f + 0.25f * B("utility"));
         public float MaxFlight => 4f * (1f + 0.2f * B("dragon") + 0.1f * Plv("windwalker"));
-        public float Armor => 1.5f * B("defense");
+        public float Armor => 1.5f * B("defense") + 2f * Tier("chest");
         public float Regen => 0.5f * B("health");
         public float XpMult => 1f;
         public float MaxMana => 100f + 15f * B("mana");
@@ -164,9 +182,6 @@ namespace Skyfall
                     float gain = maxHp * 0.12f;
                     maxHp += gain;
                     hp += gain;
-                    break;
-                case "defense":
-                    shieldLevel = Mathf.Min(shieldLevel + 1, Data.MAX_LEVEL);
                     break;
             }
         }
@@ -328,11 +343,13 @@ namespace Skyfall
                 BuildKnight();
             }
             for (int i = weaponNode.childCount - 1; i >= 0; i--) DestroyImmediate(weaponNode.GetChild(i).gameObject);
-            maxHp = Data.HEROES[heroId].hp;
+            swordLevel = Save.WeaponLevel(Data.HEROES[heroId].weapon);
+            maxHp = Data.HEROES[heroId].hp * (1f + 0.06f * Tier("helm"));
             hp = maxHp;
             if (pet) pet.SetDragon(dragon);
             BuildWeapon();
             ApplySkin();
+            AttachBow();
             AnimateKnight(0f, 0f);
         }
 
@@ -391,15 +408,7 @@ namespace Skyfall
             var steel = FX.Lit(new Color(0.78f, 0.8f, 0.85f), 0.2f, 0.95f);
             var gold = FX.Lit(new Color(0.9f, 0.72f, 0.3f), 0.35f, 0.9f);
             var w = FX.Node(weaponNode, "Held", Vector3.zero, new Vector3(-1.1f, 0, 0));
-            if (IsPyro)
-            {
-                // A gnarled staff topped with a burning orb.
-                var wood = FX.Lit(new Color(0.25f, 0.15f, 0.08f), 0.8f);
-                FX.Part(w, MeshGen.Box(), wood, new Vector3(0, 0.55f, 0), new Vector3(0.06f, 1.9f, 0.06f));
-                FX.Part(w, MeshGen.Sphere(10), FX.Glow(new Color(1f, 0.55f, 0.1f), 3f), new Vector3(0, 1.55f, 0), Vector3.one * 0.24f);
-                FX.Part(w, MeshGen.Cylinder(0f, 0.5f, 4), wood, new Vector3(0.08f, 1.45f, 0), new Vector3(0.05f, 0.3f, 0.05f), new Vector3(0, 0, -0.5f));
-                return;
-            }
+            if (IsPyro) return;   // her bow is attached to the left hand (AttachBow)
             if (!IsKnight)
             {
                 // A blood javelin, glowing.
@@ -425,6 +434,58 @@ namespace Skyfall
                 FX.Part(shieldNode, MeshGen.Box(), rim, new Vector3(0, 0.05f, -0.05f), new Vector3(0.06f, 0.6f, 0.02f));
             }
         }
+
+        /// Where Ember Mage arrows leave from: the bow, or her hand.
+        Vector3 ShotOrigin => bowNode ? bowNode.position + Vector3.up * 0.15f : HandPosition;
+
+        /// The Ember Mage's bow, held in the left hand: on the Asset Store model's hand bone when there is one, else on the procedural arm.
+        void AttachBow()
+        {
+            if (bowNode) DestroyImmediate(bowNode.gameObject);
+            bowNode = null;
+            bowBone = null;
+            if (!IsPyro) return;
+            bowBone = rig != null ? rig.Bone(HumanBodyBones.LeftHand) : null;
+            // On the model the bow follows the hand bone each frame (LateUpdate) but stays upright; on the procedural arm it is a child.
+            bowNode = FX.Node(bowBone != null ? transform : armL.t, "Bow");
+            if (bowBone == null) bowNode.localPosition = new Vector3(0f, -0.62f, -0.05f);
+            else
+            {
+                LateUpdate();
+                // The wizard model carries a staff of its own; her weapon is the bow now.
+                foreach (var t in rig.model.GetComponentsInChildren<Transform>(true))
+                    if (t.name.StartsWith("Staff")) t.gameObject.SetActive(false);
+            }
+            var wood = FX.Lit(new Color(0.36f, 0.2f, 0.09f), 0.6f);
+            var dark = FX.Lit(new Color(0.16f, 0.08f, 0.05f), 0.8f);
+            var ember = FX.Glow(new Color(1f, 0.5f, 0.12f), 2.6f);
+            const int segs = 7;
+            const float half = 0.68f, bend = 0.2f;
+            Vector3 P(float k) => new Vector3(0f, k * half, bend * k * k);
+            for (int i = -segs; i < segs; i++)
+            {
+                float k0 = (float)i / segs, k1 = (float)(i + 1) / segs;
+                float r0 = Mathf.Lerp(0.045f, 0.022f, Mathf.Abs(k0)), r1 = Mathf.Lerp(0.045f, 0.022f, Mathf.Abs(k1));
+                FX.NoShadow(FX.Bone(bowNode, P(k0), P(k1), r0, r1, wood));
+            }
+            FX.Part(bowNode, MeshGen.Box(), dark, Vector3.zero, new Vector3(0.09f, 0.22f, 0.09f));
+            foreach (int s in new[] { -1, 1 })
+            {
+                FX.NoShadow(FX.Part(bowNode, MeshGen.Sphere(8), ember, P(s), Vector3.one * 0.07f));
+                FX.NoShadow(FX.Part(bowNode, MeshGen.Sphere(8), ember, P(s * 0.62f), Vector3.one * 0.04f));
+            }
+            FX.NoShadow(FX.Bone(bowNode, P(-1f), P(1f), 0.008f, 0.008f, FX.Lit(new Color(0.9f, 0.85f, 0.7f), 0.5f)));
+            foreach (var r in bowNode.GetComponentsInChildren<Renderer>(true)) r.enabled = true;
+        }
+
+        void LateUpdate()
+        {
+            if (bowNode == null || bowBone == null) return;
+            bowNode.SetPositionAndRotation(bowBone.position + transform.rotation * BOW_BONE_OFFSET, transform.rotation);
+        }
+
+        /// Offset of the bow's grip from the hand bone, in the hero's own axes (right, up, forward is -Z).
+        static readonly Vector3 BOW_BONE_OFFSET = new Vector3(0f, 0f, 0f);
 
         void SwingAnim()
         {
@@ -513,8 +574,8 @@ namespace Skyfall
             attackTimer -= delta;
             if (attackTimer <= 0f)
             {
-                bool attacked = IsKnight ? Attack() : (IsHuntress ? Throw() : Ember());
-                attackTimer = attacked ? Weapon.cooldown * AttackSpeedMult * Mathf.Pow(0.93f, swordLevel - 1) : 0.1f;
+                bool attacked = IsKnight ? Attack() : (IsHuntress ? Throw() : Shoot());
+                attackTimer = attacked ? AttackInterval : 0.1f;
             }
             // Q: call the dragon and take flight (Q again to drop off). E: dragon signature (ground or air).
             if (GameInput.FlyPressed && !leaping)
@@ -718,7 +779,7 @@ namespace Skyfall
             if (target == null) return false;
             var dir = M.Flat(target.Pos - Pos).normalized;
             float arc = w.arc;
-            float dmg = w.damage * WeaponDamageMult * (1f + 0.15f * (swordLevel - 1));
+            float dmg = WeaponBaseDamage * WeaponDamageMult;
             float cosHalf = Mathf.Cos(arc * 0.5f * Mathf.Deg2Rad);
             int hits = 0;
             var list = game.enemies;
@@ -800,23 +861,34 @@ namespace Skyfall
             if (ls > 0f) hp = Mathf.Min(maxHp, hp + dmg * hits * ls);
         }
 
-        /// Ember Mage auto attack: small fireballs that burst and singe.
-        bool Ember()
+        /// Ember Mage auto attack: fast fire-tipped arrows. Extra arrows (Lv 3, 5) pick other targets, or fan out at the only one.
+        bool Shoot()
         {
             var w = Weapon;
-            var c = HandPosition;
-            int count = 1 + (swordLevel >= 3 ? 1 : 0) + (swordLevel >= 5 ? 1 : 0);
+            var origin = ShotOrigin;
+            int count = ShotCount;
             var used = new List<Enemy>();
+            Enemy first = null;
             for (int i = 0; i < count; i++)
             {
                 var t = game.NearestEnemy(Center, w.range, 16f, null, used);
-                if (t == null) break;
-                used.Add(t);
-                Fireball.Spawn(game, this, c, (t.Pos + new Vector3(0, t.size, 0) - c).normalized * 40f,
-                    w.damage * WeaponDamageMult * (1f + 0.15f * (swordLevel - 1)), w.radius, 0.1f, true);
+                Vector3 dir;
+                if (t != null)
+                {
+                    used.Add(t);
+                    if (first == null) first = t;
+                    dir = (t.Pos + new Vector3(0, t.size, 0) - origin).normalized;
+                }
+                else if (first != null)
+                {
+                    dir = (first.Pos + new Vector3(0, first.size, 0) - origin).normalized;
+                    dir = (dir + CamRight * (i % 2 == 0 ? 0.07f : -0.07f) * ((i + 1) / 2)).normalized;
+                }
+                else break;
+                FireArrow.Spawn(this, origin, dir * FireArrow.SPEED, WeaponBaseDamage * WeaponDamageMult, swordLevel >= 5 ? 1 : 0, w.range);
             }
-            if (used.Count == 0) return false;
-            Sfx.Play("whoosh", -10f, 0.2f);
+            if (first == null) return false;
+            Sfx.Play("bow", -6f, 0.15f);
             CastAnim();
             return true;
         }
@@ -826,7 +898,7 @@ namespace Skyfall
         {
             var w = Weapon;
             var c = Center + new Vector3(0, 0.4f, 0);
-            int count = 1 + (swordLevel >= 3 ? 1 : 0) + (swordLevel >= 5 ? 1 : 0);
+            int count = ShotCount;
             var used = new List<Enemy>();
             for (int i = 0; i < count; i++)
             {
@@ -834,7 +906,7 @@ namespace Skyfall
                 if (t == null) break;
                 used.Add(t);
                 var aim = t.Pos + new Vector3(0, t.size, 0);
-                BloodJavelin.Spawn(this, c, (aim - c).normalized * 52f, w.damage * WeaponDamageMult * (1f + 0.15f * (swordLevel - 1)));
+                BloodJavelin.Spawn(this, c, (aim - c).normalized * 52f, WeaponBaseDamage * WeaponDamageMult);
             }
             if (used.Count == 0) return false;
             // The blood price: 2% of current health (never lethal).
@@ -1003,6 +1075,76 @@ namespace Skyfall
                     player.WeaponHits(1, damage);
                     FX.Burst(pos, new Color(0.85f, 0.05f, 0.1f), 6, 4f, 0.18f);
                     Sfx.Play("hit", pos, -6f, 0.2f);
+                }
+            }
+            if (life <= 0f || pos.y < g.terrain.Height(pos.x, pos.z)) Destroy(gameObject);
+        }
+    }
+
+    /// The Ember Mage's arrow: fast, long range, a flame trail and a light burn on hit. Stops at the first foe it
+    /// hits, or passes through `pierce` extra ones (Bow Lv 5).
+    public class FireArrow : MonoBehaviour
+    {
+        public const float SPEED = 62f;
+        Player player;
+        Vector3 velocity;
+        float damage = 20f;
+        float life = 0.6f;
+        int pierce;
+        readonly HashSet<Enemy> hit = new HashSet<Enemy>();
+
+        public static void Spawn(Player p, Vector3 from, Vector3 velocity, float damage, int pierce, float range)
+        {
+            var a = new GameObject("FireArrow").AddComponent<FireArrow>();
+            a.player = p;
+            a.velocity = velocity;
+            a.damage = damage;
+            a.pierce = pierce;
+            a.life = range / velocity.magnitude + 0.05f;
+            a.transform.SetParent(FX.root, false);
+            a.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
+            var wood = FX.Lit(new Color(0.45f, 0.28f, 0.12f), 0.7f);
+            FX.NoShadow(FX.Part(a.transform, MeshGen.Box(), wood, Vector3.zero, new Vector3(0.045f, 0.045f, 1.0f)));
+            FX.NoShadow(FX.Part(a.transform, MeshGen.Cylinder(0f, 0.5f, 4), FX.Glow(new Color(1f, 0.55f, 0.12f), 3f), new Vector3(0, 0, -0.58f),
+                new Vector3(0.12f, 0.26f, 0.12f), new Vector3(-M.PI * 0.5f, 0, 0)));
+            FX.NoShadow(FX.Part(a.transform, MeshGen.Sphere(6), FX.Glow(new Color(1f, 0.85f, 0.45f), 3f), new Vector3(0, 0, -0.5f), Vector3.one * 0.1f));
+            var fletch = FX.Lit(new Color(0.9f, 0.35f, 0.1f), 0.8f);
+            foreach (float rz in new[] { 0f, M.PI * 0.5f })
+                FX.NoShadow(FX.Part(a.transform, MeshGen.Box(), fletch, new Vector3(0, 0, 0.42f), new Vector3(0.2f, 0.012f, 0.2f), new Vector3(0, 0, rz)));
+            FX.Particles(a.transform, new FX.ParticleSpec
+            {
+                amount = 26, lifetime = 0.28f, size = 0.34f, scaleMin = 0.5f, scaleMax = 1.2f, speedMin = 0.2f, speedMax = 1f, spread = 25f,
+                gravity = new Vector3(0, 3, 0), startColor = new Color(1f, 0.75f, 0.3f, 1f), endColor = new Color(0.8f, 0.15f, 0f, 0f), worldSpace = true,
+            });
+        }
+
+        void Update()
+        {
+            float delta = Time.deltaTime;
+            if (delta <= 0f) return;
+            var g = player.game;
+            life -= delta;
+            transform.position += velocity * delta;
+            var pos = transform.position;
+            var list = g.enemies;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var e = list[i];
+                if (e.dead || hit.Contains(e)) continue;
+                var c = e.Pos + new Vector3(0, e.size, 0);
+                if (Vector3.Distance(c, pos) < e.radius + 0.4f + 0.5f * e.size)
+                {
+                    hit.Add(e);
+                    g.DamageEnemy(e, damage, velocity.normalized, 1.5f, true, new Color(1f, 0.7f, 0.3f));
+                    e.Ignite(2.5f, damage * 0.12f);
+                    player.WeaponHits(1, damage);
+                    FX.Burst(pos, new Color(1f, 0.6f, 0.2f), 6, 5f, 0.16f);
+                    Sfx.Play("arrow_hit", pos, -6f, 0.2f);
+                    if (hit.Count > pierce)
+                    {
+                        Destroy(gameObject);
+                        return;
+                    }
                 }
             }
             if (life <= 0f || pos.y < g.terrain.Height(pos.x, pos.z)) Destroy(gameObject);

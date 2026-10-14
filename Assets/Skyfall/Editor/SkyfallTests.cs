@@ -128,6 +128,11 @@ namespace Skyfall.EditorTools
                         return;
                     }
                 }
+                if (stage == 0 && Arg("-skyfallShop", "") != "")
+                {
+                    ShopTest(game);
+                    return;
+                }
                 if (stage == 0 && frame > 60 && (Arg("-skyfallVfxSheet", "") == "" || frame > 30 + 12 * Skins.Lib.vfx.Count))
                 {
                     // Loadout from the command line: -skyfallLoadout hero,dragon,spell,passive
@@ -136,13 +141,19 @@ namespace Skyfall.EditorTools
                     Snap($"snap_{tag}_1_menu");
                     stage = 1;
                     frame = 0;
+                    ApplyGear();
                     game.StartRun(lo[2], lo[3], lo[0], lo[1]);
+                    LogStats(game, "start");
                     if (Arg("-skyfallIslandView", "") == "" && Arg("-skyfallFinale", "") == "") game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
                     game.player.hp = game.player.maxHp = 5000f;   // keep the hero alive for the whole test
                 }
                 else if (stage == 1 && Arg("-skyfallFinale", "") != "")
                 {
                     Finale(game);
+                }
+                else if (stage == 1 && Arg("-skyfallBowView", "") != "")
+                {
+                    BowView(game);
                 }
                 else if (stage == 1 && Arg("-skyfallIslandView", "") != "")
                 {
@@ -200,10 +211,19 @@ namespace Skyfall.EditorTools
                         game.player.camDistTarget = 16f;
                         game.player.camPitch = 0.45f;
                     }
+                    if (frame == 1480 && Arg("-skyfallBank", "") != "")
+                    {
+                        // Stand-in for walking over the loot: pull every coin onto the hero so it is collected.
+                        int n = 0;
+                        foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Exclude))
+                            if (t.name == "Coin") { t.position = game.player.Center; n++; }
+                        Debug.Log($"SKYFALL_TEST vacuumed {n} coins; runGold before={game.runGold}");
+                    }
                     if (frame == 1500)
                     {
                         Snap($"snap_{tag}_3_wide");
                         Log("wide", game);
+                        if (Arg("-skyfallBank", "") != "") Bank(game);
                         Finish(0);
                     }
                 }
@@ -223,6 +243,122 @@ namespace Skyfall.EditorTools
             {
                 Debug.LogError("SKYFALL_TEST exception: " + e);
                 Finish(1);
+            }
+        }
+
+        /// -skyfallGear "sword=5,javelin=3,bow=5,helm=2,chest=5,gloves=5,legs=5,boots=5,gold=1000": sets shop levels in the TEST save
+        /// (refused unless -skyfallSaveFile is given, so the real save is never touched).
+        static void ApplyGear()
+        {
+            var gear = Arg("-skyfallGear", "");
+            if (gear == "") return;
+            if (Arg("-skyfallSaveFile", "") == "")
+            {
+                Debug.LogError("SKYFALL_TEST -skyfallGear needs -skyfallSaveFile; ignored");
+                return;
+            }
+            foreach (var kv in gear.Split(','))
+            {
+                var p = kv.Split('=');
+                int v = p[1] == "all" ? 1 : int.Parse(p[1]);
+                switch (p[0])
+                {
+                    case "sword": Save.SetWeaponLevel("sword", v); break;
+                    case "javelin": Save.SetWeaponLevel("blood_lance", v); break;
+                    case "bow": Save.SetWeaponLevel("bow", v); break;
+                    case "gold": Save.gold = v; break;
+                    case "alldragons": Save.unlocked_dragons = new System.Collections.Generic.List<string>(Data.DRAGON_ORDER); break;
+                    default: Save.SetArmorTier(p[0], v); break;
+                }
+            }
+            Save.Write();
+        }
+
+        static void LogStats(Game game, string what)
+        {
+            var p = game.player;
+            Debug.Log($"SKYFALL_TEST stats {what} {p.heroId}: weapon={p.Weapon.shopName} wLv={p.swordLevel} dmg/hit={p.WeaponBaseDamage * p.WeaponDamageMult:0.0} interval={p.AttackInterval:0.000}s shots={p.ShotCount} " +
+                      $"armor={p.Armor:0.0} defLv={p.shieldLevel} block={p.BlockChance:0.00} dodge={p.DodgeChance:0.00} crit={p.CritChance:0.00} move={p.MoveMult:0.00} maxHp={p.maxHp:0.0} " +
+                      $"armorTiers=[helm {Save.armor_helm}, chest {Save.armor_chest}, gloves {Save.armor_gloves}, legs {Save.armor_legs}, boots {Save.armor_boots}] gold={Save.gold}");
+        }
+
+        /// -skyfallBank 1: ends the run by death at the end of the test and logs gold before and after banking.
+        static void Bank(Game game)
+        {
+            int before = Save.gold, run = game.runGold;
+            game.OnPlayerDied();
+            Debug.Log($"SKYFALL_TEST bank: runGold={run} saveGold before={before} after={Save.gold} ended={game.ended}");
+            Debug.Log($"SKYFALL_TEST save file: {System.IO.File.ReadAllText(System.IO.Path.Combine(Application.persistentDataPath, Arg("-skyfallSaveFile", "skyfall_save.json"))).Replace("\n", " ")}");
+        }
+
+        /// -skyfallShop 1: opens the shop on the title screen, queues purchases the way a click would, and logs the results.
+        /// IMGUI is not in snapshots, so this mostly proves the draw code runs (no exceptions) and purchases save.
+        static void ShopTest(Game game)
+        {
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var hud = game.hud;
+            var ht = typeof(Hud);
+            if (frame == 40)
+            {
+                Save.gold = 1000;
+                ht.GetMethod("ShowShop", flags).Invoke(hud, new object[] { System.Enum.ToObject(ht.GetNestedType("Menu", System.Reflection.BindingFlags.NonPublic), 1) });
+                Debug.Log($"SKYFALL_TEST shop opened: gold={Save.gold} sword={Save.sword_level} bow={Save.bow_level} helm={Save.armor_helm}");
+            }
+            void Buy(string what) => ht.GetField("pendingBuy", flags).SetValue(hud, what);
+            if (frame == 60) Buy("w:bow");
+            if (frame == 70) ht.GetField("shopArmorTab", flags).SetValue(hud, true);
+            if (frame == 80) Buy("a:helm");
+            if (frame == 90) Buy("a:helm");
+            if (frame == 100) Buy("a:boots");
+            if (frame == 110) Buy("w:sword");   // not affordable any more or still ok: logged either way
+            if (frame == 130)
+            {
+                Debug.Log($"SKYFALL_TEST shop after: gold={Save.gold} sword={Save.sword_level} bow={Save.bow_level} helm={Save.armor_helm} boots={Save.armor_boots} msg={ht.GetField("shopMsg", flags).GetValue(hud)}");
+                Debug.Log("SKYFALL_TEST shop file: " + System.IO.File.ReadAllText(System.IO.Path.Combine(Application.persistentDataPath, Arg("-skyfallSaveFile", "skyfall_save.json"))).Replace("\n", " "));
+                Finish(0);
+            }
+        }
+
+        /// -skyfallBowView 1 (use with the pyromancer): close-ups of the bow in her hand and a burst of arrows in flight.
+        static void BowView(Game game)
+        {
+            var pl = game.player;
+            pl.hp = pl.maxHp = 99999f;
+            if (frame == 1) game.timeElapsed = 110f;
+            if (frame == 100)
+            {
+                var hand = pl.HandPosition;
+                var rg = pl.GetComponentInChildren<CharacterRig>();
+                if (rg) foreach (var t in rg.model.GetComponentsInChildren<Transform>(true)) Debug.Log($"SKYFALL_TEST rigpart {t.name} active={t.gameObject.activeSelf} renderer={t.GetComponent<Renderer>() != null} pos={t.position - pl.Pos}");
+                Debug.Log($"SKYFALL_TEST bow: hand={hand} player={pl.Pos} foes={game.enemies.Count} coinsGold={game.runGold}");
+                pl.camDistTarget = 2.6f; pl.camPitch = 0.05f; pl.camYaw = Mathf.PI * 0.85f;
+            }
+            if (frame == 130) Snap("bow_1_front");
+            if (frame == 131) { pl.camYaw = Mathf.PI * 0.5f; }
+            if (frame == 160) Snap("bow_2_side");
+            if (frame == 161) { pl.camYaw = 0.5f; pl.camDistTarget = 2.8f; pl.camPitch = 0.1f; }
+            if (frame == 190) Snap("bow_3_back");
+            if (frame == 191) { pl.camYaw = Mathf.PI * 0.8f; pl.camDistTarget = 7f; pl.camPitch = 0.25f; }
+            if (frame >= 220 && frame <= 232 && frame % 3 == 1) Snap($"bow_4_arrows_{frame}");
+            if (frame == 236)
+            {
+                // A look at the gold: a mini-boss style pile and one coin of each size, 8 m ahead (outside the magnet radius).
+                var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                var ahead = pl.Pos + pl.CamFwd * 8f;
+                typeof(Game).GetMethod("DropGoldPile", flags).Invoke(game, new object[] { ahead, 150, 10, 2.5f, false });
+                var drop = typeof(Game).GetMethod("DropCoin", flags);
+                int k = 0;
+                foreach (int v in new[] { 1, 4, 8 })
+                    drop.Invoke(game, new object[] { ahead + pl.CamRight * (3.5f + 1.2f * k++), v, false });
+                pl.camDistTarget = 5.5f; pl.camPitch = 0.55f;
+            }
+            if (frame == 250) Snap("coins_pile");
+            if (frame == 252)
+            {
+                int arrows = Object.FindObjectsByType<FireArrow>(FindObjectsInactive.Exclude).Length;
+                Debug.Log($"SKYFALL_TEST bow: arrows in flight={arrows} kills={game.kills} runGold={game.runGold} " + $"dmgDealt={game.damageDealt:0}");
+                LogStats(game, "end");
+                Finish(0);
             }
         }
 
@@ -423,7 +559,7 @@ namespace Skyfall.EditorTools
 
         static void Log(string what, Game game) =>
             Debug.Log($"SKYFALL_TEST {tag} {what}: enemies={game.enemies.Count} kills={game.kills} lvl={game.player.level} " +
-                      $"t={game.timeElapsed:0} bosses={game.bosses.Count} spawned={game.bossesSpawned} dmg={game.damageDealt:0}");
+                      $"t={game.timeElapsed:0} bosses={game.bosses.Count} spawned={game.bossesSpawned} dmg={game.damageDealt:0} runGold={game.runGold} saveGold={Save.gold}");
 
         static void Finish(int code)
         {

@@ -6,14 +6,14 @@ namespace Skyfall
     /// Sound effects and master volume. Every sound is synthesized in code (no files needed), but any sound can be
     /// replaced by dropping audio clips into Assets/Skyfall/Resources/Skyfall/Sounds/&lt;name&gt;/ (one is picked at random).
     /// Sound names: hit, clang, block, parry, heal, slash, bow, arrow_hit, boom, whoosh, frost, zap, hurt, death,
-    /// levelup, pickup, roar, flame, click.
+    /// levelup, pickup, coin, buy, roar, flame, click.
     public class Sfx : MonoBehaviour
     {
         const int RATE = 22050;
         static readonly Dictionary<string, int> MIN_GAP_MS = new Dictionary<string, int>
         {
             ["clang"] = 50, ["block"] = 60, ["parry"] = 60, ["heal"] = 80, ["hit"] = 40, ["slash"] = 60, ["arrow_hit"] = 45,
-            ["death"] = 45, ["pickup"] = 45, ["bow"] = 60, ["zap"] = 50, ["boom"] = 60,
+            ["death"] = 45, ["pickup"] = 45, ["coin"] = 40, ["bow"] = 60, ["zap"] = 50, ["boom"] = 60,
         };
 
         public static Sfx inst;
@@ -132,6 +132,8 @@ namespace Skyfall
             streams["roar"] = Wav("roar", Roar(0.9f));
             streams["flame"] = Wav("flame", Flame(0.5f));
             streams["click"] = Wav("click", Blip(0.03f, 1400f, 1100f));
+            streams["coin"] = Wav("coin", Clink(0.22f));
+            streams["buy"] = Wav("buy", Arpeggio(new[] { 1046.5f, 1318.5f, 1568f }, 0.06f));
         }
 
         /// Inharmonic struck-metal partials with a bright click: sword on armor, shields, parries.
@@ -287,6 +289,19 @@ namespace Skyfall
                     float t = (float)(i - start) / RATE;
                     b[i] += (Mathf.Sin(M.TAU * f * t) + 0.3f * Mathf.Sin(M.TAU * f * 2f * t)) * Mathf.Exp(-t * 6f) * 0.28f;
                 }
+            }
+            return b;
+        }
+
+        /// Bright two-partial metallic ping: a coin.
+        float[] Clink(float dur)
+        {
+            var b = Buf(dur);
+            for (int i = 0; i < b.Length; i++)
+            {
+                float t = (float)i / RATE;
+                float s = Mathf.Sin(M.TAU * 1760f * t) * Mathf.Exp(-t * 22f) + 0.6f * Mathf.Sin(M.TAU * 2637f * Mathf.Min(t, 0.2f) * 1f + 0.5f) * Mathf.Exp(-t * 30f);
+                b[i] = s * Mathf.Min(1f, t * 600f) * 0.3f;
             }
             return b;
         }

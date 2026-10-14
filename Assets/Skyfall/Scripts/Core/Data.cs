@@ -31,8 +31,8 @@ namespace Skyfall
                 desc = "Armored melee battlemage. Longsword sweeps around you; a shield blocks blows.", hp = 100f },
             ["huntress"] = new HeroDef { name = "Blood Huntress", color = C(0.9f, 0.2f, 0.25f), weapon = "blood_lance", defense = "evasion",
                 desc = "Ranged blood mage. Hurls piercing Blood Javelins paid for in her own blood that make ogres bleed; dodges instead of blocking.", hp = 90f },
-            ["pyromancer"] = new HeroDef { name = "Ember Mage", color = C(1.0f, 0.55f, 0.15f), weapon = "ember_bolt", defense = "ward",
-                desc = "Fire caster. Rapidly flings small fireballs that burst and singe; a Flame Ward turns blows aside and burns the attacker.", hp = 85f },
+            ["pyromancer"] = new HeroDef { name = "Ember Mage", color = C(1.0f, 0.55f, 0.15f), weapon = "bow", defense = "ward",
+                desc = "Fire caster. Looses fast fire-tipped arrows from long range; a Flame Ward turns blows aside and burns the attacker.", hp = 85f },
         };
 
         // ------------------------------------------------------------ weapons (auto attacks)
@@ -40,24 +40,88 @@ namespace Skyfall
         public class WeaponDef
         {
             public string name, desc, up;
+            /// Name in the shop and the hero who wields it.
+            public string shopName, hero;
             public Color color;
             public float damage, cooldown, range, arc, knock, hp_cost, orb_bonus, bleed, radius;
         }
 
         public static readonly Dictionary<string, WeaponDef> WEAPONS = new Dictionary<string, WeaponDef>
         {
-            ["sword"] = new WeaponDef { name = "Knight's Longsword", color = C(0.75f, 0.88f, 1.0f),
+            ["sword"] = new WeaponDef { name = "Knight's Longsword", shopName = "Sword & Shield", hero = "knight", color = C(0.75f, 0.88f, 1.0f),
                 damage = 27.5f, cooldown = 0.6f, range = 5.0f, arc = 170f, knock = 5f,
                 up = "+15% damage, faster swings, +6% reach" },
-            ["blood_lance"] = new WeaponDef { name = "Blood Lance", color = C(0.95f, 0.15f, 0.2f),
+            ["blood_lance"] = new WeaponDef { name = "Blood Lance", shopName = "Javelin", hero = "huntress", color = C(0.95f, 0.15f, 0.2f),
                 damage = 27.5f, cooldown = 0.75f, range = 28f, hp_cost = 0.02f, orb_bonus = 0.05f, bleed = 0.35f,
                 desc = "Blood Javelins that pierce through everything and cause bleeding. Costs 2% of current health per throw, no mana. +5% blood orb chance on kills.",
                 up = "+15% damage, faster throws; +1 javelin at Lv 3 and 5" },
-            ["ember_bolt"] = new WeaponDef { name = "Ember Bolt", color = C(1.0f, 0.55f, 0.15f),
-                damage = 20f, cooldown = 0.5f, range = 26f, radius = 1.6f,
-                desc = "Small fireballs that burst on impact and singe ogres.",
-                up = "+15% damage, faster casting; +1 fireball at Lv 3 and 5" },
+            ["bow"] = new WeaponDef { name = "Ember Bow", shopName = "Bow & Arrow", hero = "pyromancer", color = C(1.0f, 0.55f, 0.15f),
+                damage = 22f, cooldown = 0.42f, range = 30f,
+                desc = "Fast fire-tipped arrows from long range that set ogres alight.",
+                up = "+15% damage, faster shots; +1 arrow at Lv 3 and 5; arrows pierce at Lv 5" },
         };
+
+        public static readonly string[] WEAPON_ORDER = { "sword", "blood_lance", "bow" };
+
+        /// Weapon stats at a shop level (1..5), one line each; used by the shop and the stats screen.
+        public static string[] WeaponStats(string id, int lvl)
+        {
+            var w = WEAPONS[id];
+            float dmg = w.damage * (1f + 0.15f * (lvl - 1));
+            float perSec = 1f / (w.cooldown * Mathf.Pow(0.93f, lvl - 1));
+            int shots = 1 + (lvl >= 3 ? 1 : 0) + (lvl >= 5 ? 1 : 0);
+            switch (id)
+            {
+                case "sword":
+                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} swings/s", $"Reach {w.range * (1f + 0.06f * (lvl - 1)):0.0} m",
+                        $"Shield block {Mathf.RoundToInt(100f * (0.12f + 0.05f * (lvl - 1)))}%" + (lvl >= 5 ? "  ·  stagger + reflect" : lvl >= 3 ? "  ·  stagger" : "") };
+                case "blood_lance":
+                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} throws/s", $"{shots} javelin{(shots > 1 ? "s" : "")} per throw  ·  bleeds, 2% health cost",
+                        "Pierces every foe in its path" };
+                default:
+                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} shots/s", $"{shots} arrow{(shots > 1 ? "s" : "")} per volley  ·  range {w.range:0} m  ·  ignites",
+                        lvl >= 5 ? "Arrows pierce one extra foe" : "Lv 5: arrows pierce one extra foe" };
+            }
+        }
+
+        // ------------------------------------------------------------ gold, shop, armor
+
+        /// Gold dropped by each ogre kind; bosses drop piles (mini boss, final boss when no egg).
+        public const int MINI_BOSS_GOLD = 150, FINAL_BOSS_GOLD = 500;
+
+        /// Cost to raise a weapon from level n to n+1 (index n-1).
+        public static readonly int[] WEAPON_COST = { 200, 450, 800, 1300 };
+        /// Cost to buy armor tier n+1 in a slot that is at tier n (index n).
+        public static readonly int[] ARMOR_COST = { 100, 250, 500, 900, 1500 };
+        public const int MAX_ARMOR_TIER = 5;
+
+        public class ArmorDef
+        {
+            public string name, desc;
+        }
+
+        public static readonly string[] ARMOR_ORDER = { "helm", "chest", "gloves", "legs", "boots" };
+        public static readonly Dictionary<string, ArmorDef> ARMOR = new Dictionary<string, ArmorDef>
+        {
+            ["helm"] = new ArmorDef { name = "Helm", desc = "Max health" },
+            ["chest"] = new ArmorDef { name = "Chest", desc = "Armor: flat damage cut per hit" },
+            ["gloves"] = new ArmorDef { name = "Gloves", desc = "Attack speed and critical chance" },
+            ["legs"] = new ArmorDef { name = "Legs", desc = "Defense level: raises the Knight's block, the Huntress's dodge and the Ember Mage's Flame Ward" },
+            ["boots"] = new ArmorDef { name = "Boots", desc = "Movement speed" },
+        };
+
+        /// What an armor slot gives at a tier (0 = none).
+        public static string ArmorBonus(string slot, int tier)
+        {
+            switch (slot)
+            {
+                case "helm": return $"+{6 * tier}% max health";
+                case "chest": return $"+{2 * tier} armor";
+                case "gloves": return $"+{5 * tier}% attack speed, +{2 * tier}% crit";
+                case "legs": return $"+{tier} defense level";
+                default: return $"+{5 * tier}% move speed";
+            }
+        }
 
         // ------------------------------------------------------------ defenses
 
@@ -196,7 +260,7 @@ namespace Skyfall
             ["offense"] = new BucketDef { name = "Offense", color = C(1.0f, 0.6f, 0.25f),
                 stats = new[] { "+8% damage", "+3% critical chance", "+6% attack speed" } },
             ["defense"] = new BucketDef { name = "Defense", color = C(0.5f, 0.75f, 1.0f),
-                stats = new[] { "+5% block / dodge (defense level)", "+1.5 armor", "+2% parry" } },
+                stats = new[] { "+2% block / dodge / ward", "+1.5 armor", "+2% parry" } },
             ["dragon"] = new BucketDef { name = "Dragon", color = C(0.35f, 0.65f, 1.0f),
                 stats = new[] { "+12% dragon damage", "+20% flight time", "-6% dragon cooldowns" } },
             ["utility"] = new BucketDef { name = "Utility", color = C(0.6f, 1.0f, 0.6f),
@@ -212,16 +276,17 @@ namespace Skyfall
         {
             public string name, role = "";
             public float size;
+            public int gold;
         }
 
         public static readonly Dictionary<string, OgreDef> OGRES = new Dictionary<string, OgreDef>
         {
-            ["runt"] = new OgreDef { name = "Ogre Runt", size = 0.7f },
-            ["ogre"] = new OgreDef { name = "Ogre", size = 1.0f },
-            ["brute"] = new OgreDef { name = "Ogre Brute", size = 1.45f },
-            ["hulk"] = new OgreDef { name = "Ogre Hulk", size = 2.0f },
-            ["archer"] = new OgreDef { name = "Ogre Archer", size = 0.95f, role = "archer" },
-            ["shaman"] = new OgreDef { name = "Ogre Shaman", size = 1.1f, role = "shaman" },
+            ["runt"] = new OgreDef { name = "Ogre Runt", size = 0.7f, gold = 1 },
+            ["ogre"] = new OgreDef { name = "Ogre", size = 1.0f, gold = 2 },
+            ["brute"] = new OgreDef { name = "Ogre Brute", size = 1.45f, gold = 4 },
+            ["hulk"] = new OgreDef { name = "Ogre Hulk", size = 2.0f, gold = 8 },
+            ["archer"] = new OgreDef { name = "Ogre Archer", size = 0.95f, role = "archer", gold = 3 },
+            ["shaman"] = new OgreDef { name = "Ogre Shaman", size = 1.1f, role = "shaman", gold = 3 },
         };
 
         /// Global enemy tuning.

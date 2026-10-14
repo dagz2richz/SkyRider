@@ -201,12 +201,60 @@ namespace Skyfall
             return r;
         }
 
-        public static bool Button(string text, int size = 22, float width = 0f)
+        /// A gold button. With enabled = false it is greyed out and never reports a click.
+        public static bool Button(string text, int size = 22, float width = 0f, bool enabled = true)
         {
             var st = ButtonStyle(size);
+            var prevEnabled = GUI.enabled;
+            var prevColor = GUI.color;
+            if (!enabled)
+            {
+                GUI.enabled = false;
+                GUI.color = new Color(0.6f, 0.6f, 0.6f, 0.75f);
+            }
             bool clicked = width > 0f ? GUILayout.Button(text, st, GUILayout.Width(width)) : GUILayout.Button(text, st);
+            GUI.enabled = prevEnabled;
+            GUI.color = prevColor;
+            clicked &= enabled;
             if (clicked) Sfx.Play("click", -4f, 0f);
             return clicked;
+        }
+
+        /// A row of small squares showing a level or tier (filled / total).
+        public static void Pips(int filled, int total, Color c)
+        {
+            var r = GUILayoutUtility.GetRect(total * 20f, 16f, GUILayout.Width(total * 20f), GUILayout.Height(16f));
+            for (int i = 0; i < total; i++)
+            {
+                var q = new Rect(r.x + i * 20f, r.y + 1f, 15f, 14f);
+                if (i < filled) Panel(q, c, M.Lighten(c, 0.4f), 3, 1);
+                else Panel(q, new Color(0.1f, 0.08f, 0.07f, 0.9f), M.Darken(GOLD, 0.5f), 3, 1);
+            }
+        }
+
+        static Texture2D coinTex;
+
+        /// A small gold coin icon (a round texture made once).
+        public static void CoinIcon(Rect r)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            if (!coinTex)
+            {
+                const int N = 48;
+                coinTex = new Texture2D(N, N, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear, name = "Coin" };
+                var px = new Color[N * N];
+                for (int y = 0; y < N; y++)
+                    for (int x = 0; x < N; x++)
+                    {
+                        float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(N / 2f, N / 2f)) / (N / 2f);
+                        var c = d > 0.78f ? new Color(0.62f, 0.42f, 0.06f) : (d > 0.6f ? new Color(1f, 0.88f, 0.4f) : new Color(1f, 0.74f, 0.16f));
+                        c.a = Mathf.Clamp01((1f - d) * N * 0.5f);
+                        px[y * N + x] = c;
+                    }
+                coinTex.SetPixels(px);
+                coinTex.Apply();
+            }
+            GUI.DrawTexture(r, coinTex);
         }
 
         public static void Space(float px) => GUILayout.Space(px);
