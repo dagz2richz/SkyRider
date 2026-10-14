@@ -7,8 +7,10 @@ namespace Skyfall
     /// Balance lives almost entirely here.
     public static class Data
     {
-        public const float RUN_LENGTH = 600f;
+        public const float RUN_LENGTH = 480f;
         public const float WAVE_LENGTH = 120f;
+        /// The mini boss arrives at 4:00; the final boss at 0:00 (RUN_LENGTH) on the floating island.
+        public const float MINI_BOSS_TIME = 240f;
         public const int MAX_LEVEL = 5;
 
         static Color C(float r, float g, float b, float a = 1f) => new Color(r, g, b, a);
@@ -227,13 +229,12 @@ namespace Skyfall
         public const float ENEMY_STAT_MULT = 1.3f;
         public const float BOSS_STAT_MULT = 1.5f;
 
-        /// Spawn weights per wave, as (kind, weight) pairs in a fixed order.
+        /// Spawn weights per wave (four 2-minute waves, the hardest mix last), as (kind, weight) pairs in a fixed order.
         public static readonly (string kind, int weight)[][] WAVE_WEIGHTS =
         {
             new[] { ("runt", 65), ("ogre", 30), ("archer", 5) },
             new[] { ("runt", 45), ("ogre", 35), ("brute", 8), ("archer", 10), ("shaman", 2) },
             new[] { ("runt", 35), ("ogre", 30), ("brute", 15), ("hulk", 4), ("archer", 12), ("shaman", 4) },
-            new[] { ("runt", 25), ("ogre", 30), ("brute", 20), ("hulk", 8), ("archer", 12), ("shaman", 5) },
             new[] { ("runt", 20), ("ogre", 27), ("brute", 23), ("hulk", 12), ("archer", 12), ("shaman", 6) },
         };
 
@@ -241,7 +242,6 @@ namespace Skyfall
         {
             "The Burning Fields",
             "Night of Clubs",
-            "The Hungry March",
             "Thunder in the Hills",
             "The Ashen Dusk",
         };
@@ -254,17 +254,13 @@ namespace Skyfall
             public Color skin;
         }
 
+        /// Index 0 is the mini boss (4:00); index 1 is the final boss on the floating island (0:00).
+        public const int MINI_BOSS = 0, FINAL_BOSS = 1;
         public static readonly BossDef[] BOSSES =
         {
-            new BossDef { name = "Grimgar, the Ogre Warlord", size = 3.6f, hp = 1800f, speed = 3.4f, damage = 22f,
-                abilities = new[] { "slam", "charge" }, skin = C(0.4f, 0.48f, 0.3f) },
-            new BossDef { name = "Mother Gruul", size = 4.0f, hp = 3200f, speed = 3.0f, damage = 20f,
-                abilities = new[] { "boulders", "summon", "slam" }, skin = C(0.5f, 0.42f, 0.32f) },
-            new BossDef { name = "Krag the Stonehide", size = 4.6f, hp = 5200f, speed = 3.2f, damage = 28f,
+            new BossDef { name = "Krag the Stonehide", size = 4.4f, hp = 3600f, speed = 3.2f, damage = 24f,
                 abilities = new[] { "charge", "slam", "boulders" }, skin = C(0.42f, 0.42f, 0.45f) },
-            new BossDef { name = "The Twin-Club Butcher", size = 5.0f, hp = 7000f, speed = 3.8f, damage = 26f,
-                abilities = new[] { "charge", "boulders", "slam", "summon" }, skin = C(0.55f, 0.32f, 0.28f) },
-            new BossDef { name = "Gorrak, the Mountain King", size = 6.5f, hp = 14000f, speed = 3.0f, damage = 34f,
+            new BossDef { name = "Gorrak, the Mountain King", size = 6.5f, hp = 12000f, speed = 3.0f, damage = 34f,
                 abilities = new[] { "slam", "boulders", "charge", "summon", "boulders" }, skin = C(0.32f, 0.38f, 0.28f) },
         };
     }

@@ -74,7 +74,7 @@ namespace Skyfall
             if (pickHero == "")
             {
                 pickHero = Data.HEROES.ContainsKey(Save.last_hero) ? Save.last_hero : "knight";
-                pickDragon = Data.DRAGONS.ContainsKey(Save.last_dragon) ? Save.last_dragon : "blue";
+                pickDragon = Data.DRAGONS.ContainsKey(Save.last_dragon) && Save.IsDragonUnlocked(Save.last_dragon) ? Save.last_dragon : "blue";
             }
             // Preview the picks on the menu backdrop.
             game.player.SetupLoadout(game.player.spellId, game.player.passiveId, pickHero, pickDragon);
@@ -248,12 +248,12 @@ namespace Skyfall
             // Timer + wave at top center.
             float left = Mathf.Max(0f, Data.RUN_LENGTH - game.timeElapsed);
             var center = Text(44, TextAnchor.UpperCenter, false, true);
-            if (left <= 0f) DrawText(new Rect(W / 2 - 300, 26, 600, 52), "DUSK", center, new Color(1f, 0.45f, 0.3f), 8);
+            if (game.finalStarted) DrawText(new Rect(W / 2 - 300, 26, 600, 52), "FINAL BATTLE", center, new Color(1f, 0.45f, 0.3f), 8);
             else DrawText(new Rect(W / 2 - 300, 26, 600, 52), Clock(left), center, PARCHMENT, 8);
-            float nextBoss = Data.WAVE_LENGTH - game.timeElapsed % Data.WAVE_LENGTH;
-            string waveText = game.bossesSpawned >= Data.BOSSES.Length
-                ? $"Wave {game.wave} / 5 · Final stand"
-                : $"Wave {game.wave} / 5 · Boss in {(int)nextBoss} s";
+            string waveText;
+            if (game.finalStarted) waveText = "Defeat the Mountain King";
+            else if (game.bossesSpawned == 0) waveText = $"Wave {game.wave} / {Data.WAVE_NAMES.Length} · Boss in {Mathf.CeilToInt(Data.MINI_BOSS_TIME - game.timeElapsed)} s";
+            else waveText = $"Wave {game.wave} / {Data.WAVE_NAMES.Length} · Mountain King in {Mathf.CeilToInt(left)} s";
             DrawText(new Rect(W / 2 - 300, 80, 600, 24), waveText, Text(18, TextAnchor.UpperCenter), GOLD);
             if (bossName != "")
             {
@@ -290,6 +290,102 @@ namespace Skyfall
             by -= 5 + 22; DrawText(new Rect(bx, by, bw, 22), $"{Mathf.CeilToInt(p.hp)} / {(int)p.maxHp}", Text(18), PARCHMENT);
 
             DrawSlots();
+            DrawIslandMarker();
+        }
+
+        static Texture2D arrowTex;
+
+        static Texture2D ArrowTex
+        {
+            get
+            {
+                if (arrowTex) return arrowTex;
+                const int N = 64;
+                arrowTex = new Texture2D(N, N, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear, name = "Arrow" };
+                var px = new Color[N * N];
+                for (int y = 0; y < N; y++)
+                    for (int x = 0; x < N; x++)
+                    {
+                        // Triangle pointing right (+x): tip at the right edge, base on the left.
+                        float u = (x + 0.5f) / N, v = (y + 0.5f) / N - 0.5f;
+                        float half = (1f - u) * 0.5f;
+                        float a = Mathf.Clamp01((half - Mathf.Abs(v)) * N * 0.5f) * (u > 0.06f ? 1f : 0f);
+                        px[y * N + x] = new Color(1, 1, 1, a);
+                    }
+                arrowTex.SetPixels(px);
+                arrowTex.Apply();
+                return arrowTex;
+            }
+        }
+
+        /// Screen position (virtual canvas units) and visibility of the island marker; used by the HUD and the tests.
+        public bool IslandMarker(out Vector2 pos, out bool onScreen, out float meters, out float angleDeg)
+        {
+            pos = Vector2.zero;
+            onScreen = false;
+            meters = 0f;
+            angleDeg = 0f;
+            var target = game.IslandMarkerPos;
+            var cam = game.player ? game.player.cam : null;
+            if (M.IsInf(target) || cam == null || game.PlayerOnBossIsland()) return false;
+            var flat = game.terrain.BossIslandCenter - game.player.Pos;
+            flat.y = 0;
+            meters = flat.magnitude;
+            float s = Scale;
+            var sp = cam.WorldToScreenPoint(target);
+            var c = new Vector2(W / 2f, H / 2f);
+            var p = new Vector2(sp.x / s, (Screen.height - sp.y) / s);
+            const float margin = 60f;
+            bool inside = sp.z > 0f && p.x > margin && p.x < W - margin && p.y > margin && p.y < H - margin;
+            if (inside)
+            {
+                pos = p;
+                onScreen = true;
+                return true;
+            }
+            // Behind the camera the projection is mirrored; flip it so the arrow points the right way.
+            var dir = p - c;
+            if (sp.z <= 0f) dir = -dir;
+            if (dir.sqrMagnitude < 1f) dir = Vector2.down;
+            dir.Normalize();
+            float kx = dir.x != 0f ? (W / 2f - margin) / Mathf.Abs(dir.x) : float.MaxValue;
+            float ky = dir.y != 0f ? (H / 2f - margin - 20f) / Mathf.Abs(dir.y) : float.MaxValue;
+            pos = c + dir * Mathf.Min(kx, ky);
+            angleDeg = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+            return true;
+        }
+
+        /// From 0:00 on: a diamond with the distance over the island when it is on screen, else an arrow at the screen edge.
+        void DrawIslandMarker()
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            if (!IslandMarker(out var pos, out bool onScreen, out float meters, out float ang)) return;
+            float pulse = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * 4f);
+            var col = new Color(1f, 0.82f, 0.4f);
+            string label = $"{Mathf.RoundToInt(meters)} m";
+            if (onScreen)
+            {
+                DrawText(new Rect(pos.x - 150, pos.y - 56, 300, 22), "Mountain King's Island", Text(16, TextAnchor.UpperCenter, false, true), col, 6, pulse);
+                DrawText(new Rect(pos.x - 150, pos.y - 34, 300, 24), label, Text(20, TextAnchor.UpperCenter, false, true), PARCHMENT, 6, pulse);
+                var m = GUI.matrix;
+                GUIUtility.RotateAroundPivot(90f, pos);
+                var pc = GUI.color;
+                GUI.color = new Color(col.r, col.g, col.b, pulse);
+                GUI.DrawTexture(new Rect(pos.x - 14, pos.y - 14, 28, 28), ArrowTex);
+                GUI.color = pc;
+                GUI.matrix = m;
+            }
+            else
+            {
+                var m = GUI.matrix;
+                GUIUtility.RotateAroundPivot(ang, pos);
+                var pc = GUI.color;
+                GUI.color = new Color(col.r, col.g, col.b, pulse);
+                GUI.DrawTexture(new Rect(pos.x - 26, pos.y - 26, 52, 52), ArrowTex);
+                GUI.color = pc;
+                GUI.matrix = m;
+                DrawText(new Rect(pos.x - 60, pos.y + 24, 120, 24), label, Text(18, TextAnchor.UpperCenter, false, true), col, 6, pulse);
+            }
         }
 
         void DrawSlots()
@@ -416,7 +512,7 @@ namespace Skyfall
                 CenterRow(() =>
                 {
                     GUILayout.BeginVertical(PanelStyle(), GUILayout.Width(300));
-                    Label("The ogre clans pour out of the hills.\nYou are the last battlemage of the Dragonguard.\nSurvive ten minutes of the long night.",
+                    Label("The ogre clans pour out of the hills.\nYou are the last battlemage of the Dragonguard.\nSurvive eight minutes of the long night, then face the Mountain King.",
                         16, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperLeft, 270, true);
                     Space(14);
                     if (Button("Play", 28)) ShowHeroSelect();
@@ -525,7 +621,16 @@ namespace Skyfall
                         var d = Data.DRAGONS[id];
                         var lines = new List<string> { $"Focus:  {d.focus}", $"Signature (E):  {d.sig}", d.sig_desc };
                         if (d.damage > 1f) lines.Insert(1, $"Damage:  {d.damage:0.00}x");
-                        if (SelectCard(d.name, d.desc, lines, M.Lighten(d.body, 0.25f), id == pickDragon, dragonW))
+                        bool owned = Save.IsDragonUnlocked(id);
+                        if (!owned)
+                        {
+                            // Locked: dimmed, with the hint, and not selectable.
+                            var prev = GUI.color;
+                            GUI.color = new Color(1f, 1f, 1f, 0.45f);
+                            SelectCard(d.name, "LOCKED — defeat the Mountain King to find its egg", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW);
+                            GUI.color = prev;
+                        }
+                        else if (SelectCard(d.name, d.desc, lines, M.Lighten(d.body, 0.25f), id == pickDragon, dragonW))
                         {
                             pickDragon = id;
                             ShowHeroSelect();
@@ -834,6 +939,12 @@ namespace Skyfall
                 Label(endWon ? "VICTORY" : "YOU HAVE FALLEN", 72, endWon ? GOLD : new Color(0.9f, 0.25f, 0.2f), 12, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
                 Label(endWon ? "The Mountain King is slain. Dawn returns to the kingdom." : "Your dragon cries out as the clans close in.", 22, PARCHMENT, 6, TextAnchor.UpperCenter);
+                if (endWon && game.hatchedDragon != "" && Data.DRAGONS.ContainsKey(game.hatchedDragon))
+                {
+                    var hd = Data.DRAGONS[game.hatchedDragon];
+                    Space(8);
+                    Label($"The egg hatches: the {hd.name} is yours!", 26, M.Lighten(hd.body, 0.35f), 8, TextAnchor.UpperCenter, 0, false, true);
+                }
                 Space(18);
                 Label($"Survived {Clock(game.timeElapsed)}   ·   Level {p.level}   ·   {game.kills} ogres slain", 24, PARCHMENT, 6, TextAnchor.UpperCenter);
                 Space(18);
@@ -910,11 +1021,11 @@ namespace Skyfall
                     StatColumn("This Run", () =>
                     {
                         Kv("Time", Clock(game.timeElapsed), 16);
-                        Kv("Wave", $"{game.wave} / 5", 16);
+                        Kv("Wave", game.finalStarted ? "Final battle" : $"{game.wave} / {Data.WAVE_NAMES.Length}", 16);
                         Kv("Ogres slain", game.kills.ToString(), 16);
                         Kv("Damage dealt", ((int)game.damageDealt).ToString(), 16);
                         Kv("Biggest hit", ((int)game.biggestHit).ToString(), 16);
-                        Kv("Bosses slain", (game.bossesSpawned - game.bosses.Count).ToString(), 16);
+                        Kv("Bosses slain", game.bossesSlain.ToString(), 16);
                         Kv("Score so far", Save.ScoreFor(game.timeElapsed, game.kills, p.level, false).ToString(), 16);
                         Kv("Best score", Save.best_score.ToString(), 16);
                     });

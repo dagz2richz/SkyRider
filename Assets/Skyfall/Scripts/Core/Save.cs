@@ -37,9 +37,26 @@ namespace Skyfall
             public string dragon = "blue";
             public float game_speed = 1f;
             public float mouse_sens = 1f;
+            public List<string> unlocked_dragons = new List<string> { "blue" };
         }
 
-        static string PathName => System.IO.Path.Combine(Application.persistentDataPath, "skyfall_save.json");
+        static string fileName;
+
+        /// skyfall_save.json, or the name given with -skyfallSaveFile (so automated tests never touch the real save).
+        static string PathName
+        {
+            get
+            {
+                if (fileName == null)
+                {
+                    fileName = "skyfall_save.json";
+                    var args = Environment.GetCommandLineArgs();
+                    for (int i = 0; i < args.Length - 1; i++)
+                        if (args[i] == "-skyfallSaveFile") fileName = args[i + 1];
+                }
+                return System.IO.Path.Combine(Application.persistentDataPath, fileName);
+            }
+        }
 
         static bool loaded;
         public static float volume = 0.8f;
@@ -52,6 +69,19 @@ namespace Skyfall
         public static float game_speed = 1f;
         public static float mouse_sens = 1f;
         public static List<RunRecord> history = new List<RunRecord>();   // recent runs, newest first
+        /// Dragons the player owns. Blue is always unlocked; the others come from the Mountain King's eggs.
+        public static List<string> unlocked_dragons = new List<string> { "blue" };
+
+        public static bool IsDragonUnlocked(string id) => id == "blue" || unlocked_dragons.Contains(id);
+
+        /// Unlocks a dragon and saves. Returns true if it was new.
+        public static bool UnlockDragon(string id)
+        {
+            if (IsDragonUnlocked(id)) return false;
+            unlocked_dragons.Add(id);
+            Write();
+            return true;
+        }
 
         public static void LoadAll()
         {
@@ -75,6 +105,9 @@ namespace Skyfall
                 last_passive = f.passive;
                 last_hero = f.hero;
                 last_dragon = f.dragon;
+                unlocked_dragons = f.unlocked_dragons != null && f.unlocked_dragons.Count > 0 ? new List<string>(f.unlocked_dragons) : new List<string> { "blue" };
+                if (!unlocked_dragons.Contains("blue")) unlocked_dragons.Insert(0, "blue");
+                if (!IsDragonUnlocked(last_dragon)) last_dragon = "blue";
                 game_speed = f.game_speed <= 0f ? 1f : f.game_speed;
                 mouse_sens = f.mouse_sens <= 0f ? 1f : f.mouse_sens;
             }
@@ -91,7 +124,7 @@ namespace Skyfall
                 volume = volume, best_score = best_score, best_time = best_time, best_kills = best_kills,
                 best_level = best_level, runs = runs, wins = wins, last_score = last_score, history = history,
                 spell = last_spell, passive = last_passive, hero = last_hero, dragon = last_dragon,
-                game_speed = game_speed, mouse_sens = mouse_sens,
+                game_speed = game_speed, mouse_sens = mouse_sens, unlocked_dragons = unlocked_dragons,
             };
             try
             {

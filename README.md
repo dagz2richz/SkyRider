@@ -3,7 +3,7 @@
 A medieval battlemage survivors roguelike with a dragon you can ride, built in **Unity 6 (6000.6.5f1, URP)**.
 Ported from the Godot game *Skyfall: Dragon Riders*.
 
-Survive ten minutes against growing waves of ogres. A boss arrives every two minutes, and the Mountain King comes at 10:00.
+Survive eight minutes against growing waves of ogres. A mini boss arrives at 4:00; at 0:00 the field clears and the Mountain King waits on a floating island, guarding a dragon egg.
 Everything attacks on its own: you move, fly your dragon and pick upgrades.
 
 ## Play

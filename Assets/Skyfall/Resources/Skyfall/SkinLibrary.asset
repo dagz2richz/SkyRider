@@ -15,7 +15,7 @@ MonoBehaviour:
   knight: {fileID: 1319517528997712, guid: 1543549dcdf638d488bd40cb68dd9b8e, type: 3}
   pyromancer: {fileID: 1248815240492774, guid: ccd8c3b89aa02e943a08ab9238a8a70c, type: 3}
   huntress: {fileID: 0}
-  dragonBlue: {fileID: 971994670, guid: 31a77d5e57bdce243a1c38bc0ba2808f, type: 3}
+  dragonBlue: {fileID: 194904, guid: 445a5c29e7f715947b713a753f242af0, type: 3}
   dragonRed: {fileID: 101568, guid: 59c100dd669d88f46b60555886d4dae7, type: 3}
   dragonBlack: {fileID: 116688, guid: 09ade59177310454ba3c93ae4b7dc125, type: 3}
   ogres:

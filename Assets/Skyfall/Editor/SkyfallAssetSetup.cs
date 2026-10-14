@@ -252,8 +252,8 @@ namespace Skyfall.EditorTools
             lib.pyromancer = Load<GameObject>("Assets/WizardPolyArt/Prefabs/PolyArtWizardStandardMat.prefab");
             lib.huntress = null;
 
-            // Dragons: Azure Wyrm = Soul Eater (blue), Crimson Drake = Terror Bringer (red), Night Wyrm = Usurper (black).
-            lib.dragonBlue = Load<GameObject>(Dragons + "DragonSoulEaterPBR/DragonSoulEaterBluePBR.prefab");
+            // Dragons: Azure Wyrm = Usurper (blue), Crimson Drake = Terror Bringer (red), Night Wyrm = Usurper (black).
+            lib.dragonBlue = Load<GameObject>(Dragons + "DragonUsurper/Blue.prefab");
             lib.dragonRed = Load<GameObject>(Dragons + "DragonTerrorBringer/Red.prefab");
             lib.dragonBlack = Load<GameObject>(Dragons + "DragonUsurper/Black.prefab");
 

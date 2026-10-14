@@ -137,8 +137,12 @@ namespace Skyfall.EditorTools
                     stage = 1;
                     frame = 0;
                     game.StartRun(lo[2], lo[3], lo[0], lo[1]);
-                    if (Arg("-skyfallIslandView", "") == "") game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
+                    if (Arg("-skyfallIslandView", "") == "" && Arg("-skyfallFinale", "") == "") game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
                     game.player.hp = game.player.maxHp = 5000f;   // keep the hero alive for the whole test
+                }
+                else if (stage == 1 && Arg("-skyfallFinale", "") != "")
+                {
+                    Finale(game);
                 }
                 else if (stage == 1 && Arg("-skyfallIslandView", "") != "")
                 {
@@ -278,6 +282,133 @@ namespace Skyfall.EditorTools
                 pl.camYaw += 2.5f; pl.camDistTarget = 26f; pl.camPitch = 0.55f;
             }
             else if (frame == 330) { Snap("islands_5_top_wide"); Finish(0); }
+        }
+
+        /// -skyfallFinale 1 (use with -skyfallSaveFile test_save.json): mini boss at 4:00, the 0:00 clear-out, the island boss,
+        /// the egg drop and pickup, and the victory. Never touches the real save when a separate save file is given.
+        static void Finale(Game game)
+        {
+            var pl = game.player;
+            var tr = game.terrain;
+            pl.hp = pl.maxHp = 99999f;
+            var bc = tr.BossIslandCenter;
+            void LookAt(Vector3 stand, Vector3 look, float dist, float pitch)
+            {
+                pl.Pos = stand;
+                pl.velocity = Vector3.zero;
+                var d = look - stand; d.y = 0;
+                pl.camYaw = Mathf.Atan2(-d.x, -d.z);
+                pl.camDistTarget = dist;
+                pl.camPitch = pitch;
+            }
+            void Marker(string what)
+            {
+                bool ok = game.hud.IslandMarker(out var pos, out bool on, out float m, out float ang);
+                Debug.Log($"SKYFALL_TEST marker {what}: visible={ok} pos={pos} onScreen={on} meters={m:0} angle={ang:0}");
+            }
+            if (frame == 1)
+            {
+                game.timeElapsed = 235f;
+                Debug.Log($"SKYFALL_TEST save before: unlocked=[{string.Join(",", Save.unlocked_dragons)}] runLength={Data.RUN_LENGTH}");
+            }
+            if (frame < 400) pl.Pos = new Vector3(pl.Pos.x, tr.Height(pl.Pos.x, pl.Pos.z), pl.Pos.z);
+            if (frame == 420)
+            {
+                Log("mini", game);
+                foreach (var b in game.bosses) Debug.Log($"SKYFALL_TEST mini boss {b.displayName} hp={b.hp:0} pos={b.Pos} dist={Vector3.Distance(b.Pos, pl.Pos):0}");
+                pl.camYaw += 0.5f; pl.camDistTarget = 16f;
+                Snap("finale_1_mini");
+                game.timeElapsed = 478.5f;
+            }
+            if (frame == 520)
+            {
+                Log("finale", game);
+                Debug.Log($"SKYFALL_TEST finalStarted={game.finalStarted} foes={game.enemies.Count} kills={game.kills} bossName={(game.bosses.Count > 0 ? game.bosses[0].displayName : "none")}");
+                if (game.bosses.Count > 0)
+                {
+                    var b = game.bosses[0];
+                    Debug.Log($"SKYFALL_TEST final boss pos={b.Pos} islandCenter={bc} horiz={Vector2.Distance(new Vector2(b.Pos.x, b.Pos.z), new Vector2(bc.x, bc.z)):0.0} islandBound={b.islandBound}");
+                }
+                Marker("from spawn");
+                var toward = new Vector3(bc.x, 0, bc.z).normalized;
+                var s = bc - toward * 65f; s.y = tr.Height(s.x, s.z);
+                LookAt(s, bc, 14f, 0.1f);
+            }
+            if (frame == 560) { Marker("ground facing island"); Snap("finale_2_beacon"); }
+            if (frame == 570)
+            {
+                var toward = new Vector3(bc.x, 0, bc.z).normalized;
+                var s = bc - toward * 65f; s.y = tr.Height(s.x, s.z);
+                LookAt(s, bc - toward * 200f, 14f, 0.1f);   // turn away: the arrow should flip to the edge
+            }
+            if (frame == 590) { Marker("ground facing away"); }
+            if (frame == 600)
+            {
+                // Stranded below the island: the boss must stay on it.
+                var side = new Vector3(-bc.z, 0, bc.x).normalized;
+                var s = bc + side * (tr.BossIslandRadius + 14f); s.y = tr.Height(s.x, s.z);
+                LookAt(s, bc, 14f, 0.15f);
+                if (game.bosses.Count > 0)
+                {
+                    // Edge test: put the boss near the rim facing the stranded player and shove him outward hard.
+                    var b = game.bosses[0];
+                    var outDir = new Vector3(s.x - bc.x, 0, s.z - bc.z).normalized;
+                    b.Pos = bc + outDir * 15f;
+                    game.DamageEnemy(b, 1f, outDir, 4000f);
+                }
+            }
+            if ((frame == 610 || frame == 700) && game.bosses.Count > 0)
+            {
+                var b = game.bosses[0];
+                Debug.Log($"SKYFALL_TEST stranded: boss horiz={Vector2.Distance(new Vector2(b.Pos.x, b.Pos.z), new Vector2(bc.x, bc.z)):0.0} limit~{tr.BossIslandRadius - 3f:0.0} y={b.Pos.y:0.0} top={bc.y:0.0}");
+                Snap("finale_3_edge");
+            }
+            if (frame == 710)
+            {
+                var toward = new Vector3(bc.x, 0, bc.z).normalized;
+                LookAt(bc + new Vector3(-toward.x, 0, -toward.z) * (tr.BossIslandRadius * 0.6f) + Vector3.up, bc, 22f, 0.3f);
+            }
+            if (frame > 710 && frame < 900 && game.bosses.Count > 0)
+            {
+                var b = game.bosses[0];
+                if (frame % 30 == 0)
+                    Debug.Log($"SKYFALL_TEST on island: boss horiz={Vector2.Distance(new Vector2(b.Pos.x, b.Pos.z), new Vector2(bc.x, bc.z)):0.0} onIsland={game.PlayerOnBossIsland()} foes={game.enemies.Count}");
+                if (frame % 30 == 0) Marker("player on island");
+                if (frame == 800) Snap("finale_4_fight");
+                if (frame == 840)
+                {
+                    b.hp = 1f;
+                    game.DamageEnemy(b, 5f);
+                    Debug.Log("SKYFALL_TEST boss killed");
+                    var e0 = Object.FindFirstObjectByType<DragonEgg>();
+                    if (e0) e0.hold = true;
+                }
+            }
+            if (frame >= 841)
+            {
+                var egg = Object.FindFirstObjectByType<DragonEgg>();
+                if (egg != null && frame < 905 && frame % 10 == 2 && frame != 902)
+                {
+                    var rend = egg.GetComponentInChildren<MeshRenderer>();
+                    var mc = rend.sharedMaterial.GetVector("_BaseColor");
+                    var want = Data.DRAGONS[egg.dragonId].body;
+                    Debug.Log($"SKYFALL_TEST egg for {egg.dragonId} at {egg.transform.position} shellColor(lin)={mc} wantLin={FX.Lin(want)}");
+                }
+                if (egg != null && frame == 902) egg.hold = false;
+                if (frame == 900 && egg != null)
+                {
+                    var ct = pl.cam.transform;
+                    ct.position = egg.transform.position + new Vector3(2.2f, 0.4f, 4.5f);
+                    ct.LookAt(egg.transform.position);
+                    Snap("finale_5_egg");
+                }
+                if (game.ended || frame > 1400)
+                {
+                    Debug.Log($"SKYFALL_TEST victory ended={game.ended} hatched={game.hatchedDragon} unlocked=[{string.Join(",", Save.unlocked_dragons)}] wins={Save.wins} bossesSlain={game.bossesSlain}");
+                    Debug.Log($"SKYFALL_TEST save file: {System.IO.File.ReadAllText(System.IO.Path.Combine(Application.persistentDataPath, Arg("-skyfallSaveFile", "skyfall_save.json"))).Replace("\n", " ")}");
+                    Finish(0);
+                }
+            }
         }
 
         static string tag = "run";

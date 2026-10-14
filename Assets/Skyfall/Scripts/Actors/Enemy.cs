@@ -53,6 +53,11 @@ namespace Skyfall
         float stateT;
         Vector3 chargeDir;
 
+        /// The final boss never leaves the floating island: movement and knockback are clamped to its footprint.
+        public bool islandBound;
+        WorldTerrain.Island island;
+        const float EDGE_MARGIN = 3f;
+
         public static Enemy Make(Game g, string k, float hpMult, float dmgMult)
         {
             var e = new GameObject("Ogre_" + k).AddComponent<Enemy>();
@@ -111,7 +116,7 @@ namespace Skyfall
             e.radius = 0.55f * e.size;
             e.abilities = d.abilities;
             e.isBoss = true;
-            e.xpValue = 60 + idx * 30;
+            e.xpValue = 60 + idx * 60;
             e.abilityCd = 3f;
             if (!e.TrySkin(true, idx)) e.BuildOgre(d.skin, true, true);
             return e;
@@ -132,8 +137,8 @@ namespace Skyfall
             bool isOgreModel = false;
             if (boss)
             {
-                if (bossIdx == 2 && lib.golem) prefab = lib.golem;
-                else if (bossIdx == 4 && lib.golemKing) prefab = lib.golemKing;
+                if (bossIdx == Data.MINI_BOSS && lib.golem) prefab = lib.golem;
+                else if (bossIdx == Data.FINAL_BOSS && lib.golemKing) prefab = lib.golemKing;
                 else { prefab = Skins.Pick(lib.bossOgres) ?? Skins.Pick(lib.ogres); isOgreModel = true; }
             }
             else if (role == "archer") prefab = lib.archer;
@@ -455,7 +460,20 @@ namespace Skyfall
 
             var p = Pos + (move + knock) * delta;
             knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
-            p.y = terrain.SurfaceHeight(p.x, p.z, Pos.y);
+            if (islandBound && island != null)
+            {
+                bool clamped = ClampToIsland(ref p);
+                if (clamped && state == "charge")
+                {
+                    // The charge ends at the edge with a crash.
+                    state = "";
+                    FX.Shockwave(p + new Vector3(0, 0.3f, 0), 7f, new Color(0.8f, 0.6f, 0.4f, 0.8f), 0.35f);
+                    FX.Burst(p + new Vector3(0, 0.5f, 0), new Color(0.5f, 0.4f, 0.3f), 14, 6f, 0.5f);
+                    game.Shake(0.3f);
+                }
+                p.y = terrain.SurfaceHeight(p.x, p.z, island.topY);
+            }
+            else p.y = terrain.SurfaceHeight(p.x, p.z, Pos.y);
             Pos = p;
             if (dist > 0.1f && state != "charge" && frozenT <= 0f)
             {
@@ -527,14 +545,61 @@ namespace Skyfall
                     return chargeDir * spd * 7f;
             }
             abilityCd -= delta;
+            bool stranded = islandBound && !PlayerOnIsland(player);
             if (abilityCd <= 0f && dist < 45f)
             {
                 string ab = abilities[abilityI % abilities.Length];
                 abilityI++;
+                // With the player below the island only ranged attacks and summons make sense.
+                if (stranded && ab != "boulders" && ab != "summon") ab = "boulders";
                 abilityCd = M.RandRange(3.5f, 5f);
                 UseAbility(ab, player, dir);
             }
+            // If the player is off the island the boss waits at the edge, facing them.
+            if (stranded && !IslandRoom(Pos, dir)) return Vector3.zero;
             return dir * spd;
+        }
+
+        /// Pins this boss to the floating island (final battle).
+        public void BindToIsland(WorldTerrain.Island isl)
+        {
+            island = isl;
+            islandBound = isl != null;
+        }
+
+        /// True while the player stands on (or hovers above) the boss island.
+        public bool PlayerOnIsland(Player player) =>
+            island != null && island.Contains(player.Pos.x, player.Pos.z) && player.Pos.y > island.topY - 2f;
+
+        /// Largest distance from the island center this boss may walk to in direction angle a.
+        float EdgeLimit(float a) => Mathf.Max(2f, island.EdgeRadius(a) - EDGE_MARGIN);
+
+        /// Clamps p (x/z) to the island footprint. Returns true if it had to be pulled back.
+        bool ClampToIsland(ref Vector3 p)
+        {
+            var c = island.center;
+            float dx = p.x - c.x, dz = p.z - c.z;
+            float d = Mathf.Sqrt(dx * dx + dz * dz);
+            float lim = EdgeLimit(Mathf.Atan2(dz, dx));
+            if (d <= lim) return false;
+            p.x = c.x + dx / d * lim;
+            p.z = c.z + dz / d * lim;
+            return true;
+        }
+
+        /// Whether there is still room to step from `from` in direction `dir` without hitting the island rim.
+        bool IslandRoom(Vector3 from, Vector3 dir)
+        {
+            var q = from + dir * 1.2f;
+            float dx = q.x - island.center.x, dz = q.z - island.center.z;
+            return Mathf.Sqrt(dx * dx + dz * dz) < EdgeLimit(Mathf.Atan2(dz, dx)) - 0.2f;
+        }
+
+        /// Pulls a point back inside the island footprint (for adds summoned by the island boss).
+        public Vector3 InsideIsland(Vector3 want)
+        {
+            if (island != null) ClampToIsland(ref want);
+            return want;
         }
 
         void UseAbility(string ab, Player player, Vector3 dir)
@@ -580,7 +645,9 @@ namespace Skyfall
                     for (int i = 0; i < 6; i++)
                     {
                         float a = M.TAU * i / 6f;
-                        game.SpawnEnemy(i % 3 == 0 ? "brute" : "ogre", Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * (radius + 4f));
+                        var sp = Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * (radius + 4f);
+                        if (islandBound) game.SpawnEnemy(i % 3 == 0 ? "brute" : "ogre", InsideIsland(sp), island.topY);
+                        else game.SpawnEnemy(i % 3 == 0 ? "brute" : "ogre", sp);
                     }
                     break;
             }
@@ -624,7 +691,7 @@ namespace Skyfall
             b.damage = damage;
             var d = to - from;
             b.velocity = new Vector3(d.x / flightTime, (d.y + 0.5f * G * flightTime * flightTime) / flightTime, d.z / flightTime);
-            FX.Telegraph(new Vector3(to.x, g.terrain.Height(to.x, to.z), to.z), 2.6f, flightTime, new Color(1f, 0.3f, 0.1f, 0.35f));
+            FX.Telegraph(new Vector3(to.x, g.terrain.SurfaceHeight(to.x, to.z, to.y), to.z), 2.6f, flightTime, new Color(1f, 0.3f, 0.1f, 0.35f));
             FX.Part(b.transform, MeshGen.Sphere(7), FX.Lit(Props.STONE_DARK), Vector3.zero, new Vector3(1.1f, 0.9f, 1f));
             b.transform.position = from;
         }

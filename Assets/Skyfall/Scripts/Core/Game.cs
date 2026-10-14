@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 namespace Skyfall
 {
-    /// Run manager: world setup, 10-minute wave timer, spawning, bosses, XP, level-ups, sky.
+    /// Run manager: world setup, 8-minute wave timer, spawning, bosses, XP, level-ups, sky.
     /// Put this on one GameObject in an otherwise empty scene; it builds everything else from code.
     public class Game : MonoBehaviour
     {
@@ -44,6 +44,14 @@ namespace Skyfall
         float spawnAccum;
         public int wave = 1;
         public int bossesSpawned;
+        public int bossesSlain;
+        /// True once the timer hit 0:00: the field is cleared and the Mountain King waits on the floating island.
+        public bool finalStarted;
+        bool miniSpawned;
+        Enemy miniBoss;
+        IslandBeacon beacon;
+        /// Dragon that hatched from the final boss's egg this run (for the end screen), or empty.
+        public string hatchedDragon = "";
         public int kills;
         public float damageDealt;
         public float biggestHit;
@@ -57,6 +65,7 @@ namespace Skyfall
         public static bool skipMenu;
 
         Enemy finalBoss;
+        bool finalDefeated;
         bool paused;
 
         /// True while the game is paused (pause menu, stats screen, level-up choice).
@@ -205,7 +214,7 @@ namespace Skyfall
             player.camPitch = 0.32f;
             GameInput.MouseCaptured = true;
             hud.ShowHud();
-            hud.Banner($"Wave 1 — {Data.WAVE_NAMES[0]}", "Survive. Every two minutes, a champion comes.");
+            hud.Banner($"Wave 1 — {Data.WAVE_NAMES[0]}", "Survive. A champion comes at 4:00; at 0:00 the Mountain King awaits.");
         }
 
         void Update()
@@ -224,28 +233,29 @@ namespace Skyfall
                 }
                 return;
             }
-            if (timeElapsed < Data.RUN_LENGTH) timeElapsed = Mathf.Min(timeElapsed + delta, Data.RUN_LENGTH);
+            timeElapsed += delta;
             Waves();
             Spawn(delta);
             TickEnemies(delta);
             spellbook.Tick(delta);
             pet.Tick(delta, true);
             TickGems(delta);
+            TickBeacon();
             Atmosphere(Mathf.Clamp01(timeElapsed / Data.RUN_LENGTH));
             if (player.pendingLevels > 0 && !leveling && !ended) LevelUp();
         }
 
         void Waves()
         {
-            int newWave = Mathf.Min((int)(timeElapsed / Data.WAVE_LENGTH) + 1, 5);
-            // A boss arrives at the end of every 2-minute wave; the last at 10:00.
-            int due = (int)(timeElapsed / Data.WAVE_LENGTH);
-            if (due > bossesSpawned && bossesSpawned < Data.BOSSES.Length)
+            int newWave = Mathf.Min((int)(timeElapsed / Data.WAVE_LENGTH) + 1, Data.WAVE_NAMES.Length);
+            // The mini boss arrives at 4:00; at 0:00 the field is cleared for the final battle.
+            if (!miniSpawned && timeElapsed >= Data.MINI_BOSS_TIME)
             {
-                SpawnBoss(bossesSpawned);
-                bossesSpawned++;
+                miniSpawned = true;
+                SpawnBoss(Data.MINI_BOSS);
             }
-            if (newWave != wave)
+            if (!finalStarted && timeElapsed >= Data.RUN_LENGTH) BeginFinalBattle();
+            if (newWave != wave && !finalStarted)
             {
                 wave = newWave;
                 hud.Banner($"Wave {wave} — {Data.WAVE_NAMES[wave - 1]}", "");
@@ -254,6 +264,7 @@ namespace Skyfall
 
         void Spawn(float delta)
         {
+            if (finalStarted) return;
             float t = timeElapsed;
             float rate = (1f + t * 0.045f) * Data.SPAWN_RATE_MULT;
             int cap = Mathf.Min(MAX_ENEMIES, 60 + (int)(t * 0.55f));
@@ -283,7 +294,8 @@ namespace Skyfall
             }
         }
 
-        public Enemy SpawnEnemy(string kind, Vector3 p)
+        /// Spawns an ogre on the terrain, or (with fromY, e.g. an island's top) on the surface at or below that height.
+        public Enemy SpawnEnemy(string kind, Vector3 p, float fromY = float.NegativeInfinity)
         {
             float lim = WorldTerrain.PLAY_LIMIT;
             p.x = Mathf.Clamp(p.x, -lim, lim);
@@ -291,11 +303,12 @@ namespace Skyfall
             float t = timeElapsed;
             var e = Enemy.Make(this, kind, (1f + t / 60f * 0.38f) * Data.ENEMY_STAT_MULT, (1f + t / 600f) * Data.ENEMY_STAT_MULT);
             e.transform.SetParent(transform, false);
-            e.Pos = new Vector3(p.x, terrain.Height(p.x, p.z), p.z);
+            e.Pos = new Vector3(p.x, terrain.SurfaceHeight(p.x, p.z, fromY), p.z);
             enemies.Add(e);
             return e;
         }
 
+        /// The mini boss: arrives near the player, like the old champions. Killing him does not end the run.
         void SpawnBoss(int idx)
         {
             float a = M.RandF() * M.TAU;
@@ -308,12 +321,85 @@ namespace Skyfall
             e.Pos = new Vector3(p.x, terrain.Height(p.x, p.z), p.z);
             enemies.Add(e);
             bosses.Add(e);
-            bool final = idx == Data.BOSSES.Length - 1;
-            if (final) finalBoss = e;
+            bossesSpawned++;
+            miniBoss = e;
             Sfx.Play("roar", 2f, 0f);
-            hud.Banner((final ? "FINAL BOSS" : "BOSS") + " — " + e.displayName, $"It approaches from the {Compass(p - player.Pos)}.");
+            hud.Banner("BOSS — " + e.displayName, $"It approaches from the {Compass(p - player.Pos)}.");
             Shake(0.5f);
             FX.Vfx("portal_red", e.Pos + new Vector3(0, e.size, 0), e.size / 2f, 2.5f, null, 0f);
+        }
+
+        /// 0:00: every ogre is swept away (no kills, no XP), spawning stops and the Mountain King appears on the big
+        /// island. A mini boss still alive is despawned too, so the final fight is one-on-one.
+        public void BeginFinalBattle()
+        {
+            if (finalStarted) return;
+            finalStarted = true;
+            int puffs = 0;
+            foreach (var e in enemies)
+            {
+                if (e.dead) continue;
+                e.dead = true;
+                if (puffs++ < 30)
+                {
+                    FX.Burst(e.Pos + new Vector3(0, e.size, 0), new Color(0.6f, 0.6f, 0.65f), 8, 4f * e.size, 0.3f * e.size);
+                    FX.Vfx("dust_puff", e.Pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.4f, null, 0.05f);
+                }
+                e.gameObject.SetActive(false);
+            }
+            bosses.Clear();
+            miniBoss = null;
+            Sfx.Play("death", player.Pos, -2f, 0f);
+
+            var c = terrain.BossIslandCenter;
+            var isl = terrain.bossIsland;
+            var b = Enemy.MakeBoss(this, Data.FINAL_BOSS, Data.BOSS_STAT_MULT, Data.BOSS_STAT_MULT);
+            b.transform.SetParent(transform, false);
+            if (isl != null && !M.IsInf(c))
+            {
+                b.Pos = c;
+                b.BindToIsland(isl);
+            }
+            else
+            {
+                // No island in this world: fall back to a normal arena fight near the player.
+                var p = player.Pos + new Vector3(30f, 0, 0);
+                b.Pos = new Vector3(p.x, terrain.Height(p.x, p.z), p.z);
+            }
+            enemies.Add(b);
+            bosses.Add(b);
+            bossesSpawned++;
+            finalBoss = b;
+            Sfx.Play("roar", 3f, 0f);
+            Shake(0.9f);
+            hud.Banner("FINAL BATTLE", "The Mountain King awaits on the floating island");
+            FX.Vfx("portal_red", b.Pos + new Vector3(0, b.size, 0), b.size / 2f, 2.5f, null, 0f);
+            FX.Flash(b.Pos + new Vector3(0, b.size, 0), 14f, new Color(1f, 0.5f, 0.2f, 0.7f), 0.8f);
+        }
+
+        /// The beacon pillar rises from the boss island in the last 30 s (faint) and burns fully from 0:00.
+        void TickBeacon()
+        {
+            if (terrain.bossIsland == null) return;
+            float left = Data.RUN_LENGTH - timeElapsed;
+            if (left > 30f) return;
+            if (beacon == null)
+            {
+                beacon = IslandBeacon.Create(terrain.BossIslandCenter, terrain.BossIslandRadius);
+                beacon.transform.SetParent(transform, true);
+            }
+            beacon.SetIntensity(finalStarted ? 1f : Mathf.Lerp(0.15f, 0.45f, 1f - left / 30f));
+        }
+
+        /// World position the HUD marker/arrow points at (just above the island), or M.INF outside the final battle.
+        public Vector3 IslandMarkerPos => finalStarted && !finalDefeated && !M.IsInf(terrain.BossIslandCenter)
+            ? terrain.BossIslandCenter + new Vector3(0, 8f, 0) : M.INF;
+
+        /// Whether the player stands on (or over) the big island.
+        public bool PlayerOnBossIsland()
+        {
+            var isl = terrain.bossIsland;
+            return isl != null && isl.Contains(player.Pos.x, player.Pos.z) && player.Pos.y > isl.topY - 2f;
         }
 
         static string Compass(Vector3 v)
@@ -479,6 +565,7 @@ namespace Skyfall
             if (e.isBoss)
             {
                 bosses.Remove(e);
+                bossesSlain++;
                 Shake(1f);
                 FX.Flash(pos + new Vector3(0, 3, 0), 10f, new Color(1f, 0.8f, 0.4f, 0.8f), 0.8f);
                 for (int i = 0; i < 10; i++)
@@ -490,7 +577,7 @@ namespace Skyfall
                 player.Heal(player.maxHp * 0.4f);
                 hud.Banner($"{e.displayName} has fallen!", "");
                 Sfx.Play("roar", 0f, 0f);
-                if (e == finalBoss) Victory();
+                if (e == finalBoss) FinalBossDown(pos);
             }
             else
             {
@@ -702,6 +789,43 @@ namespace Skyfall
             GameInput.MouseCaptured = false;
             bool best = Save.RecordRun(timeElapsed, kills, player.level, false);
             hud.ShowEnd(false, Save.last_score, best);
+        }
+
+        /// The Mountain King has fallen: he drops one egg for a dragon the player does not own yet.
+        void FinalBossDown(Vector3 pos)
+        {
+            finalDefeated = true;
+            if (beacon) beacon.Extinguish();
+            var locked = new List<string>();
+            foreach (var id in Data.DRAGON_ORDER)
+                if (!Save.IsDragonUnlocked(id)) locked.Add(id);
+            if (locked.Count == 0)
+            {
+                GrantBossReward();
+                Tw.After(1.5f, Victory);
+                return;
+            }
+            string pick = locked[Random.Range(0, locked.Count)];
+            DragonEgg.Spawn(this, pick, pos + new Vector3(0, 0.2f, 0));
+            hud.Banner($"{Data.BOSSES[Data.FINAL_BOSS].name} has fallen!", "A dragon egg glows where he stood");
+        }
+
+        /// The egg was picked up: the dragon is unlocked and saved, then the run ends in victory.
+        public void CollectEgg(string dragonId)
+        {
+            if (ended) return;
+            Save.UnlockDragon(dragonId);
+            hatchedDragon = dragonId;
+            Sfx.Play("levelup", -2f, 0f);
+            FX.Vfx("buff", player.Pos, 1.2f, 2f, null, 0f);
+            hud.Banner($"You found a {Data.DRAGONS[dragonId].name} egg!", "It hatches in your care");
+            Tw.After(1.5f, Victory);
+        }
+
+        /// Reward for beating the Mountain King when every dragon is already owned (no egg drops).
+        public void GrantBossReward()
+        {
+            // TODO step 3: gold pile
         }
 
         void Victory()
