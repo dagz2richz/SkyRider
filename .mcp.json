@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ai-game-developer": {
+      "type": "stdio",
+      "command": "D:/Unity/DragonFallSkyRiders/Library/mcp-server/win-x64/gamedev-mcp-server.exe",
+      "args": [
+        "port=28342",
+        "client-transport=stdio"
+      ]
+    }
+  }
+}
