@@ -84,7 +84,19 @@ namespace Skyfall
                 return Pressed(Key.E) || (Pad != null && (Pad.rightShoulder.wasPressedThisFrame || Pad.buttonWest.wasPressedThisFrame));
             }
         }
-        public static bool StatsPressed => Pressed(Key.Tab) || (Pad != null && Pad.selectButton.wasPressedThisFrame);
+        /// F (gamepad LB): the hero's active talent (the Knight's Dragon Form).
+        public static bool TestTalentPress;
+
+        public static bool TalentPressed
+        {
+            get
+            {
+                if (TestTalentPress) { TestTalentPress = false; return true; }
+                return Pressed(Key.F) || (Pad != null && Pad.leftShoulder.wasPressedThisFrame);
+            }
+        }
+
+        public static bool StatsPressed =>Pressed(Key.Tab) || (Pad != null && Pad.selectButton.wasPressedThisFrame);
 
         /// 0, 1 or 2 when a level-up card key (1/2/3) was pressed this frame, else -1.
         public static int CardPressed

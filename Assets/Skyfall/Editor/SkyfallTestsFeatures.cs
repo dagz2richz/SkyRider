@@ -180,7 +180,7 @@ namespace Skyfall.EditorTools
         // ------------------------------------------------------------------ logic: power-ups, Q lockout, flight regen
 
         static float baseMove, baseDmg;
-        static int goldBefore, dropsBefore;
+        static int dropsBefore;
 
         static string ToastNow(Game g)
         {
@@ -189,8 +189,8 @@ namespace Skyfall.EditorTools
         }
 
         static string PU(Player p) =>
-            $"move={p.MoveMult:0.00} dmgMult={p.DamageMult:0.000} hitDmg={p.WeaponBaseDamage * p.WeaponDamageMult:0.0} goldMult={p.GoldMult:0.0} " +
-            $"left[speed={p.PowerLeft("speed"):0.0} damage={p.PowerLeft("damage"):0.0} gold={p.PowerLeft("gold"):0.0}]";
+            $"move={p.MoveMult:0.00} dmgMult={p.DamageMult:0.000} hitDmg={p.WeaponBaseDamage * p.WeaponDamageMult:0.0} magnet={p.MagnetRadius:0.0}m " +
+            $"left[speed={p.PowerLeft("speed"):0.0} damage={p.PowerLeft("damage"):0.0} magnet={p.PowerLeft("magnet"):0.0}]";
 
         static void LogicTest(Game game)
         {
@@ -204,22 +204,18 @@ namespace Skyfall.EditorTools
                 // Keep the hero grounded and still for the power-up part.
                 pl.velocity = new Vector3(0, pl.velocity.y, 0);
             }
-            var drop = typeof(Game).GetMethod("DropCoin", NP);
 
             // ---- power-ups: collection and effects
             if (f == 5)
             {
                 baseMove = pl.MoveMult; baseDmg = pl.WeaponBaseDamage * pl.WeaponDamageMult;
                 Debug.Log($"SKYFALL_TEST pu base: {PU(pl)} dropChance={pl.PowerUpDropChance:0.0000}");
-                goldBefore = game.runGold;
-                drop.Invoke(game, new object[] { pl.Pos + d * 2f, 10, true });
             }
-            if (f == 40) Debug.Log($"SKYFALL_TEST pu base coin(10) -> runGold +{game.runGold - goldBefore}");
             if (f == 50)
             {
                 game.DropPowerUp("speed", OnGround(game, pl.Pos + d * 3f));
                 game.DropPowerUp("damage", OnGround(game, pl.Pos + new Vector3(-d.z, 0, d.x) * 3f));
-                game.DropPowerUp("gold", OnGround(game, pl.Pos - new Vector3(-d.z, 0, d.x) * 3f));
+                game.DropPowerUp("magnet", OnGround(game, pl.Pos - new Vector3(-d.z, 0, d.x) * 3f));
                 Debug.Log($"SKYFALL_TEST pu spawned: pickups in world={Object.FindObjectsByType<PowerUpPickup>(FindObjectsInactive.Exclude).Length}");
                 pl.camYaw = Mathf.Atan2(-d.x, -d.z) + 0.5f; pl.camDistTarget = 7f; pl.camPitch = 0.3f;
             }
@@ -230,10 +226,7 @@ namespace Skyfall.EditorTools
                 Debug.Log($"SKYFALL_TEST pu collected: pickups left={Object.FindObjectsByType<PowerUpPickup>(FindObjectsInactive.Exclude).Length}  {PU(pl)}");
                 Debug.Log($"SKYFALL_TEST pu toast: {ToastNow(game)}");
                 Debug.Log($"SKYFALL_TEST pu effect: moveBase={baseMove:0.00} -> {pl.MoveMult:0.00} (x{pl.MoveMult / baseMove:0.00}), hit damage {baseDmg:0.0} -> {pl.WeaponBaseDamage * pl.WeaponDamageMult:0.0} (x{pl.WeaponBaseDamage * pl.WeaponDamageMult / baseDmg:0.00})");
-                goldBefore = game.runGold;
-                drop.Invoke(game, new object[] { pl.Pos + d * 2f, 10, true });
             }
-            if (f == 150) Debug.Log($"SKYFALL_TEST pu gold x2: coin(10) -> runGold +{game.runGold - goldBefore}");
             // Move speed under the Speed power-up: actual ground speed.
             if (f == 160) GameInput.TestMove = new Vector2(0f, -1f);
             if (f == 200) { Debug.Log($"SKYFALL_TEST pu speed measured: hspeed={new Vector2(pl.velocity.x, pl.velocity.z).magnitude:0.0} expected={9.5f * pl.MoveMult:0.0}"); GameInput.TestMove = null; }
@@ -241,15 +234,12 @@ namespace Skyfall.EditorTools
             if (f == 480) Debug.Log($"SKYFALL_TEST pu before refresh: {PU(pl)}");
             if (f == 500) game.DropPowerUp("speed", OnGround(game, pl.Pos + d * 2f));
             if (f == 560) Debug.Log($"SKYFALL_TEST pu after refresh: {PU(pl)}");
-            // Expiry: damage/gold run out ~15 s after f~60 (f~960); speed ~15 s after the refresh (f~1420).
+            // Expiry: damage/magnet run out ~15 s after f~60 (f~960); speed ~15 s after the refresh (f~1420).
             foreach (int ff in new[] { 930, 960, 1000, 1400, 1430, 1450 })
                 if (f == ff) Debug.Log($"SKYFALL_TEST pu t={f}: {PU(pl)}");
             if (f == 1010)
             {
-                goldBefore = game.runGold;
-                drop.Invoke(game, new object[] { pl.Pos + d * 2f, 10, true });
             }
-            if (f == 1050) Debug.Log($"SKYFALL_TEST pu gold expired: coin(10) -> runGold +{game.runGold - goldBefore}");
 
             // ---- drop chance by Utility rank, and an empirical kill test
             if (f == 1460)

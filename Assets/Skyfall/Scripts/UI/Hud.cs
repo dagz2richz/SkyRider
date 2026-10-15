@@ -4,13 +4,13 @@ using static Skyfall.UiKit;
 
 namespace Skyfall
 {
-    /// All 2D UI: main menu, high scores, hero/dragon select, loadout, settings, quit screen, in-run HUD,
-    /// level-up cards, pause, stats screen and end screen.
+    /// All 2D UI: main menu, high scores, hero/dragon select, loadout, talent trees, settings, quit screen, in-run HUD,
+    /// level-up cards (abilities, stats, talents, armor), pause, stats screen and end screen.
     public class Hud : MonoBehaviour
     {
         public Game game;
 
-        enum Menu { None, Main, HeroSelect, Loadout, Settings, Quit, Farewell, Shop }
+        enum Menu { None, Main, HeroSelect, Loadout, Settings, Quit, Farewell, Talents }
         Menu menu = Menu.None;
         bool hudVisible;
         bool controlsOpen, pauseOpen, statsOpen, endOpen;
@@ -32,14 +32,13 @@ namespace Skyfall
 
         string pickHero = "", pickDragon = "", pickSpell = "", pickPassive = "";
 
-        // Shop state: which tab, where Back returns to, the last purchase message, and a purchase queued for after layout.
-        bool shopArmorTab;
+        // Talent tree viewer: which hero's tree is shown (changes are queued for after layout), and where Back returns to.
+        int talentHero;
         int pendingTab = -1;
-        Menu shopReturn = Menu.Main;
-        string shopMsg = "";
-        float shopMsgT = 999f;
-        string pendingBuy = "";
-        Vector2 scroll;
+        Menu talentReturn = Menu.Main;
+
+        // Full-screen fade (the stage portal).
+        float fadeA, fadeTarget, fadeSpeed = 1f;
 
         // Gamepad: selection changes queued by cards (run at the start of the next Update, never inside an OnGUI pass).
         readonly Queue<System.Action> deferred = new Queue<System.Action>();
@@ -63,7 +62,7 @@ namespace Skyfall
                 case Menu.HeroSelect: return "hero";
                 case Menu.Loadout: return "loadout";
                 case Menu.Settings: return "settings";
-                case Menu.Shop: return "shop";
+                case Menu.Talents: return "talents";
                 case Menu.Quit: return "quit";
                 case Menu.Farewell: return null;
             }
@@ -79,11 +78,11 @@ namespace Skyfall
         {
             switch (screen)
             {
-                case "main": return "Play#0";
+                case "main": return Save.HasRun ? "Continue Run#0" : "New Run#0";
                 case "hero": return "Continue#0";
                 case "loadout": return "Ride Forth#0";
                 case "settings": return "Volume#0";
-                case "shop": return shopArmorTab ? "Armor#0" : "Weapons#0";
+                case "talents": return "Back#0";
                 case "quit": return "Stay#0";
                 case "controls": return "Back#0";
                 case "pause": return "Resume#0";
@@ -94,7 +93,7 @@ namespace Skyfall
             return null;
         }
 
-        /// Set by the automated tests: a fake screen name that takes gamepad input, and what Back / the shop tab buttons do on it.
+        /// Set by the automated tests: a fake screen name that takes gamepad input, and what Back / the tab buttons do on it.
         public static string TestTop;
         public static System.Action TestBack;
 
@@ -107,7 +106,7 @@ namespace Skyfall
                 case "controls": controlsOpen = false; break;
                 case "hero": ShowMainMenu(); break;
                 case "loadout": ShowHeroSelect(); break;
-                case "shop": LeaveShop(); break;
+                case "talents": LeaveTalents(); break;
                 case "settings": Save.Write(); ShowMainMenu(); break;
                 case "quit": StayFromQuit(); break;
                 case "pause": TogglePause(); break;
@@ -115,10 +114,10 @@ namespace Skyfall
             }
         }
 
-        /// LB / RB on the shop switch between the Weapons and Armor tabs.
+        /// LB / RB on the talent trees switch heroes.
         void GamepadTab(int dir)
         {
-            if (TopScreen() == "shop") pendingTab = dir > 0 ? 1 : 0;
+            if (TopScreen() == "talents") pendingTab = (talentHero + (dir > 0 ? 1 : Data.HERO_ORDER.Length - 1)) % Data.HERO_ORDER.Length;
         }
 
         void StayFromQuit()
@@ -135,9 +134,13 @@ namespace Skyfall
         {
             float udt = Time.unscaledDeltaTime;
             bannerT += udt;
-            shopMsgT += udt;
+            fadeA = Mathf.MoveTowards(fadeA, fadeTarget, udt * fadeSpeed);
             while (deferred.Count > 0) deferred.Dequeue()();
-            ApplyPendingBuy();
+            if (pendingTab >= 0)
+            {
+                talentHero = pendingTab;
+                pendingTab = -1;
+            }
             toastT += udt;
             hurtA = Mathf.MoveTowards(hurtA, 0f, Time.deltaTime * 1.5f);
             GameInput.TickRumble();
@@ -183,19 +186,26 @@ namespace Skyfall
             game.player.SetupLoadout(game.player.spellId, game.player.passiveId, pickHero, pickDragon);
         }
 
-        /// Opens the shop from the main menu or the loadout screen; Back returns there.
-        void ShowShop(Menu from)
+        /// Opens the talent trees from the main menu or the hero select screen; Back returns there.
+        void ShowTalents(Menu from, string hero = null)
         {
-            shopReturn = from;
-            menu = Menu.Shop;
-            shopMsg = "";
+            talentReturn = from;
+            menu = Menu.Talents;
+            if (hero != null) talentHero = Mathf.Max(0, System.Array.IndexOf(Data.HERO_ORDER, hero));
             GameInput.MouseCaptured = false;
         }
 
-        void LeaveShop()
+        void LeaveTalents()
         {
-            if (shopReturn == Menu.Loadout) ShowLoadout();
+            if (talentReturn == Menu.HeroSelect) ShowHeroSelect();
             else ShowMainMenu();
+        }
+
+        /// Fades the screen to black (1) or back (0) over dur seconds of real time.
+        public void FadeTo(float a, float dur)
+        {
+            fadeTarget = Mathf.Clamp01(a);
+            fadeSpeed = 1f / Mathf.Max(0.01f, dur);
         }
 
         void ShowLoadout()
@@ -211,6 +221,7 @@ namespace Skyfall
 
         public void ShowHud()
         {
+            menu = Menu.None;
             hudVisible = true;
             RefreshAbilities();
         }
@@ -340,11 +351,12 @@ namespace Skyfall
                 case Menu.HeroSelect: UiNav.Layer = "hero"; DrawHeroSelect(); break;
                 case Menu.Loadout: UiNav.Layer = "loadout"; DrawLoadout(); break;
                 case Menu.Settings: UiNav.Layer = "settings"; DrawSettings(); break;
-                case Menu.Shop: UiNav.Layer = "shop"; DrawShop(); break;
+                case Menu.Talents: UiNav.Layer = "talents"; DrawTalents(); break;
                 case Menu.Quit: UiNav.Layer = "quit"; DrawQuit(); break;
                 case Menu.Farewell: DrawFarewell(); break;
             }
             if (controlsOpen) { UiNav.Layer = "controls"; DrawControls(); }
+            if (fadeA > 0.001f) UiKit.Rect(new Rect(0, 0, W, H), new Color(0f, 0f, 0f, fadeA));
             if (repaint)
             {
                 DrawFocus();
@@ -360,7 +372,7 @@ namespace Skyfall
 
         // ---------------------------------------------------------------- HUD
 
-        static readonly string[] SLOT_KEYS = { "AUTO ATTACK", "DEFENSE", "PASSIVE", "SPELL · AUTO", "DRAGON · AUTO", "E · SIGNATURE" };
+        static readonly string[] SLOT_KEYS = { "WEAPON", "DEFENSE", "PASSIVE", "SPELL", "BREATH", "E" };
 
         void DrawHud()
         {
@@ -370,18 +382,21 @@ namespace Skyfall
             // XP bar along the top.
             Bar(new Rect(10, 8, W - 20, 14), p.xp / p.xpNext, new Color(0.3f, 0.75f, 1f));
             DrawText(new Rect(14, 26, 200, 26), $"Lv {p.level}", Text(20), GOLD);
-            CoinIcon(new Rect(88, 28, 22, 22));
-            DrawText(new Rect(116, 26, 200, 26), game.runGold.ToString(), Text(20, TextAnchor.UpperLeft, false, true), new Color(1f, 0.85f, 0.35f));
+            DrawText(new Rect(88, 26, 300, 26), $"Stage {game.stage} / {Data.STAGE_COUNT}", Text(18, TextAnchor.UpperLeft, false, true), new Color(0.75f, 0.85f, 1f));
 
             // Timer + wave at top center.
             float left = Mathf.Max(0f, Data.RUN_LENGTH - game.timeElapsed);
             var center = Text(44, TextAnchor.UpperCenter, false, true);
-            if (game.finalStarted) DrawText(new Rect(W / 2 - 300, 26, 600, 52), "FINAL BATTLE", center, new Color(1f, 0.45f, 0.3f), 8);
+            var st = game.Stage;
+            if (game.traveling) DrawText(new Rect(W / 2 - 300, 26, 600, 52), "THE PORTAL", center, new Color(0.6f, 0.8f, 1f), 8);
+            else if (game.finalStarted) DrawText(new Rect(W / 2 - 300, 26, 600, 52), "FINAL BATTLE", center, new Color(1f, 0.45f, 0.3f), 8);
             else DrawText(new Rect(W / 2 - 300, 26, 600, 52), Clock(left), center, PARCHMENT, 8);
             string waveText;
-            if (game.finalStarted) waveText = "Defeat the Mountain King";
-            else if (game.bossesSpawned == 0) waveText = $"Wave {game.wave} / {Data.WAVE_NAMES.Length} · Boss in {Mathf.CeilToInt(Data.MINI_BOSS_TIME - game.timeElapsed)} s";
-            else waveText = $"Wave {game.wave} / {Data.WAVE_NAMES.Length} · Mountain King in {Mathf.CeilToInt(left)} s";
+            string bossShort = st.finalBoss.Split(',')[0];
+            if (game.traveling) waveText = "Traveling to the next land...";
+            else if (game.finalStarted) waveText = $"Defeat {st.finalBoss}";
+            else if (!game.miniSpawned) waveText = $"Wave {game.wave} / {st.waves.Length} · Boss in {Mathf.CeilToInt(Data.MINI_BOSS_TIME - game.timeElapsed)} s";
+            else waveText = $"Wave {game.wave} / {st.waves.Length} · {bossShort} in {Mathf.CeilToInt(left)} s";
             DrawText(new Rect(W / 2 - 300, 80, 600, 24), waveText, Text(18, TextAnchor.UpperCenter), GOLD);
             if (bossName != "")
             {
@@ -411,7 +426,14 @@ namespace Skyfall
             by -= 5 + 16; Bar(new Rect(bx, by, bw, 16), p.mana / p.MaxMana, new Color(0.45f, 0.35f, 1f));
             by -= 5 + 20; DrawText(new Rect(bx, by, bw, 20), $"Mana {(int)p.mana} / {(int)p.MaxMana}", Text(16), new Color(0.75f, 0.7f, 1f));
             by -= 5 + 22; Bar(new Rect(bx, by, bw, 22), p.hp / p.maxHp, new Color(0.8f, 0.12f, 0.1f));
-            by -= 5 + 22; DrawText(new Rect(bx, by, bw, 22), $"{Mathf.CeilToInt(p.hp)} / {(int)p.maxHp}", Text(18), PARCHMENT);
+            // Talent barriers show as a pale band over the health bar.
+            if (p.barrier > 0.5f) UiKit.Rect(new Rect(bx + 2, by + 2, (bw - 4) * Mathf.Clamp01(p.barrier / p.maxHp), 6), new Color(0.75f, 0.88f, 1f, 0.9f));
+            by -= 5 + 22; DrawText(new Rect(bx, by, bw, 22), $"{Mathf.CeilToInt(p.hp)} / {(int)p.maxHp}" + (p.barrier > 0.5f ? $"   +{Mathf.CeilToInt(p.barrier)} barrier" : ""), Text(18), PARCHMENT);
+            if (p.Has("k_dragonform"))
+            {
+                string df = p.DragonFormActive ? $"DRAGON FORM  {Mathf.CeilToInt(p.dragonFormT)}s" : (p.dragonFormCd > 0f ? $"Dragon Form (F) in {Mathf.CeilToInt(p.dragonFormCd)}s" : "Dragon Form ready — press F (LB)");
+                by -= 5 + 22; DrawText(new Rect(bx, by, bw, 22), df, Text(17, TextAnchor.UpperLeft, false, true), p.DragonFormActive || p.dragonFormCd <= 0f ? new Color(1f, 0.8f, 0.35f) : M.Darken(PARCHMENT, 0.3f), 5);
+            }
 
             DrawPowerUps(p);
             DrawSlots();
@@ -431,7 +453,7 @@ namespace Skyfall
             DrawText(new Rect(bx, by - 6, 80, 20), label, Text(15), labelCol, 5);
         }
 
-        /// Active power-ups under the level and gold: a glyph chip, the name and the seconds left, with a thin timer bar.
+        /// Active power-ups under the level: a glyph chip, the name and the seconds left, with a thin timer bar.
         void DrawPowerUps(Player p)
         {
             float y = 56f;
@@ -442,9 +464,13 @@ namespace Skyfall
                 var d = Data.POWERUPS[id];
                 float a = left < 3f ? 0.55f + 0.45f * Mathf.Sin(Time.unscaledTime * 10f) : 1f;
                 var r = new Rect(14, y, 190, 30);
-                Panel(r, INK, d.color, 5, 2, a);
-                UiKit.Rect(new Rect(r.x + 3, r.y + 3, 24, 24), M.WithA(M.Mul(d.color, 0.55f), 0.9f * a));
-                DrawText(new Rect(r.x + 3, r.y + 3, 24, 24), d.glyph, Text(d.glyph.Length > 1 ? 15 : 22, TextAnchor.MiddleCenter, false, true), Color.Lerp(d.color, Color.white, 0.4f), 3, a);
+                Panel(r, INK, d.color, 8, 1, a);
+                if (IconTex("pu_" + id)) DrawIcon(new Rect(r.x + 3, r.y + 3, 24, 24), "pu_" + id, d.color, a);
+                else
+                {
+                    UiKit.Rect(new Rect(r.x + 3, r.y + 3, 24, 24), M.WithA(M.Mul(d.color, 0.55f), 0.9f * a));
+                    DrawText(new Rect(r.x + 3, r.y + 3, 24, 24), d.glyph, Text(d.glyph.Length > 1 ? 15 : 22, TextAnchor.MiddleCenter, false, true), Color.Lerp(d.color, Color.white, 0.4f), 3, a);
+                }
                 DrawText(new Rect(r.x + 34, r.y + 2, 110, 18), d.name, Text(15, TextAnchor.UpperLeft, false, true), Color.Lerp(d.color, PARCHMENT, 0.4f), 4, a);
                 DrawText(new Rect(r.x + 120, r.y + 2, 64, 18), $"{Mathf.CeilToInt(left)}s", Text(16, TextAnchor.UpperRight, false, true), PARCHMENT, 4, a);
                 UiKit.Rect(new Rect(r.x + 34, r.y + 22, 150 * Mathf.Clamp01(left / Data.POWERUP_TIME), 3), M.WithA(d.color, 0.9f * a));
@@ -524,7 +550,7 @@ namespace Skyfall
             string label = $"{Mathf.RoundToInt(meters)} m";
             if (onScreen)
             {
-                DrawText(new Rect(pos.x - 150, pos.y - 56, 300, 22), "Mountain King's Island", Text(16, TextAnchor.UpperCenter, false, true), col, 6, pulse);
+                DrawText(new Rect(pos.x - 150, pos.y - 56, 300, 22), game.Stage.islandName, Text(16, TextAnchor.UpperCenter, false, true), col, 6, pulse);
                 DrawText(new Rect(pos.x - 150, pos.y - 34, 300, 24), label, Text(20, TextAnchor.UpperCenter, false, true), PARCHMENT, 6, pulse);
                 var m = GUI.matrix;
                 GUIUtility.RotateAroundPivot(90f, pos);
@@ -547,27 +573,64 @@ namespace Skyfall
             }
         }
 
+        /// The action bar: six icon tiles (weapon, defense, passive, spell | dragon breath, signature) with level pips, a
+        /// cooldown sweep and the ability's name under each.
         void DrawSlots()
         {
+            if (Event.current.type != EventType.Repaint) return;
             var p = game.player;
-            const float sw = 124, sh = 92, sep = 10, gap = 16;
-            float total = 6 * sw + 5 * sep + gap;
+            const float sz = 62, sep = 14, gap = 26;
+            float total = 6 * sz + 5 * sep + gap;
             float x = W / 2 - total / 2;
-            float y = H - 18 - sh;
+            float y = H - 46 - sz;
             for (int i = 0; i < 6; i++)
             {
                 if (i == 4) x += gap;
-                var r = new Rect(x, y, sw, sh);
+                var r = new Rect(x, y, sz, sz);
                 SlotInfo(i, out string title, out Color color, out int lvl, out string extra, out float cdFrac);
-                float alpha = i == 3 && p.mana < game.spellbook.Cost ? 0.6f : 1f;
-                Panel(r, INK, M.Darken(GOLD, 0.3f), 6, 2, alpha);
-                DrawText(new Rect(r.x + 10, r.y + 8, sw - 16, 18), SLOT_KEYS[i], Text(14), i < 4 ? GOLD : new Color(0.55f, 0.8f, 1f), 4, alpha);
-                DrawText(new Rect(r.x + 10, r.y + 26, sw - 18, 40), title, Text(15, TextAnchor.UpperLeft, true), Color.Lerp(color, PARCHMENT, 0.35f), 4, alpha);
-                DrawText(new Rect(r.x + 10, r.y + sh - 24, sw - 16, 18), $"{Repeat("◆", lvl)}  {extra}", Text(13), M.Darken(PARCHMENT, 0.2f), 4, alpha);
-                if (cdFrac > 0f) UiKit.Rect(new Rect(r.x, r.y + sh * (1f - cdFrac), sw, sh * cdFrac), new Color(0, 0, 0, 0.6f));
-                x += sw + sep;
+                bool dim = i == 3 && p.mana < game.spellbook.Cost;
+                DrawIcon(r, SlotIcon(i), Color.Lerp(color, GOLD, 0.35f), 1f, dim);
+                if (cdFrac > 0f) UiKit.Rect(new Rect(r.x + 3, r.y + 3 + (sz - 6) * (1f - cdFrac), sz - 6, (sz - 6) * cdFrac), new Color(0, 0, 0, 0.62f));
+                // Level pips along the bottom edge.
+                for (int k = 0; k < lvl && k < 8; k++)
+                    UiKit.Rect(new Rect(r.x + 6 + k * 7, r.yMax - 8, 5, 3), Color.Lerp(color, Color.white, 0.4f));
+                string shortTitle = title.Length > 12 ? title.Substring(0, 11).TrimEnd() + "…" : title;
+                DrawText(new Rect(r.x - 6, r.yMax + 4, sz + 12, 16), shortTitle, Text(12, TextAnchor.UpperCenter), M.Darken(PARCHMENT, 0.1f), 3, dim ? 0.6f : 1f);
+                DrawText(new Rect(r.x - 6, r.yMax + 19, sz + 12, 14), extra, Text(11, TextAnchor.UpperCenter), M.Darken(PARCHMENT, 0.35f), 3);
+                DrawText(new Rect(r.x, r.y - 16, sz, 14), SLOT_KEYS[i], Text(10, TextAnchor.UpperCenter), i < 4 ? M.WithA(GOLD, 0.8f) : new Color(0.55f, 0.8f, 1f, 0.8f), 3);
+                x += sz + sep;
             }
         }
+
+        string SlotIcon(int i)
+        {
+            var p = game.player;
+            switch (i)
+            {
+                case 0: return Data.HEROES[p.heroId].weapon;
+                case 1: return p.IsKnight ? "def_shield" : (p.IsPyro ? "def_ward" : "def_evasion");
+                case 2: return p.passiveId;
+                case 3: return p.spellId;
+                case 4: return "dragonfire";
+                default: return "ride";
+            }
+        }
+
+        /// The icon name for a level-up option.
+        static string OptionIconName(Game.LevelOption o, Player p)
+        {
+            switch (o.type)
+            {
+                case "bucket": return "bucket_" + o.id;
+                case "talent": return o.id;
+                case "armor": return "armor_" + o.armor.slot + (o.armor.tier > 0 ? "_epic" : "");
+                default: return o.id == "weapon" ? Data.HEROES[p.heroId].weapon : o.id;
+            }
+        }
+
+        void OptionIcon(Game.LevelOption o, float size) => IconBox(OptionIconName(o, game.player), size, Color.Lerp(o.color, GOLD, 0.3f));
+
+        void TalentIcon(string id, float size, Color accent) => IconBox(id, size, accent);
 
         void SlotInfo(int i, out string title, out Color color, out int lvl, out string extra, out float cdFrac)
         {
@@ -579,7 +642,7 @@ namespace Skyfall
                 case 0:
                 {
                     var w = p.Weapon;
-                    title = w.name; color = w.color; lvl = p.swordLevel; extra = p.IsHuntress ? "2% hp" : "+mana";
+                    title = w.name; color = w.color; lvl = p.weaponLevel; extra = p.IsHuntress ? (p.Has("h_pact") ? "pact" : "2% hp") : "+mana";
                     return;
                 }
                 case 1:
@@ -597,7 +660,8 @@ namespace Skyfall
                 case 3:
                 {
                     var sp = Data.SPELLS[p.spellId];
-                    title = sp.name; color = sp.color; lvl = Lv(p.spellId); extra = $"{Mathf.RoundToInt(game.spellbook.Cost)} mp";
+                    bool evo = Lv(p.spellId) >= Data.EVOLVE_LEVEL;
+                    title = evo ? sp.evolved : sp.name; color = evo ? sp.evolvedColor : sp.color; lvl = Lv(p.spellId); extra = $"{Mathf.RoundToInt(game.spellbook.Cost)} mp";
                     cdFrac = game.spellbook.CooldownFrac;
                     return;
                 }
@@ -657,55 +721,78 @@ namespace Skyfall
 
         void Title()
         {
-            Label("SKYFALL", 96, GOLD, 12, TextAnchor.UpperCenter, 0, false, true);
-            Label("~  Dragon Riders  ~", 30, PARCHMENT, 8, TextAnchor.UpperCenter);
+            Label("SKYFALL", 92, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
+            Label("D R A G O N    R I D E R S", 18, M.WithA(PARCHMENT, 0.85f), 4, TextAnchor.UpperCenter);
+            Space(8);
         }
 
         void DrawMainMenu()
         {
-            Overlay(0.3f);
+            Overlay(0.35f);
+            const float colW = 280f;
             Centered(() =>
             {
                 Title();
-                Space(18);
+                Label("Cross three lands, slay their warlords, claim their dragon eggs.", 17, M.Darken(PARCHMENT, 0.15f), 4, TextAnchor.UpperCenter);
+                Space(26);
                 CenterRow(() =>
                 {
-                    GUILayout.BeginVertical(PanelStyle(), GUILayout.Width(300));
-                    Label("The ogre clans pour out of the hills.\nYou are the last battlemage of the Dragonguard.\nSurvive eight minutes of the long night, then face the Mountain King.",
-                        16, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperLeft, 270, true);
-                    Space(14);
-                    Button("Play", 28, 0, true, ShowHeroSelect);
-                    Space(14);
-                    Button("Shop", 22, 0, true, () => ShowShop(Menu.Main));
-                    Space(14);
-                    Button("Settings", 22, 0, true, () => menu = Menu.Settings);
-                    Space(14);
-                    Button("Controls", 22, 0, true, () => controlsOpen = true);
-                    Space(14);
-                    Button("Quit", 22, 0, true, ShowQuit);
+                    GUILayout.BeginVertical(GUILayout.Width(colW));
+                    if (Save.HasRun)
+                    {
+                        var r = Save.run;
+                        Button("Continue Run", 24, colW, true, () => game.Restart(false, true));
+                        Space(4);
+                        Label($"{Data.HEROES[r.hero].name}  ·  Lv {r.level}  ·  Stage {r.stage}", 13, new Color(0.75f, 0.85f, 1f), 3, TextAnchor.UpperCenter, colW);
+                        Space(10);
+                    }
+                    Button("New Run", 22, colW, true, ShowHeroSelect);
+                    Space(8);
+                    Button("Talent Trees", 20, colW, true, () => ShowTalents(Menu.Main));
+                    Space(8);
+                    Button("Settings", 20, colW, true, () => menu = Menu.Settings);
+                    Space(8);
+                    Button("Controls", 20, colW, true, () => controlsOpen = true);
+                    Space(8);
+                    Button("Quit", 20, colW, true, ShowQuit);
                     GUILayout.EndVertical();
-                    Space(28);
-                    GUILayout.BeginVertical(PanelStyle(), GUILayout.Width(400));
-                    Label("Hall of Legends", 26, GOLD, 6);
-                    Space(6);
-                    Kv("High score", Save.best_score.ToString());
-                    Kv("Longest survival", Clock(Save.best_time));
-                    Kv("Most kills", Save.best_kills.ToString());
-                    Kv("Highest level", Save.best_level.ToString());
-                    Kv("Runs / Victories", $"{Save.runs} / {Save.wins}");
-                    Kv("Gold", Save.gold.ToString());
-                    Space(6);
-                    Label("Recent runs", 18, M.Darken(GOLD, 0.1f), 4);
-                    if (Save.history.Count == 0) Label("No runs yet. Ride forth!", 15, M.Darken(PARCHMENT, 0.3f), 4);
-                    foreach (var h in Save.history)
-                        Label($"{h.date}   {h.score,6}   {Clock(h.time)}   Lv {h.level}   {(h.won ? "WON" : "")}", 14, M.Darken(PARCHMENT, 0.15f), 3);
+                    Space(36);
+                    GUILayout.BeginVertical(PanelStyle(null, null, 12, 1, 18), GUILayout.Width(360));
+                    Label("Hall of Legends", 22, GOLD, 5, TextAnchor.UpperLeft, 0, false, true);
+                    Space(8);
+                    Kv("High score", Save.best_score.ToString(), 16);
+                    Kv("Highest level", Save.best_level.ToString(), 16);
+                    Kv("Furthest stage", $"{Mathf.Max(1, Save.best_stage)} / {Data.STAGE_COUNT}", 16);
+                    Kv("Runs  ·  Victories", $"{Save.runs}  ·  {Save.wins}", 16);
+                    Space(8);
+                    // Dragons owned: one swatch per dragon, dim when still locked.
+                    GUILayout.BeginHorizontal();
+                    Label("Dragons", 16, PARCHMENT, 5);
+                    GUILayout.FlexibleSpace();
+                    foreach (var id in Data.DRAGON_ORDER)
+                    {
+                        var d = Data.DRAGONS[id];
+                        var sr = GUILayoutUtility.GetRect(18, 18, GUILayout.Width(18), GUILayout.Height(18));
+                        bool own = Save.IsDragonUnlocked(id);
+                        Panel(new Rect(sr.x, sr.y + 2, 16, 16), own ? M.Lighten(d.body, 0.15f) : new Color(0.15f, 0.13f, 0.12f, 0.9f), own ? M.Lighten(d.breath, 0.4f) : M.WithA(GOLD, 0.25f), 8, 1);
+                        Space(4);
+                    }
+                    GUILayout.EndHorizontal();
+                    if (Save.history.Count > 0)
+                    {
+                        Space(10);
+                        Label("Recent", 14, M.Darken(GOLD, 0.15f), 3);
+                        int n = 0;
+                        foreach (var h in Save.history)
+                        {
+                            if (n++ >= 3) break;
+                            Label($"{h.score,7}   Lv {h.level}   Stage {Mathf.Max(1, h.stage)}   {(h.won ? "Victory" : Clock(h.time))}", 13, M.Darken(PARCHMENT, 0.2f), 3);
+                        }
+                    }
                     GUILayout.EndVertical();
                 });
-                Space(18);
-                Label("Everything attacks on its own.   WASD move · Mouse look · SPACE jump / double jump · Q take flight · E riding ability · Scroll zoom · TAB stats · ESC pause",
-                    15, M.Darken(PARCHMENT, 0.2f), 5, TextAnchor.UpperCenter);
-                Label("Gamepad:  L-stick move · R-stick look · A jump · Y take flight · RB / X riding ability · LT / B dive · D-pad zoom · Start pause · Select stats    (menus: D-pad + A, B back)",
-                    15, M.Darken(PARCHMENT, 0.2f), 5, TextAnchor.UpperCenter);
+                Space(28);
+                Label("Everything attacks on its own   ·   Q fly   ·   E dragon ability   ·   F talent power   ·   TAB stats", 14, M.Darken(PARCHMENT, 0.35f), 3, TextAnchor.UpperCenter);
             });
         }
 
@@ -720,14 +807,18 @@ namespace Skyfall
 
         // ---------------------------------------------------------------- hero & dragon select
 
-        void SelectCard(string title, string desc, List<string> lines, Color c, bool sel, float width, System.Action onPick = null)
+        void SelectCard(string title, string desc, List<string> lines, Color c, bool sel, float width, System.Action onPick = null, string icon = null)
         {
-            var bg = sel ? new Color(0.16f, 0.12f, 0.06f, 0.95f) : INK;
+            var bg = sel ? new Color(0.16f, 0.12f, 0.06f, 0.92f) : INK;
             var border = sel ? c : M.Darken(GOLD, 0.45f);
-            GUILayout.BeginVertical(PanelStyle(bg, border, 8, sel ? 4 : 2), GUILayout.Width(width));
+            GUILayout.BeginVertical(PanelStyle(bg, border, 10, sel ? 2 : 1), GUILayout.Width(width));
             GUILayout.BeginHorizontal();
-            var sw = GUILayoutUtility.GetRect(14, 14, GUILayout.Width(14), GUILayout.Height(26));
-            UiKit.Rect(new Rect(sw.x, sw.y + 6, 14, 14), c);
+            if (icon != null && IconTex(icon)) IconBox(icon, 40, c, onPick == null);
+            else
+            {
+                var sw = GUILayoutUtility.GetRect(14, 14, GUILayout.Width(14), GUILayout.Height(26));
+                UiKit.Rect(new Rect(sw.x, sw.y + 6, 14, 14), c);
+            }
             Space(8);
             Label(title, 22, Color.Lerp(c, PARCHMENT, 0.3f), 6, TextAnchor.UpperLeft, 0, false, true);
             GUILayout.FlexibleSpace();
@@ -748,7 +839,7 @@ namespace Skyfall
         {
             Overlay(0.4f);
             float heroW = Mathf.Min(420f, (W - 80f) / 3f - 18f);
-            float dragonW = Mathf.Min(380f, (W - 80f) / 3f - 16f);
+            float dragonW = Mathf.Min(300f, (W - 80f) / Data.DRAGON_ORDER.Length - 16f);
             Centered(() =>
             {
                 Label("Choose Your Hero", 44, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
@@ -759,18 +850,17 @@ namespace Skyfall
                     {
                         var h = Data.HEROES[id];
                         var w = Data.WEAPONS[h.weapon];
-                        int legs = Save.ArmorTier("legs");
-                        string def = h.defense == "shield" ? $"Shield ({Mathf.RoundToInt(100f * (0.12f + 0.05f * (Mathf.Min(Save.WeaponLevel(h.weapon) + legs, 8) - 1)))}% block)"
-                            : (h.defense == "evasion" ? $"Evasion ({Mathf.RoundToInt(100f * (0.15f + 0.05f * legs))}% dodge)" : $"Flame Ward ({Mathf.RoundToInt(100f * (0.10f + 0.05f * legs))}% ward)");
-                        var lines = new List<string> { $"Weapon:  {w.shopName}  Lv {Save.WeaponLevel(h.weapon)}", $"Defense:  {def}", $"Health:  {(int)(h.hp * (1f + 0.06f * Save.ArmorTier("helm")))}" };
+                        string def = h.defense == "shield" ? $"Shield ({Mathf.RoundToInt(100f * Data.SHIELD.baseChance)}% block)"
+                            : (h.defense == "evasion" ? $"Evasion ({Mathf.RoundToInt(100f * Data.EVASION.baseChance)}% dodge)" : $"Flame Ward ({Mathf.RoundToInt(100f * Data.WARD.baseChance)}% ward)");
+                        var lines = new List<string> { $"Weapon:  {w.name}", $"Defense:  {def}", $"Health:  {(int)h.hp}" };
                         switch (id)
                         {
-                            case "knight": lines.Add("Sword deals 1.25x damage"); break;
-                            case "huntress": lines.Add("Javelins pierce, cause bleeding, deal 1.25x damage, cost 2% current health, no mana"); break;
-                            case "pyromancer": lines.Add("Fast fire-tipped arrows, long range, ignite foes; ward sets attackers on fire"); break;
+                            case "knight": lines.Add("Capstone talent: Dragon Form"); break;
+                            case "huntress": lines.Add("Javelins pierce and bleed; cost 2% current health, no mana"); break;
+                            case "pyromancer": lines.Add("Staff bolts burst and ignite; ward sets attackers on fire"); break;
                         }
                         string hid = id;
-                        SelectCard(h.name, h.desc, lines, h.color, id == pickHero, heroW, () => { pickHero = hid; ShowHeroSelect(); });
+                        SelectCard(h.name, h.desc, lines, h.color, id == pickHero, heroW, () => { pickHero = hid; ShowHeroSelect(); }, "hero_" + id);
                         Space(18);
                     }
                 });
@@ -790,7 +880,7 @@ namespace Skyfall
                             // Locked: dimmed, with the hint, and not selectable.
                             var prev = GUI.color;
                             GUI.color = new Color(1f, 1f, 1f, 0.45f);
-                            SelectCard(d.name, "LOCKED — defeat the Mountain King to find its egg", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW);
+                            SelectCard(d.name, "LOCKED — stage warlords may drop its egg", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW);
                             GUI.color = prev;
                         }
                         else
@@ -805,6 +895,8 @@ namespace Skyfall
                 CenterRow(() =>
                 {
                     Button("Back", 22, 0, true, ShowMainMenu);
+                    Space(16);
+                    Button("Talents", 22, 0, true, () => ShowTalents(Menu.HeroSelect, pickHero));
                     Space(16);
                     Button("Continue", 28, 0, true, ShowLoadout);
                 });
@@ -822,7 +914,7 @@ namespace Skyfall
                 Space(18);
                 Label($"{Data.HEROES[pickHero].name} with the {Data.DRAGONS[pickDragon].name}.  Everything fights on its own; your spell casts whenever you have the mana.\n" +
                       "Q (gamepad Y) takes flight on your dragon. E (RB / X) unleashes your dragon's signature, on the ground or in the air (from the air you leap down and slam; Q is then unavailable for 3 s).\n" +
-                      "Ogres sometimes drop power-ups: speed, damage and double gold for 15 s.",
+                      "Talents open at levels 3, 7, 11, 14 and 18; armor is offered every 5 levels. Rare power-ups: speed, damage and the Lodestone magnet.",
                     16, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperCenter);
                 Space(18);
                 ChoiceRow("Spell  ·  casts itself when you have the mana", Data.SPELL_ORDER, true);
@@ -832,8 +924,6 @@ namespace Skyfall
                 CenterRow(() =>
                 {
                     Button("Back", 22, 0, true, ShowHeroSelect);
-                    Space(16);
-                    Button("Shop", 22, 0, true, () => ShowShop(Menu.Loadout));
                     Space(16);
                     Button("Ride Forth", 28, 0, true, () =>
                     {
@@ -870,8 +960,9 @@ namespace Skyfall
                 bool sel = id == (spells ? pickSpell : pickPassive);
                 var bg = sel ? new Color(0.16f, 0.12f, 0.06f, 0.95f) : INK;
                 var border = sel ? c : M.Darken(GOLD, 0.45f);
-                GUILayout.BeginVertical(PanelStyle(bg, border, 8, sel ? 4 : 2), GUILayout.Width(cardW), GUILayout.MinHeight(150));
+                GUILayout.BeginVertical(PanelStyle(bg, border, 10, sel ? 2 : 1), GUILayout.Width(cardW), GUILayout.MinHeight(150));
                 GUILayout.BeginHorizontal();
+                if (IconTex(id)) { IconBox(id, 36, c); Space(8); }
                 Label(name, 20, Color.Lerp(c, PARCHMENT, 0.3f), 6, TextAnchor.UpperLeft, 0, false, true);
                 GUILayout.FlexibleSpace();
                 if (sel) Label("SELECTED", 13, Color.Lerp(c, PARCHMENT, 0.3f), 3);
@@ -888,156 +979,67 @@ namespace Skyfall
             GUILayout.EndHorizontal();
         }
 
-        // ---------------------------------------------------------------- shop
+        // ---------------------------------------------------------------- talent trees
 
-        static readonly Color GOLD_TEXT = new Color(1f, 0.85f, 0.35f);
-
-        /// Weapons and armor bought with the gold earned in runs. Purchases are queued (pendingBuy) and applied in Update,
-        /// so the controls drawn never change in the middle of a layout pass.
-        void DrawShop()
+        /// Each hero's five rows of three talents. In a run you pick one per row as you level; here you can read them all.
+        void DrawTalents()
         {
-            Overlay(0.7f);
-            bool armor = shopArmorTab;   // fixed for this whole pass; a tab click only queues a change
-            float cardW = armor ? Mathf.Min(300f, (W - 80f) / 5f - 14f) : Mathf.Min(420f, (W - 80f) / 3f - 18f);
+            Overlay(0.72f);
+            string heroId = Data.HERO_ORDER[Mathf.Clamp(talentHero, 0, Data.HERO_ORDER.Length - 1)];
+            var hero = Data.HEROES[heroId];
+            var rows = Data.TALENTS[heroId];
+            float cardW = Mathf.Min(360f, (W - 160f) / 3f - 14f);
             Centered(() =>
             {
-                Label("Shop", 54, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
-                Space(6);
+                Label("Talent Trees", 48, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
+                Space(10);
                 CenterRow(() =>
                 {
-                    var r = GUILayoutUtility.GetRect(30, 30, GUILayout.Width(30), GUILayout.Height(30));
-                    CoinIcon(new Rect(r.x, r.y + 2, 26, 26));
-                    Space(8);
-                    Label($"{Save.gold} gold", 30, GOLD_TEXT, 8, TextAnchor.UpperLeft, 0, false, true);
-                });
-                if (shopMsgT < 3f && shopMsg != "") Label(shopMsg, 18, new Color(0.6f, 1f, 0.6f), 5, TextAnchor.UpperCenter, 0, false, false, Mathf.Clamp01(3f - shopMsgT));
-                else Label(" ", 18, PARCHMENT, 0, TextAnchor.UpperCenter);
-                Space(8);
-                CenterRow(() =>
-                {
-                    ShopTab("Weapons", !armor, () => pendingTab = 0);
-                    Space(14);
-                    ShopTab("Armor", armor, () => pendingTab = 1);
-                });
-                Space(16);
-                CenterRow(() =>
-                {
-                    if (!armor)
-                        foreach (var id in Data.WEAPON_ORDER) { WeaponCard(id, cardW); Space(18); }
-                    else
-                        foreach (var id in Data.ARMOR_ORDER) { ArmorCard(id, cardW); Space(14); }
+                    for (int i = 0; i < Data.HERO_ORDER.Length; i++)
+                    {
+                        int idx = i;
+                        var h = Data.HEROES[Data.HERO_ORDER[i]];
+                        var prev = GUI.color;
+                        if (i != talentHero) GUI.color = new Color(0.62f, 0.62f, 0.62f, 1f);
+                        Button(h.name, 20, 260, true, () => pendingTab = idx);
+                        GUI.color = prev;
+                        if (i < Data.HERO_ORDER.Length - 1) Space(12);
+                    }
                 });
                 Space(14);
-                Label(armor ? "Armor is shared by every hero. Each slot has five tiers."
-                                   : "Each hero is locked to one weapon. Weapon levels also strengthen the Knight's shield block.",
-                    15, M.Darken(PARCHMENT, 0.2f), 4, TextAnchor.UpperCenter);
+                for (int r = 0; r < rows.Length; r++)
+                {
+                    int row = r;
+                    GUILayout.BeginHorizontal();
+                    GUILayout.FlexibleSpace();
+                    GUILayout.BeginVertical(GUILayout.Width(110));
+                    Label($"Row {row + 1}", 18, GOLD, 4, TextAnchor.UpperLeft, 110, false, true);
+                    Label($"Level {Data.TALENT_LEVELS[row]}", 14, M.Darken(PARCHMENT, 0.25f), 3, TextAnchor.UpperLeft, 110);
+                    GUILayout.EndVertical();
+                    foreach (var t in rows[row])
+                    {
+                        bool cap = row == rows.Length - 1;
+                        var accent = cap ? new Color(1f, 0.75f, 0.3f) : hero.color;
+                        GUILayout.BeginVertical(PanelStyle(INK, M.WithA(Color.Lerp(accent, GOLD, 0.25f), 0.9f), 8, 2, 10), GUILayout.Width(cardW), GUILayout.MinHeight(86));
+                        GUILayout.BeginHorizontal();
+                        TalentIcon(t.id, 34, accent);
+                        Space(8);
+                        Label(t.name, 18, Color.Lerp(accent, PARCHMENT, 0.35f), 4, TextAnchor.UpperLeft, cardW - 70, false, true);
+                        GUILayout.EndHorizontal();
+                        Space(2);
+                        Label(t.desc, 13, M.Darken(PARCHMENT, 0.05f), 3, TextAnchor.UpperLeft, cardW - 24, true);
+                        GUILayout.EndVertical();
+                        Space(10);
+                    }
+                    GUILayout.FlexibleSpace();
+                    GUILayout.EndHorizontal();
+                    Space(8);
+                }
+                Space(6);
+                Label("Pick one talent per row during a run. Row 5 holds the capstones.   (Gamepad: LB / RB switch heroes)", 15, M.Darken(PARCHMENT, 0.25f), 4, TextAnchor.UpperCenter);
                 Space(10);
-                CenterRow(() => Button("Back", 24, 0, true, LeaveShop));
+                CenterRow(() => Button("Back", 22, 0, true, LeaveTalents));
             });
-        }
-
-        void ShopTab(string text, bool selected, System.Action act)
-        {
-            var prev = GUI.color;
-            if (!selected) GUI.color = new Color(0.62f, 0.62f, 0.62f, 1f);
-            Button(text, 24, 180, true, act);
-            GUI.color = prev;
-        }
-
-        void ApplyPendingBuy()
-        {
-            if (pendingTab >= 0)
-            {
-                shopArmorTab = pendingTab == 1;
-                pendingTab = -1;
-            }
-            if (pendingBuy == "") return;
-            var parts = pendingBuy.Split(':');
-            pendingBuy = "";
-            bool ok;
-            string what;
-            if (parts[0] == "w")
-            {
-                ok = Save.BuyWeapon(parts[1]);
-                what = $"{Data.WEAPONS[parts[1]].shopName} upgraded to Lv {Save.WeaponLevel(parts[1])}";
-            }
-            else
-            {
-                ok = Save.BuyArmor(parts[1]);
-                what = $"{Data.ARMOR[parts[1]].name} is now tier {Save.ArmorTier(parts[1])}";
-            }
-            if (!ok) return;
-            Sfx.Play("buy", -2f, 0f);
-            shopMsg = what;
-            shopMsgT = 0f;
-        }
-
-        GUIStyle ShopCard(Color accent, float width) =>
-            PanelStyle(INK, Color.Lerp(accent, GOLD, 0.35f), 8, 3);
-
-        void WeaponCard(string id, float width)
-        {
-            var w = Data.WEAPONS[id];
-            var hero = Data.HEROES[w.hero];
-            int lvl = Save.WeaponLevel(id);
-            int cost = Save.WeaponUpgradeCost(id);
-            var c = w.color;
-            GUILayout.BeginVertical(ShopCard(c, width), GUILayout.Width(width), GUILayout.MinHeight(420));
-            Label(w.shopName, 28, Color.Lerp(c, PARCHMENT, 0.3f), 6, TextAnchor.UpperLeft, width - 30, false, true);
-            Label($"Used by {hero.name}", 15, Color.Lerp(hero.color, PARCHMENT, 0.4f), 4);
-            Space(8);
-            GUILayout.BeginHorizontal();
-            Pips(lvl, Data.MAX_LEVEL, c);
-            Space(10);
-            Label($"Level {lvl} / {Data.MAX_LEVEL}", 17, GOLD, 5);
-            GUILayout.EndHorizontal();
-            Space(10);
-            Label("Now", 17, GOLD, 5);
-            foreach (var ln in Data.WeaponStats(id, lvl)) Label(ln, 15, PARCHMENT, 4, TextAnchor.UpperLeft, width - 30, true);
-            Space(10);
-            if (cost >= 0)
-            {
-                Label($"Level {lvl + 1}", 17, new Color(0.6f, 1f, 0.6f), 5);
-                foreach (var ln in Data.WeaponStats(id, lvl + 1)) Label(ln, 15, new Color(0.75f, 1f, 0.75f), 4, TextAnchor.UpperLeft, width - 30, true);
-            }
-            GUILayout.FlexibleSpace();
-            if (cost >= 0)
-            {
-                Button($"Upgrade  ·  {cost} gold", 20, 0, Save.gold >= cost, () => pendingBuy = "w:" + id);
-            }
-            else Label("MAX LEVEL", 22, GOLD, 6, TextAnchor.UpperCenter, 0, false, true);
-            GUILayout.EndVertical();
-        }
-
-        void ArmorCard(string slot, float width)
-        {
-            var a = Data.ARMOR[slot];
-            int tier = Save.ArmorTier(slot);
-            int cost = Save.ArmorUpgradeCost(slot);
-            var c = new Color(0.55f, 0.75f, 1f);
-            GUILayout.BeginVertical(ShopCard(c, width), GUILayout.Width(width), GUILayout.MinHeight(420));
-            Label(a.name, 28, Color.Lerp(c, PARCHMENT, 0.3f), 6, TextAnchor.UpperLeft, width - 30, false, true);
-            Label(a.desc, 14, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperLeft, width - 30, true);
-            Space(8);
-            Pips(tier, Data.MAX_ARMOR_TIER, c);
-            Space(4);
-            Label(tier == 0 ? "Not owned" : $"Tier {tier} / {Data.MAX_ARMOR_TIER}", 17, GOLD, 5);
-            Space(10);
-            Label("Now", 17, GOLD, 5);
-            Label(tier == 0 ? "No bonus" : Data.ArmorBonus(slot, tier), 15, PARCHMENT, 4, TextAnchor.UpperLeft, width - 30, true);
-            Space(10);
-            if (cost >= 0)
-            {
-                Label($"Tier {tier + 1}", 17, new Color(0.6f, 1f, 0.6f), 5);
-                Label(Data.ArmorBonus(slot, tier + 1), 15, new Color(0.75f, 1f, 0.75f), 4, TextAnchor.UpperLeft, width - 30, true);
-            }
-            GUILayout.FlexibleSpace();
-            if (cost >= 0)
-            {
-                Button($"{(tier == 0 ? "Buy" : "Upgrade")}  ·  {cost}", 20, 0, Save.gold >= cost, () => pendingBuy = "a:" + slot);
-            }
-            else Label("MAX TIER", 22, GOLD, 6, TextAnchor.UpperCenter, 0, false, true);
-            GUILayout.EndVertical();
         }
 
         // ---------------------------------------------------------------- settings
@@ -1127,6 +1129,7 @@ namespace Skyfall
             { "Space", "Jump; press again in the air to double jump; hold to climb while flying" },
             { "Q", "Call your dragon and take flight (again to drop off); the flight bar refills 3 s after landing" },
             { "E", "Dragon signature ability (from the air you leap down and slam; Q is locked for 3 s after)" },
+            { "F", "Talent power (the Knight's Dragon Form)" },
             { "Shift / Ctrl", "Dive while flying" },
             { "Tab", "Stats screen" },
             { "Esc / P", "Pause" },
@@ -1141,10 +1144,11 @@ namespace Skyfall
             { "A / Cross", "Jump, double jump; hold to climb while flying" },
             { "Y / Triangle", "Call your dragon and take flight (again to drop off)" },
             { "RB / X", "Dragon signature ability" },
+            { "LB", "Talent power (the Knight's Dragon Form)" },
             { "LT / B", "Dive while flying" },
             { "D-pad up / down", "Zoom in and out" },
             { "Start / Select", "Pause / Stats screen" },
-            { "Menus", "D-pad / stick + A choose · B back · LB / RB shop tabs · left / right sliders" },
+            { "Menus", "D-pad / stick + A choose · B back · LB / RB talent tree tabs · left / right sliders" },
         };
 
         void DrawControls()
@@ -1212,8 +1216,15 @@ namespace Skyfall
             {
                 Label($"LEVEL {levelShown}", 56, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
-                Label((levelKind == "ability" ? "Choose an ability to upgrade." : "Choose a stat bucket: you gain all three of its stats.") +
-                      "   (Every level: +5% damage · +2% health · +0.5% parry)", 20, PARCHMENT, 6, TextAnchor.UpperCenter);
+                string sub;
+                switch (levelKind)
+                {
+                    case "talent": sub = "A talent row opens: choose one. It lasts the whole run."; break;
+                    case "armor": sub = "Armor! Choose a piece: it fills its slot, replacing what you wear there."; break;
+                    case "ability": sub = "Choose an ability to upgrade."; break;
+                    default: sub = "Choose a stat bucket: you gain all of its stats."; break;
+                }
+                Label(sub + "   (Every level: +5% damage · +2% health · +0.5% parry)", 20, PARCHMENT, 6, TextAnchor.UpperCenter);
                 Space(18);
                 CenterRow(() =>
                 {
@@ -1221,14 +1232,27 @@ namespace Skyfall
                     {
                         var o = options[i];
                         var c = o.color;
-                        GUILayout.BeginVertical(PanelStyle(INK, Color.Lerp(c, GOLD, 0.3f), 8, 3), GUILayout.Width(310), GUILayout.MinHeight(270));
-                        Label($"{o.tag}   [{i + 1}]", 15, c, 6);
+                        GUILayout.BeginVertical(PanelStyle(INK, Color.Lerp(c, GOLD, 0.3f), 8, 3), GUILayout.Width(330), GUILayout.MinHeight(300));
+                        GUILayout.BeginHorizontal();
+                        OptionIcon(o, 44);
                         Space(10);
-                        Label(o.name, 26, Color.Lerp(c, PARCHMENT, 0.35f), 6, TextAnchor.UpperLeft, 280, true, true);
-                        Space(10);
-                        Label(o.type == "bucket" ? $"Rank {o.level}" : $"Level {o.level} / {Data.MAX_LEVEL}", 17, GOLD, 6);
-                        Space(10);
-                        Label(o.desc, 17, PARCHMENT, 6, TextAnchor.UpperLeft, 280, true);
+                        GUILayout.BeginVertical();
+                        Label($"{o.tag}   [{i + 1}]", 14, c, 5);
+                        Label(o.name, 22, Color.Lerp(c, PARCHMENT, 0.35f), 6, TextAnchor.UpperLeft, 240, true, true);
+                        GUILayout.EndVertical();
+                        GUILayout.EndHorizontal();
+                        Space(8);
+                        string lvlText = o.type == "bucket" ? $"Rank {o.level}" : o.type == "talent" ? $"Row {o.level} of {Data.TALENT_LEVELS.Length}"
+                            : o.type == "armor" ? $"{Data.ARMOR_TIER_STATS[o.armor.tier]} stats · tier {o.armor.tier + 1} of 3" : $"Level {o.level} / {Data.MAX_LEVEL}";
+                        Label(lvlText, 16, GOLD, 5);
+                        Space(8);
+                        Label(o.desc, 16, PARCHMENT, 5, TextAnchor.UpperLeft, 300, true);
+                        if (o.type == "armor")
+                        {
+                            var worn = game.player.ArmorIn(o.armor.slot);
+                            Space(6);
+                            Label(worn == null ? "Empty slot" : $"Replaces: {Game.ArmorName(worn)}", 13, M.Darken(PARCHMENT, 0.3f), 3, TextAnchor.UpperLeft, 300, true);
+                        }
                         GUILayout.FlexibleSpace();
                         bool pick = Button("Choose", 22, 0, true, () => { if (levelOptions == options) Choose(o); });
                         GUILayout.EndVertical();
@@ -1244,27 +1268,34 @@ namespace Skyfall
         void DrawPause()
         {
             Overlay(0.6f);
+            const float bw = 260f;
             Centered(() =>
             {
-                Label("PAUSED", 60, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
-                Space(18);
-                CenterRow(() => Button("Resume", 26, 0, true, TogglePause));
-                Space(18);
-                GUILayout.BeginVertical(PanelStyle());
-                VolumeRow();
+                Label("PAUSED", 56, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
+                Label($"Stage {game.stage}  ·  {game.Stage.name}", 16, M.Darken(PARCHMENT, 0.2f), 3, TextAnchor.UpperCenter);
+                Space(20);
+                CenterRow(() => Button("Resume", 24, bw, true, TogglePause));
+                Space(16);
+                CenterRow(() =>
+                {
+                    GUILayout.BeginVertical(PanelStyle(null, null, 12, 1, 16));
+                    VolumeRow();
+                    Space(6);
+                    SpeedRow();
+                    Space(6);
+                    SensRow();
+                    GUILayout.EndVertical();
+                });
+                Space(16);
+                CenterRow(() => Button("Stats", 20, bw, true, ToggleStats));
                 Space(8);
-                SpeedRow();
+                CenterRow(() => Button("Controls", 20, bw, true, () => controlsOpen = true));
                 Space(8);
-                SensRow();
-                GUILayout.EndVertical();
-                Space(18);
-                CenterRow(() => Button("Stats", 22, 0, true, ToggleStats));
-                Space(18);
-                CenterRow(() => Button("Controls", 22, 0, true, () => controlsOpen = true));
-                Space(18);
-                CenterRow(() => Button("Main Menu", 22, 0, true, () => { Save.Write(); game.Restart(false); }));
-                Space(18);
-                CenterRow(() => Button("Quit", 22, 0, true, () => { Save.Write(); ShowQuit(); }));
+                CenterRow(() => Button("Save & Main Menu", 20, bw, true, game.SaveAndQuit));
+                Space(8);
+                CenterRow(() => Button("Quit", 20, bw, true, () => { game.WriteRunSave(); ShowQuit(); }));
+                Space(10);
+                Label("Your run is saved: Continue resumes it at the start of this stage.", 13, M.Darken(PARCHMENT, 0.35f), 3, TextAnchor.UpperCenter);
             });
         }
 
@@ -1276,24 +1307,16 @@ namespace Skyfall
             {
                 Label(endWon ? "VICTORY" : "YOU HAVE FALLEN", 72, endWon ? GOLD : new Color(0.9f, 0.25f, 0.2f), 12, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
-                Label(endWon ? "The Mountain King is slain. Dawn returns to the kingdom." : "Your dragon cries out as the clans close in.", 22, PARCHMENT, 6, TextAnchor.UpperCenter);
-                if (endWon && game.hatchedDragon != "" && Data.DRAGONS.ContainsKey(game.hatchedDragon))
+                Label(endWon ? "All three warlords are slain. Dawn returns to the kingdom." : $"Your dragon cries out as the clans close in on {game.Stage.name}.", 22, PARCHMENT, 6, TextAnchor.UpperCenter);
+                foreach (var hid in game.hatched)
                 {
-                    var hd = Data.DRAGONS[game.hatchedDragon];
+                    if (!Data.DRAGONS.ContainsKey(hid)) continue;
+                    var hd = Data.DRAGONS[hid];
                     Space(8);
-                    Label($"The egg hatches: the {hd.name} is yours!", 26, M.Lighten(hd.body, 0.35f), 8, TextAnchor.UpperCenter, 0, false, true);
+                    Label($"An egg hatched: the {hd.name} is yours!", 24, M.Lighten(hd.body, 0.35f), 8, TextAnchor.UpperCenter, 0, false, true);
                 }
                 Space(18);
-                Label($"Survived {Clock(game.timeElapsed)}   ·   Level {p.level}   ·   {game.kills} ogres slain", 24, PARCHMENT, 6, TextAnchor.UpperCenter);
-                Space(10);
-                GUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace();
-                var gr = GUILayoutUtility.GetRect(30, 30, GUILayout.Width(30), GUILayout.Height(30));
-                CoinIcon(new Rect(gr.x, gr.y + 2, 26, 26));
-                Space(8);
-                Label($"Gold earned  +{game.runGold}   (total {Save.gold})", 26, new Color(1f, 0.85f, 0.35f), 6, TextAnchor.UpperLeft, 0, false, true);
-                GUILayout.FlexibleSpace();
-                GUILayout.EndHorizontal();
+                Label($"Stage {game.stage} / {Data.STAGE_COUNT}   ·   {Clock(game.totalTime)}   ·   Level {p.level}   ·   {game.kills} ogres slain", 24, PARCHMENT, 6, TextAnchor.UpperCenter);
                 Space(18);
                 Label($"Score  {endScore}", 48, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
@@ -1302,11 +1325,11 @@ namespace Skyfall
                 Space(18);
                 CenterRow(() =>
                 {
-                    Button("Ride Again", 26, 0, true, () => game.Restart(true));
+                    Button("Ride Again", 22, 220, true, () => game.Restart(true));
                     Space(16);
-                    Button("Main Menu", 22, 0, true, () => game.Restart(false));
+                    Button("Main Menu", 20, 220, true, () => game.Restart(false));
                     Space(16);
-                    Button("Quit", 22, 0, true, () =>
+                    Button("Quit", 20, 220, true, () =>
                     {
                         endOpen = false;
                         ShowQuit();
@@ -1354,7 +1377,7 @@ namespace Skyfall
                     StatColumn("Abilities", () =>
                     {
                         Kv(Data.HEROES[p.heroId].name, "", 16);
-                        Kv(p.Weapon.shopName, $"Lv {p.swordLevel}", 16);
+                        Kv(p.Weapon.name, $"Lv {p.weaponLevel}", 16);
                         var def = p.IsKnight ? Data.SHIELD : (p.IsPyro ? Data.WARD : Data.EVASION);
                         Kv(def.name, $"Lv {p.shieldLevel}", 16);
                         Kv(Data.SPELLS[p.spellId].name, $"Lv {Lv(p.spellId)}", 16);
@@ -1366,7 +1389,18 @@ namespace Skyfall
                         foreach (var id in Data.BUCKET_ORDER) Kv(Data.BUCKETS[id].name, $"Rank {p.B(id)}", 16);
                         Space(6);
                         Label("Armor", 20, GOLD, 5);
-                        foreach (var id in Data.ARMOR_ORDER) Kv(Data.ARMOR[id].name, p.Tier(id) == 0 ? "none" : $"Tier {p.Tier(id)}", 16);
+                        foreach (var id in Data.ARMOR_SLOTS)
+                        {
+                            var a = p.ArmorIn(id);
+                            Kv(Data.ARMOR_SLOT_NAMES[id], a == null ? "-" : Data.ARMOR_TIER_NAMES[a.tier], 16);
+                        }
+                        Space(6);
+                        Label("Talents", 20, GOLD, 5);
+                        for (int r = 0; r < Data.TALENT_LEVELS.Length; r++)
+                        {
+                            var tid = p.TalentInRow(r);
+                            Kv($"Row {r + 1}", tid == null ? $"Lv {Data.TALENT_LEVELS[r]}" : Data.FindTalent(tid).name, 16);
+                        }
                         Space(6);
                         Label("Power-ups", 20, GOLD, 5);
                         foreach (var id in Data.POWERUP_ORDER)
@@ -1375,14 +1409,14 @@ namespace Skyfall
                     Space(18);
                     StatColumn("This Run", () =>
                     {
-                        Kv("Time", Clock(game.timeElapsed), 16);
-                        Kv("Wave", game.finalStarted ? "Final battle" : $"{game.wave} / {Data.WAVE_NAMES.Length}", 16);
+                        Kv("Time", Clock(game.totalTime), 16);
+                        Kv("Stage", $"{game.stage} / {Data.STAGE_COUNT}", 16);
+                        Kv("Wave", game.finalStarted ? "Final battle" : $"{game.wave} / {game.Stage.waves.Length}", 16);
                         Kv("Ogres slain", game.kills.ToString(), 16);
-                        Kv("Gold", game.runGold.ToString(), 16);
                         Kv("Damage dealt", ((int)game.damageDealt).ToString(), 16);
                         Kv("Biggest hit", ((int)game.biggestHit).ToString(), 16);
                         Kv("Bosses slain", game.bossesSlain.ToString(), 16);
-                        Kv("Score so far", Save.ScoreFor(game.timeElapsed, game.kills, p.level, false).ToString(), 16);
+                        Kv("Score so far", Save.ScoreFor(game.totalTime, game.kills, p.level, game.stage, false).ToString(), 16);
                         Kv("Best score", Save.best_score.ToString(), 16);
                     });
                 });

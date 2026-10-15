@@ -6,13 +6,13 @@ using UnityEngine.SceneManagement;
 
 namespace Skyfall
 {
-    /// Run manager: world setup, 8-minute wave timer, spawning, bosses, XP, level-ups, sky.
+    /// Run manager: world setup, three 8-minute stages joined by portals, spawning, bosses, eggs, XP, level-ups
+    /// (abilities, stat buckets, talents, armor), the run save and the sky.
     /// Put this on one GameObject in an otherwise empty scene; it builds everything else from code.
     public class Game : MonoBehaviour
     {
         const int MAX_ENEMIES = 320;
         const int MAX_GEMS = 450;
-        const int MAX_COINS = 180;
 
         public static Game I;
 
@@ -38,47 +38,49 @@ namespace Skyfall
             public bool orb;
         }
         readonly List<Gem> gems = new List<Gem>();
-        class Coin
-        {
-            public Transform node;
-            public int value;
-            public bool pulled;
-        }
-        readonly List<Coin> coins = new List<Coin>();
-        Mesh coinMesh;
-        Material coinMat, coinRimMat;
-        /// Gold picked up this run; banked into Save.gold when the run ends.
-        public int runGold;
         public readonly List<Enemy> bosses = new List<Enemy>();
         public bool running;
         public bool ended;
+        /// True while the portal carries the hero to the next stage (no spawning, no damage).
+        public bool traveling;
+        /// Seconds into the current stage.
         public float timeElapsed;
+        /// Seconds across the whole run (for the score).
+        public float totalTime;
         float spawnAccum;
         public int wave = 1;
+        /// Current stage (1..Data.STAGE_COUNT).
+        public int stage = 1;
         public int bossesSpawned;
         public int bossesSlain;
-        /// True once the timer hit 0:00: the field is cleared and the Mountain King waits on the floating island.
+        /// True once the timer hit 0:00: the field is cleared and the stage's final boss waits on the floating island.
         public bool finalStarted;
-        bool miniSpawned;
+        public bool miniSpawned;
         Enemy miniBoss;
         IslandBeacon beacon;
-        /// Dragon that hatched from the final boss's egg this run (for the end screen), or empty.
-        public string hatchedDragon = "";
+        /// Dragons that hatched from eggs this run (for the end screen).
+        public readonly List<string> hatched = new List<string>();
         public int kills;
         public float damageDealt;
         public float biggestHit;
         float shakeAmt;
         public bool leveling;
         public bool freezePreview;
+        int worldSeed;
         readonly Dictionary<int, Mesh> gemMeshes = new Dictionary<int, Mesh>();
         readonly Dictionary<int, Material> gemMats = new Dictionary<int, Material>();
 
-        /// "Ride Again" goes straight to the hero select screen.
-        public static bool skipMenu;
+        /// "Ride Again" goes straight to the hero select screen; "Continue" resumes the saved run.
+        public static bool skipMenu, continueRun;
 
         Enemy finalBoss;
         bool finalDefeated;
         bool paused;
+
+        public Data.StageDef Stage => Data.STAGES[Mathf.Clamp(stage - 1, 0, Data.STAGES.Length - 1)];
+
+        /// Dragon hatched most recently this run, or empty.
+        public string hatchedDragon => hatched.Count > 0 ? hatched[hatched.Count - 1] : "";
 
         /// True while the game is paused (pause menu, stats screen, level-up choice).
         public bool Paused => paused;
@@ -102,15 +104,16 @@ namespace Skyfall
             FX.root = fxRoot;
             FX.liveBursts = 0;
             FX.texts.Clear();
-            terrain = new GameObject("Terrain").AddComponent<WorldTerrain>();
-            terrain.transform.SetParent(transform, false);
-            terrain.Generate(Random.Range(0, int.MaxValue));
+            worldSeed = Random.Range(0, int.MaxValue / 2);
+            stage = continueRun && Save.HasRun ? Mathf.Clamp(Save.run.stage, 1, Data.STAGE_COUNT) : 1;
+            if (stage != 1) SetSky();
+            BuildTerrain();
             hud = gameObject.AddComponent<Hud>();
             hud.game = this;
             // Preview dragon on the title screen.
             player = new GameObject("Player").AddComponent<Player>();
             player.transform.SetParent(transform, false);
-            player.Pos = new Vector3(0, terrain.Height(0, 0), 0);
+            player.Pos = StartPos;
             player.Init(this);
             player.camDist = 6f;
             player.camDistTarget = 6f;
@@ -131,6 +134,12 @@ namespace Skyfall
                 Data.DRAGONS.ContainsKey(Save.last_dragon) ? Save.last_dragon : "blue");
             player.SnapCamera();
             MakeGemMeshes();
+            Atmosphere(0f);
+            if (continueRun)
+            {
+                continueRun = false;
+                if (Save.HasRun) { ContinueRun(); return; }
+            }
             if (skipMenu)
             {
                 skipMenu = false;
@@ -139,29 +148,28 @@ namespace Skyfall
             else hud.ShowMainMenu();
         }
 
+        void BuildTerrain()
+        {
+            terrain = new GameObject("Terrain").AddComponent<WorldTerrain>();
+            terrain.transform.SetParent(transform, false);
+            terrain.Generate(worldSeed + stage * 7919, stage);
+        }
+
+        Vector3 StartPos => new Vector3(0, terrain.Height(0, 0), 0);
+
         void OnDestroy()
         {
             if (I == this) I = null;
             GameInput.StopRumble();
             Time.timeScale = 1f;
             foreach (var m in gemMats.Values) if (m) Destroy(m);
-            if (coinMat) Destroy(coinMat);
-            if (coinRimMat) Destroy(coinRimMat);
             if (skyMat) Destroy(skyMat);
             if (volume && volume.profile) Destroy(volume.profile);
         }
 
         void SetupEnvironment()
         {
-            // Sky: the Fantasy Skybox pack when set up, else the built-in gradient sky.
-            packSky = Skins.Lib != null && Skins.Lib.skybox != null;
-            skyMat = packSky ? new Material(Skins.Lib.skybox) : new Material(Shader.Find("Skyfall/Sky"));
-            if (packSky)
-            {
-                skyTint = skyMat.HasProperty("_Tint") ? skyMat.GetColor("_Tint") : Color.gray;
-                skyExposure = skyMat.HasProperty("_Exposure") ? skyMat.GetFloat("_Exposure") : 1f;
-            }
-            RenderSettings.skybox = skyMat;
+            SetSky();
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
@@ -196,8 +204,21 @@ namespace Skyfall
             volume.isGlobal = true;
             volume.priority = 10f;
             volume.profile = profile;
+        }
 
-            Atmosphere(0f);
+        /// Sky: the stage's Fantasy Skybox when the pack is set up, else the built-in gradient sky.
+        void SetSky()
+        {
+            if (skyMat) Destroy(skyMat);
+            var src = Skins.Lib != null ? Skins.Lib.SkyFor(stage) : null;
+            packSky = src != null;
+            skyMat = packSky ? new Material(src) : new Material(Shader.Find("Skyfall/Sky"));
+            if (packSky)
+            {
+                skyTint = skyMat.HasProperty("_Tint") ? skyMat.GetColor("_Tint") : Color.gray;
+                skyExposure = skyMat.HasProperty("_Exposure") ? skyMat.GetFloat("_Exposure") : 1f;
+            }
+            RenderSettings.skybox = skyMat;
         }
 
         void MakeGemMeshes()
@@ -212,9 +233,6 @@ namespace Skyfall
                 gemMats[kv.Key] = mat;
                 gemMeshes[kv.Key] = MeshGen.Sphere(4);
             }
-            coinMesh = MeshGen.Cylinder(0.5f, 0.5f, 14);
-            coinMat = FX.NewLit(new Color(1f, 0.88f, 0.3f), 0.3f, 0f, 0.9f);
-            coinRimMat = FX.NewLit(new Color(0.9f, 0.62f, 0.1f), 0.4f, 0f, 0.5f);
         }
 
         // ---------------------------------------------------------------- run flow
@@ -226,14 +244,64 @@ namespace Skyfall
             Save.last_passive = passive;
             Save.last_hero = hero;
             Save.last_dragon = dragon;
-            Save.Write();
+            if (stage != 1) BuildStage(1);
+            BeginPlay();
+            player.OnStageStart();
+            WriteRunSave();
+            hud.Banner($"Stage 1 — {Stage.name}", Stage.intro);
+        }
+
+        /// Resumes the saved run at the start of the stage it was on, with the hero exactly as saved.
+        public void ContinueRun()
+        {
+            var s = Save.run;
+            player.SetupLoadout(s.spell, s.passive, s.hero, Save.IsDragonUnlocked(s.dragon) ? s.dragon : "blue");
+            player.ApplyRunState(s);
+            kills = s.kills;
+            bossesSlain = s.bossesSlain;
+            totalTime = s.totalTime;
+            damageDealt = s.damageDealt;
+            biggestHit = s.biggestHit;
+            hatched.Clear();
+            hatched.AddRange(s.hatched);
+            int st = Mathf.Clamp(s.stage, 1, Data.STAGE_COUNT);
+            if (st != stage) BuildStage(st);
+            else player.Teleport(StartPos);
+            BeginPlay();
+            hud.Banner($"Stage {stage} — {Stage.name}", "Your journey continues.");
+        }
+
+        void BeginPlay()
+        {
             running = true;
             Time.timeScale = Save.game_speed;
             player.camDistTarget = 9f;
             player.camPitch = 0.32f;
             GameInput.MouseCaptured = true;
             hud.ShowHud();
-            hud.Banner($"Wave 1 — {Data.WAVE_NAMES[0]}", "Survive. A champion comes at 4:00; at 0:00 the Mountain King awaits.");
+        }
+
+        /// Writes the run in progress to the save file (stage start, and when leaving mid-run).
+        public void WriteRunSave()
+        {
+            if (!running || ended) return;
+            var s = Save.run ?? new Save.RunState();
+            s.active = true;
+            s.hero = player.heroId;
+            s.dragon = player.dragonId;
+            s.spell = player.spellId;
+            s.passive = player.passiveId;
+            s.stage = stage;
+            s.kills = kills;
+            s.bossesSlain = bossesSlain;
+            s.totalTime = totalTime;
+            s.damageDealt = damageDealt;
+            s.biggestHit = biggestHit;
+            s.hatched = new List<string>(hatched);
+            s.date = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+            player.WriteRunState(s);
+            Save.run = s;
+            Save.Write();
         }
 
         void Update()
@@ -252,7 +320,13 @@ namespace Skyfall
                 }
                 return;
             }
+            if (traveling)
+            {
+                pet.Tick(delta, false);
+                return;
+            }
             timeElapsed += delta;
+            totalTime += delta;
             Waves();
             Spawn(delta);
             TickEnemies(delta);
@@ -266,7 +340,8 @@ namespace Skyfall
 
         void Waves()
         {
-            int newWave = Mathf.Min((int)(timeElapsed / Data.WAVE_LENGTH) + 1, Data.WAVE_NAMES.Length);
+            var names = Stage.waves;
+            int newWave = Mathf.Min((int)(timeElapsed / Data.WAVE_LENGTH) + 1, names.Length);
             // The mini boss arrives at 4:00; at 0:00 the field is cleared for the final battle.
             if (!miniSpawned && timeElapsed >= Data.MINI_BOSS_TIME)
             {
@@ -277,7 +352,7 @@ namespace Skyfall
             if (newWave != wave && !finalStarted)
             {
                 wave = newWave;
-                hud.Banner($"Wave {wave} — {Data.WAVE_NAMES[wave - 1]}", "");
+                hud.Banner($"Wave {wave} — {names[wave - 1]}", "");
             }
         }
 
@@ -285,14 +360,14 @@ namespace Skyfall
         {
             if (finalStarted) return;
             float t = timeElapsed;
-            float rate = (1f + t * 0.045f) * Data.SPAWN_RATE_MULT;
-            int cap = Mathf.Min(MAX_ENEMIES, 60 + (int)(t * 0.55f));
+            float rate = (1f + t * 0.045f) * Data.SPAWN_RATE_MULT * (1f + 0.15f * (stage - 1));
+            int cap = Mathf.Min(MAX_ENEMIES, 60 + (int)(t * 0.55f) + 20 * (stage - 1));
             spawnAccum += rate * delta;
             while (spawnAccum >= 1f)
             {
                 spawnAccum -= 1f;
                 if (enemies.Count >= cap) continue;
-                var weights = Data.WAVE_WEIGHTS[wave - 1];
+                var weights = Data.WAVE_WEIGHTS[Mathf.Clamp(wave - 1 + (stage - 1), 0, Data.WAVE_WEIGHTS.Length - 1)];
                 int total = 0;
                 foreach (var w in weights) total += w.weight;
                 int roll = Random.Range(0, total);
@@ -313,26 +388,29 @@ namespace Skyfall
             }
         }
 
+        /// Health and damage multipliers for ogres right now: they grow through the stage, and each stage starts tougher.
+        float EnemyHpMult => (1f + timeElapsed / 60f * 0.38f) * Data.ENEMY_STAT_MULT * Stage.enemyMult;
+        float EnemyDmgMult => (1f + timeElapsed / 600f) * Data.ENEMY_STAT_MULT * Mathf.Sqrt(Stage.enemyMult);
+
         /// Spawns an ogre on the terrain, or (with fromY, e.g. an island's top) on the surface at or below that height.
         public Enemy SpawnEnemy(string kind, Vector3 p, float fromY = float.NegativeInfinity)
         {
             float lim = WorldTerrain.PLAY_LIMIT;
             p.x = Mathf.Clamp(p.x, -lim, lim);
             p.z = Mathf.Clamp(p.z, -lim, lim);
-            float t = timeElapsed;
-            var e = Enemy.Make(this, kind, (1f + t / 60f * 0.38f) * Data.ENEMY_STAT_MULT, (1f + t / 600f) * Data.ENEMY_STAT_MULT);
+            var e = Enemy.Make(this, kind, EnemyHpMult, EnemyDmgMult);
             e.transform.SetParent(transform, false);
             e.Pos = new Vector3(p.x, terrain.SurfaceHeight(p.x, p.z, fromY), p.z);
             enemies.Add(e);
             return e;
         }
 
-        /// The mini boss: arrives near the player, like the old champions. Killing him does not end the run.
+        /// The mini boss: arrives near the player. Killing him does not end the stage.
         void SpawnBoss(int idx)
         {
             float a = M.RandF() * M.TAU;
             var p = player.Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 40f;
-            var e = Enemy.MakeBoss(this, idx, Data.BOSS_STAT_MULT, Data.BOSS_STAT_MULT);
+            var e = Enemy.MakeBoss(this, idx, Data.BOSS_STAT_MULT * Stage.enemyMult, Data.BOSS_STAT_MULT * Mathf.Sqrt(Stage.enemyMult), Stage.miniBoss, Stage.bossTint);
             e.transform.SetParent(transform, false);
             float lim = WorldTerrain.PLAY_LIMIT;
             p.x = Mathf.Clamp(p.x, -lim, lim);
@@ -348,7 +426,7 @@ namespace Skyfall
             FX.Vfx("portal_red", e.Pos + new Vector3(0, e.size, 0), e.size / 2f, 2.5f, null, 0f);
         }
 
-        /// 0:00: every ogre is swept away (no kills, no XP), spawning stops and the Mountain King appears on the big
+        /// 0:00: every ogre is swept away (no kills, no XP), spawning stops and the stage's final boss appears on the big
         /// island. A mini boss still alive is despawned too, so the final fight is one-on-one.
         public void BeginFinalBattle()
         {
@@ -372,7 +450,7 @@ namespace Skyfall
 
             var c = terrain.BossIslandCenter;
             var isl = terrain.bossIsland;
-            var b = Enemy.MakeBoss(this, Data.FINAL_BOSS, Data.BOSS_STAT_MULT, Data.BOSS_STAT_MULT);
+            var b = Enemy.MakeBoss(this, Data.FINAL_BOSS, Data.BOSS_STAT_MULT * Stage.enemyMult, Data.BOSS_STAT_MULT * Mathf.Sqrt(Stage.enemyMult), Stage.finalBoss, Stage.bossTint);
             b.transform.SetParent(transform, false);
             if (isl != null && !M.IsInf(c))
             {
@@ -391,7 +469,7 @@ namespace Skyfall
             finalBoss = b;
             Sfx.Play("roar", 3f, 0f);
             Shake(0.9f);
-            hud.Banner("FINAL BATTLE", "The Mountain King awaits on the floating island");
+            hud.Banner("FINAL BATTLE", $"{Stage.finalBoss} awaits on the floating island");
             FX.Vfx("portal_red", b.Pos + new Vector3(0, b.size, 0), b.size / 2f, 2.5f, null, 0f);
             FX.Flash(b.Pos + new Vector3(0, b.size, 0), 14f, new Color(1f, 0.5f, 0.2f, 0.7f), 0.8f);
         }
@@ -407,7 +485,7 @@ namespace Skyfall
                 beacon = IslandBeacon.Create(terrain.BossIslandCenter, terrain.BossIslandRadius);
                 beacon.transform.SetParent(transform, true);
             }
-            beacon.SetIntensity(finalStarted ? 1f : Mathf.Lerp(0.15f, 0.45f, 1f - left / 30f));
+            if (!finalDefeated) beacon.SetIntensity(finalStarted ? 1f : Mathf.Lerp(0.15f, 0.45f, 1f - left / 30f));
         }
 
         /// World position the HUD marker/arrow points at (just above the island), or M.INF outside the final battle.
@@ -521,6 +599,9 @@ namespace Skyfall
                 {
                     float a = M.RandF() * M.TAU;
                     var p = player.Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 45f;
+                    float lim = WorldTerrain.PLAY_LIMIT;
+                    p.x = Mathf.Clamp(p.x, -lim, lim);
+                    p.z = Mathf.Clamp(p.z, -lim, lim);
                     e.Pos = new Vector3(p.x, terrain.Height(p.x, p.z), p.z);
                 }
             }
@@ -645,13 +726,12 @@ namespace Skyfall
                 bossesSlain++;
                 Shake(1f);
                 FX.Flash(pos + new Vector3(0, 3, 0), 10f, new Color(FX.EnemyRed.r, 0.25f, 0.12f, 0.8f), 0.8f);
-                for (int i = 0; i < 10; i++)
+                for (int i = 0; i < 5; i++)
                 {
                     var gp = pos + new Vector3(M.RandRange(-4f, 4f), 0, M.RandRange(-4f, 4f));
                     gp.y = terrain.SurfaceHeight(gp.x, gp.z, pos.y);
-                    DropGem(gp, e.xpValue / 10f * 3f);
+                    DropGem(gp, e.xpValue / 10f * 3f * Data.GEM_VALUE_MULT);
                 }
-                if (e != finalBoss) DropGoldPile(pos, Data.MINI_BOSS_GOLD, 10, e.size);
                 // Bosses always drop two random power-ups.
                 for (int i = 0; i < Data.BOSS_POWERUPS; i++)
                 {
@@ -667,16 +747,37 @@ namespace Skyfall
             }
             else
             {
-                DropGem(pos, e.xpValue);
-                if (Data.OGRES.TryGetValue(e.kind, out var od)) DropCoin(pos + new Vector3(M.RandRange(-0.9f, 0.9f), 0, M.RandRange(-0.9f, 0.9f)), od.gold);
+                // Half as many gems, each worth twice as much.
+                if (M.RandF() < Data.GEM_DROP_CHANCE) DropGem(pos, e.xpValue * Data.GEM_VALUE_MULT);
                 // Random health orbs; bigger ogres drop them more often.
                 float orbChance = Data.ORB_CHANCE * (0.6f + e.size * 0.6f);
                 if (e.lanceMarked) orbChance += Data.WEAPONS["blood_lance"].orb_bonus;
+                if (player.Has("h_orbs")) orbChance *= 2f;
                 if (M.RandF() < orbChance) DropOrb(pos);
                 if (M.RandF() < player.PowerUpDropChance) DropPowerUp(Data.POWERUP_ORDER[Random.Range(0, Data.POWERUP_ORDER.Length)], pos);
             }
+            // Venom Wyrm: an ogre that dies poisoned bursts and poisons its neighbors.
+            if (e.Poisoned) PoisonBurst(pos);
+            player.OnKill(e);
             FX.Vfx("dust_puff", pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.6f, null, 0.25f, FX.EnemyRed);
             e.gameObject.SetActive(false);
+        }
+
+        int poisonBursts;
+        float poisonBurstT;
+
+        void PoisonBurst(Vector3 pos)
+        {
+            // Throttle the visuals in big chain reactions.
+            if (Time.time - poisonBurstT > 0.1f) { poisonBursts = 0; poisonBurstT = Time.time; }
+            if (poisonBursts++ < 6)
+            {
+                FX.Burst(pos + Vector3.up, new Color(0.45f, 1f, 0.2f), 12, 5f, 0.35f);
+                FX.Shockwave(pos + new Vector3(0, 0.3f, 0), 4f, new Color(0.45f, 1f, 0.2f, 0.6f), 0.3f, false);
+            }
+            int lvl = player.spells.TryGetValue("dragonfire", out int v) ? v : 1;
+            float dps = (5f + 2.5f * lvl) * player.DamageMult * player.DragonDamageMult;
+            foreach (var o in EnemiesInRadius(pos, 4f, 3f)) o.Poison(4f, dps);
         }
 
         public void Shake(float amount)
@@ -701,7 +802,8 @@ namespace Skyfall
             if (gems.Count >= MAX_GEMS)
             {
                 // Merge into a random existing gem to keep counts sane.
-                gems[Random.Range(0, gems.Count)].value += value;
+                var g = gems[Random.Range(0, gems.Count)];
+                if (!g.orb) g.value += value;
                 return;
             }
             int tier = 1;
@@ -711,72 +813,30 @@ namespace Skyfall
                     tier = t;
                     break;
                 }
-            var r = FX.Part(transform, gemMeshes[tier], gemMats[tier], Vector3.zero, new Vector3(0.6f, 0.75f, 0.6f) * (tier >= 10 ? 1.8f : 1f));
+            var r = FX.Part(transform, gemMeshes[tier], gemMats[tier], Vector3.zero, new Vector3(0.6f, 0.75f, 0.6f) * (tier >= 10 ? 1.8f : 1.15f));
             FX.NoShadow(r);
             r.gameObject.name = "Gem";
             r.transform.position = pos + new Vector3(0, 0.6f, 0);
             gems.Add(new Gem { node = r.transform, value = value });
         }
 
-        /// A small spinning gold coin that magnets to the player. Nearby loose coins merge into one so counts stay sane.
-        void DropCoin(Vector3 pos, int value, bool pulled = false)
-        {
-            if (value <= 0 && !pulled) return;
-            if (value > 0)
-            {
-                for (int i = coins.Count - 1; i >= 0 && i >= coins.Count - 40; i--)
-                {
-                    var c = coins[i];
-                    if (c.pulled || c.value >= 8 || (c.node.position - pos).sqrMagnitude > 1.4f) continue;
-                    c.value += value;
-                    SizeCoin(c);
-                    return;
-                }
-                if (coins.Count >= MAX_COINS)
-                {
-                    var c = coins[Random.Range(0, coins.Count)];
-                    c.value += value;
-                    SizeCoin(c);
-                    return;
-                }
-            }
-            var n = new GameObject("Coin").transform;
-            n.SetParent(transform, false);
-            FX.NoShadow(FX.Part(n, coinMesh, coinRimMat, Vector3.zero, new Vector3(1f, 0.14f, 1f), new Vector3(M.PI * 0.5f, 0, 0)));
-            FX.NoShadow(FX.Part(n, coinMesh, coinMat, Vector3.zero, new Vector3(0.72f, 0.2f, 0.72f), new Vector3(M.PI * 0.5f, 0, 0)));
-            n.position = pos + new Vector3(0, 0.9f, 0);
-            var coin = new Coin { node = n, value = value, pulled = pulled };
-            SizeCoin(coin);
-            coins.Add(coin);
-        }
-
-        static void SizeCoin(Coin c)
-        {
-            float s = c.value >= 50 ? 1.3f : (c.value >= 8 ? 0.95f : (c.value >= 4 ? 0.75f : 0.6f));
-            c.node.localScale = Vector3.one * s;
-        }
-
-        /// A big pile of gold: count coins worth value in total, scattered around pos on the surface.
-        void DropGoldPile(Vector3 pos, int value, int count, float spread, bool pulled = false)
-        {
-            for (int i = 0; i < count; i++)
-            {
-                var gp = pos + new Vector3(M.RandRange(-spread, spread), 0, M.RandRange(-spread, spread));
-                gp.y = terrain.SurfaceHeight(gp.x, gp.z, pos.y);
-                DropCoin(gp + new Vector3(0, 0.4f, 0), value / count + (i < value % count ? 1 : 0), pulled);
-            }
-        }
-
         /// Total power-ups dropped this run, and how many of them came from bosses (the tests check these).
         public int powerUpDrops, bossPowerUps;
 
-        /// A glowing power-up pickup (kind: speed, damage or gold) that bobs, spins and magnets to the player like a gem.
+        /// A glowing power-up pickup (kind: speed, damage or magnet) that bobs, spins and magnets to the player like a gem.
         public PowerUpPickup DropPowerUp(string id, Vector3 pos)
         {
             powerUpDrops++;
             var p = PowerUpPickup.Spawn(this, id, pos + new Vector3(0, 0.2f, 0));
             p.transform.SetParent(transform, true);
             return p;
+        }
+
+        /// The Lodestone power-up: every gem and orb on the field starts flying to the hero.
+        public void VacuumPickups()
+        {
+            foreach (var g in gems) g.pulled = true;
+            foreach (var p in FindObjectsByType<PowerUpPickup>(FindObjectsInactive.Exclude)) p.Pull();
         }
 
         void DropOrb(Vector3 pos)
@@ -809,13 +869,14 @@ namespace Skyfall
                 var to = c - node.position;
                 float d = to.magnitude;
                 if (!g.pulled && d < mag) g.pulled = true;
-                if (g.pulled) node.position += to.normalized * Mathf.Min(d, delta * (18f + 30f / Mathf.Max(d, 0.5f)));
+                if (g.pulled) node.position += to.normalized * Mathf.Min(d, delta * (18f + 30f / Mathf.Max(d, 0.5f) + d * 0.8f));
                 else node.rotation = Quaternion.Euler(0, spin, 0);
                 if (d < 1.6f)
                 {
                     if (g.orb)
                     {
                         player.Heal(player.maxHp * g.value);
+                        if (player.Has("h_orbs")) player.AddMana(20f);
                         FX.Flash(c, 1.5f, new Color(1f, 0.3f, 0.3f, 0.5f), 0.3f);
                         Sfx.Play("heal", -2f, 0.05f);
                         FX.Vfx("healing", player.Pos, 1f, 1.5f, null, 0.3f);
@@ -829,28 +890,6 @@ namespace Skyfall
                     gems.RemoveAt(i);
                 }
             }
-            TickCoins(delta, c, mag, spin);
-        }
-
-        void TickCoins(float delta, Vector3 c, float mag, float spin)
-        {
-            for (int i = coins.Count - 1; i >= 0; i--)
-            {
-                var g = coins[i];
-                var node = g.node;
-                var to = c - node.position;
-                float d = to.magnitude;
-                if (!g.pulled && d < mag) g.pulled = true;
-                if (g.pulled) node.position += to.normalized * Mathf.Min(d, delta * (18f + 30f / Mathf.Max(d, 0.5f)));
-                node.rotation = Quaternion.Euler(0, spin + i * 40f, 0);
-                if (d < 1.6f)
-                {
-                    runGold += Mathf.RoundToInt(g.value * player.GoldMult);
-                    if (g.value > 0) Sfx.Play("coin", g.value >= 8 ? -6f : -11f, 0.12f);
-                    Destroy(node.gameObject);
-                    coins.RemoveAt(i);
-                }
-            }
         }
 
         // ---------------------------------------------------------------- level ups
@@ -862,27 +901,46 @@ namespace Skyfall
             public string type, id, name, desc, tag;
             public int level;
             public Color color;
+            public Save.ArmorPiece armor;
         }
 
-        /// Level-ups alternate between ability upgrades and stat buckets, with a random chance to swap.
+        /// Level-ups: talent rows open at Data.TALENT_LEVELS, armor is offered every Data.ARMOR_EVERY levels, and the rest
+        /// alternate between ability upgrades and stat buckets (with a random chance to swap).
         void LevelUp()
         {
             leveling = true;
             player.pendingLevels--;
-            string kind = nextLevelKind;
-            if (M.RandF() < Data.LEVEL_SWAP_CHANCE) kind = kind == "ability" ? "stats" : "ability";
-            nextLevelKind = nextLevelKind == "ability" ? "stats" : "ability";
-            var options = kind == "ability" ? AbilityOptions() : new List<LevelOption>();
-            if (options.Count == 0)
+            int lvl = player.level - player.pendingLevels;
+            string kind;
+            List<LevelOption> options;
+            int row = System.Array.IndexOf(Data.TALENT_LEVELS, lvl);
+            if (row >= 0 && player.TalentInRow(row) == null && Data.TALENTS.ContainsKey(player.heroId))
             {
-                kind = "stats";
-                options = BucketOptions();
+                kind = "talent";
+                options = TalentOptions(row);
+            }
+            else if (lvl % Data.ARMOR_EVERY == 0)
+            {
+                kind = "armor";
+                options = ArmorOptions();
+            }
+            else
+            {
+                kind = nextLevelKind;
+                if (M.RandF() < Data.LEVEL_SWAP_CHANCE) kind = kind == "ability" ? "stats" : "ability";
+                nextLevelKind = nextLevelKind == "ability" ? "stats" : "ability";
+                options = kind == "ability" ? AbilityOptions() : new List<LevelOption>();
+                if (options.Count == 0)
+                {
+                    kind = "stats";
+                    options = BucketOptions();
+                }
             }
             SetPaused(true);
             GameInput.MouseCaptured = false;
             Sfx.Play("levelup", -3f, 0f);
             FX.Vfx("buff", player.Pos, 1f, 2f, null, 0f);
-            hud.ShowLevelUp(player.level, options, kind);
+            hud.ShowLevelUp(lvl, options, kind);
         }
 
         static List<LevelOption> Pick3(List<LevelOption> pool)
@@ -891,11 +949,16 @@ namespace Skyfall
             return pool.GetRange(0, Mathf.Min(3, pool.Count));
         }
 
-        /// Ability upgrades: passive, spell, dragon breath and dragon signature (weapons are upgraded in the shop).
+        /// Ability upgrades: weapon, passive, spell, dragon breath and dragon signature.
         List<LevelOption> AbilityOptions()
         {
             var pool = new List<LevelOption>();
             var p = player;
+            var w = p.Weapon;
+            int wl = p.weaponLevel;
+            if (wl < Data.MAX_LEVEL)
+                pool.Add(new LevelOption { type = "spell", id = "weapon", name = w.name, level = wl + 1, desc = w.up + "\n" + string.Join("\n", Data.WeaponStats(Data.HEROES[p.heroId].weapon, wl + 1)),
+                    tag = "WEAPON", color = w.color });
             int pl = p.spells.TryGetValue(p.passiveId, out int v1) ? v1 : 1;
             if (pl < Data.MAX_LEVEL)
             {
@@ -906,7 +969,9 @@ namespace Skyfall
             if (sl < Data.MAX_LEVEL)
             {
                 var sp = Data.SPELLS[p.spellId];
-                pool.Add(new LevelOption { type = "spell", id = p.spellId, name = sp.name, level = sl + 1, desc = sp.ups[sl], tag = "SPELL", color = sp.color });
+                bool evolve = sl + 1 == Data.EVOLVE_LEVEL;
+                pool.Add(new LevelOption { type = "spell", id = p.spellId, name = evolve ? sp.evolved : (sl + 1 > Data.EVOLVE_LEVEL ? sp.evolved : sp.name), level = sl + 1, desc = sp.ups[sl],
+                    tag = evolve ? "SPELL · EVOLUTION" : "SPELL", color = sl + 1 >= Data.EVOLVE_LEVEL ? sp.evolvedColor : sp.color });
             }
             var dd = Data.DRAGONS[p.dragonId];
             int bl = p.spells.TryGetValue("dragonfire", out int v3) ? v3 : 1;
@@ -917,20 +982,94 @@ namespace Skyfall
             if (gl < Data.MAX_LEVEL)
                 pool.Add(new LevelOption { type = "spell", id = "ride", name = dd.sig, level = gl + 1, desc = Data.SIGNATURE_UP,
                     tag = "DRAGON · SIGNATURE", color = dd.breath });
-            return Pick3(pool);
+            // The spell's evolution is too important to be shuffled away.
+            var evo = pool.Find(o => o.tag == "SPELL · EVOLUTION");
+            var picked = Pick3(pool);
+            if (evo != null && !picked.Contains(evo)) picked[picked.Count - 1] = evo;
+            return picked;
         }
 
-        /// Stat buckets: pick one, gain all three of its stats.
+        /// Stat buckets: pick one, gain all of its stats.
         List<LevelOption> BucketOptions()
         {
             var pool = new List<LevelOption>();
             foreach (var id in Data.BUCKET_ORDER)
             {
                 var bk = Data.BUCKETS[id];
+                var lines = new List<string>();
+                foreach (var s in bk.stats) lines.Add(s.Text());
                 pool.Add(new LevelOption { type = "bucket", id = id, name = bk.name, level = player.B(id) + 1,
-                    desc = string.Join("\n", bk.stats), tag = "STATS", color = bk.color });
+                    desc = string.Join("\n", lines), tag = "STATS", color = bk.color });
             }
             return Pick3(pool);
+        }
+
+        /// The three talents of a row.
+        List<LevelOption> TalentOptions(int row)
+        {
+            var list = new List<LevelOption>();
+            var hero = Data.HEROES[player.heroId];
+            foreach (var t in Data.TALENTS[player.heroId][row])
+                list.Add(new LevelOption { type = "talent", id = t.id, name = t.name, desc = t.desc, level = row + 1, tag = $"TALENT · ROW {row + 1}",
+                    color = row == Data.TALENT_LEVELS.Length - 1 ? new Color(1f, 0.75f, 0.3f) : hero.color });
+            return list;
+        }
+
+        /// Three random armor pieces.
+        List<LevelOption> ArmorOptions()
+        {
+            var list = new List<LevelOption>();
+            var slots = new List<string>(Data.ARMOR_SLOTS);
+            M.Shuffle(slots);
+            for (int i = 0; i < 3; i++)
+            {
+                var piece = RollArmor(slots[i]);
+                list.Add(new LevelOption { type = "armor", id = piece.slot, armor = piece, name = ArmorName(piece), level = piece.tier + 1,
+                    desc = ArmorText(piece), tag = $"ARMOR · {Data.ARMOR_TIER_NAMES[piece.tier].ToUpper()}", color = Data.ARMOR_TIER_COLORS[piece.tier] });
+            }
+            return list;
+        }
+
+        public static Save.ArmorPiece RollArmor(string slot)
+        {
+            float r = M.RandF();
+            int tier = r < Data.ARMOR_TIER_ODDS[2] ? 2 : (r < Data.ARMOR_TIER_ODDS[2] + Data.ARMOR_TIER_ODDS[1] ? 1 : 0);
+            var keys = new List<string>();
+            foreach (var b in Data.BUCKET_ORDER)
+                for (int i = 0; i < Data.BUCKETS[b].stats.Length; i++) keys.Add(Data.StatKey(b, i));
+            M.Shuffle(keys);
+            var piece = new Save.ArmorPiece { slot = slot, tier = tier };
+            for (int i = 0; i < Data.ARMOR_TIER_STATS[tier]; i++) piece.stats.Add(keys[i]);
+            return piece;
+        }
+
+        public static string ArmorName(Save.ArmorPiece a)
+        {
+            // Named after the bucket most of its stats come from.
+            var count = new Dictionary<string, int>();
+            string best = "";
+            foreach (var k in a.stats)
+            {
+                string b = k.Split(':')[0];
+                count[b] = (count.TryGetValue(b, out int n) ? n : 0) + 1;
+                if (best == "" || count[b] > count[best]) best = b;
+            }
+            string slotName = Data.ARMOR_SLOT_NAMES.TryGetValue(a.slot, out var sn) ? sn : a.slot;
+            return $"{Data.ARMOR_TIER_NAMES[a.tier]} {slotName} {(Data.ARMOR_SUFFIX.TryGetValue(best, out var suf) ? suf : "")}".Trim();
+        }
+
+        public static string ArmorText(Save.ArmorPiece a)
+        {
+            float m = Data.ARMOR_TIER_MULT[a.tier];
+            var lines = new List<string>();
+            foreach (var k in a.stats)
+            {
+                var parts = k.Split(':');
+                if (!Data.BUCKETS.TryGetValue(parts[0], out var b)) continue;
+                int idx = int.Parse(parts[1]);
+                if (idx < b.stats.Length) lines.Add(b.stats[idx].Text(m));
+            }
+            return string.Join("\n", lines);
         }
 
         public void ChooseOption(LevelOption o)
@@ -939,7 +1078,11 @@ namespace Skyfall
             {
                 case "spell": player.spells[o.id] = o.level; break;
                 case "bucket": player.AddBucket(o.id); break;
+                case "talent": player.LearnTalent(o.id); break;
+                case "armor": player.EquipArmor(o.armor); break;
             }
+            if (o.type == "spell" && o.id == player.spellId && o.level == Data.EVOLVE_LEVEL)
+                hud.Banner($"{Data.SPELLS[o.id].name} evolves!", Data.SPELLS[o.id].evolved);
             Sfx.Play("click", -4f, 0f);
             SetPaused(false);
             GameInput.MouseCaptured = true;
@@ -947,7 +1090,7 @@ namespace Skyfall
             hud.RefreshAbilities();
         }
 
-        // ---------------------------------------------------------------- endings
+        // ---------------------------------------------------------------- endings and stages
 
         public void OnPlayerDied()
         {
@@ -956,12 +1099,12 @@ namespace Skyfall
             running = false;
             Time.timeScale = 1f;
             GameInput.MouseCaptured = false;
-            Save.gold += runGold;
-            bool best = Save.RecordRun(timeElapsed, kills, player.level, false);
+            bool best = Save.RecordRun(totalTime, kills, player.level, stage, false);
             hud.ShowEnd(false, Save.last_score, best);
         }
 
-        /// The Mountain King has fallen: he drops one egg for a dragon the player does not own yet.
+        /// The stage's final boss has fallen. The first one ever always drops an egg for a dragon you don't own;
+        /// after that it is a 50% chance. Then the portal to the next stage opens.
         void FinalBossDown(Vector3 pos)
         {
             finalDefeated = true;
@@ -969,36 +1112,107 @@ namespace Skyfall
             var locked = new List<string>();
             foreach (var id in Data.DRAGON_ORDER)
                 if (!Save.IsDragonUnlocked(id)) locked.Add(id);
-            if (locked.Count == 0)
+            bool drop = locked.Count > 0 && (Save.eggs_found == 0 || M.RandF() < Data.EGG_CHANCE);
+            if (drop)
             {
-                GrantBossReward();
-                Tw.After(1.5f, Victory);
+                Save.eggs_found++;
+                Save.Write();
+                string pick = locked[Random.Range(0, locked.Count)];
+                DragonEgg.Spawn(this, pick, pos + new Vector3(0, 0.2f, 0));
+                hud.Banner($"{Stage.finalBoss} has fallen!", "A dragon egg glows where he stood");
                 return;
             }
-            string pick = locked[Random.Range(0, locked.Count)];
-            DragonEgg.Spawn(this, pick, pos + new Vector3(0, 0.2f, 0));
-            hud.Banner($"{Data.BOSSES[Data.FINAL_BOSS].name} has fallen!", "A dragon egg glows where he stood");
+            // No egg: a hoard of experience instead.
+            for (int i = 0; i < 8; i++)
+            {
+                var gp = pos + new Vector3(M.RandRange(-5f, 5f), 0, M.RandRange(-5f, 5f));
+                gp.y = terrain.SurfaceHeight(gp.x, gp.z, pos.y);
+                DropGem(gp, 25f * stage);
+            }
+            hud.Banner($"{Stage.finalBoss} has fallen!", locked.Count > 0 ? "No egg this time... but his hoard of power is yours" : "His hoard of power is yours");
+            Tw.After(4f, StageCleared);
         }
 
-        /// The egg was picked up: the dragon is unlocked and saved, then the run ends in victory.
+        /// The egg was picked up: the dragon is unlocked and saved, then the stage ends.
         public void CollectEgg(string dragonId)
         {
             if (ended) return;
             Save.UnlockDragon(dragonId);
-            hatchedDragon = dragonId;
+            hatched.Add(dragonId);
             Sfx.Play("levelup", -2f, 0f);
             FX.Vfx("buff", player.Pos, 1.2f, 2f, null, 0f);
             hud.Banner($"You found a {Data.DRAGONS[dragonId].name} egg!", "It hatches in your care");
-            Tw.After(1.5f, Victory);
+            Tw.After(2.5f, StageCleared);
         }
 
-        /// Reward for beating the Mountain King when every dragon is already owned (no egg drops).
-        public void GrantBossReward()
+        /// After a stage's final boss: on to the next stage through a portal, or victory after the last.
+        void StageCleared()
         {
-            runGold += Data.FINAL_BOSS_GOLD;
-            hud.Banner("The Mountain King's hoard!", $"+{Data.FINAL_BOSS_GOLD} gold");
-            Sfx.Play("buy", -4f, 0f);
-            DropGoldPile(finalBoss ? finalBoss.Pos : player.Pos, 0, 24, 5f, true);
+            if (ended || traveling || !running) return;
+            if (stage >= Data.STAGE_COUNT)
+            {
+                Victory();
+                return;
+            }
+            traveling = true;
+            var next = Data.STAGES[stage];
+            hud.Banner("A portal opens", $"Onward to {next.name}");
+            FX.Vfx("portal_blue", player.Pos + new Vector3(0, 1.5f, 0), 2.2f, 3f, null, 0f);
+            FX.Vfx("buff", player.Pos, 1.5f, 2.5f, null, 0f);
+            Sfx.Play("whoosh", 2f, 0f);
+            Tw.After(1.6f, () =>
+            {
+                hud.FadeTo(1f, 0.6f);
+                Tw.After(0.7f, () =>
+                {
+                    if (this == null || ended) return;
+                    BuildStage(stage + 1);
+                    player.OnStageStart();
+                    WriteRunSave();
+                    hud.FadeTo(0f, 0.8f);
+                    FX.Vfx("portal_blue", player.Pos + new Vector3(0, 1.5f, 0), 2.2f, 2.5f, null, 0f);
+                    hud.Banner($"Stage {stage} — {Stage.name}", Stage.intro);
+                    traveling = false;
+                });
+            });
+        }
+
+        /// Replaces the world with a new stage's land (30% bigger maps, more islands, the stage's scenery) and puts the hero
+        /// at its center. Everything from the last stage is cleared away.
+        void BuildStage(int n)
+        {
+            stage = Mathf.Clamp(n, 1, Data.STAGE_COUNT);
+            foreach (var e in enemies) if (e) Destroy(e.gameObject);
+            enemies.Clear();
+            bosses.Clear();
+            foreach (var g in gems) if (g.node) Destroy(g.node.gameObject);
+            gems.Clear();
+            foreach (var p in FindObjectsByType<PowerUpPickup>(FindObjectsInactive.Include)) Destroy(p.gameObject);
+            foreach (var egg in FindObjectsByType<DragonEgg>(FindObjectsInactive.Include)) Destroy(egg.gameObject);
+            if (beacon) Destroy(beacon.gameObject);
+            beacon = null;
+            if (FX.root)
+                for (int i = FX.root.childCount - 1; i >= 0; i--) Destroy(FX.root.GetChild(i).gameObject);
+            // Spell objects (wells, meteors, clouds...) live under the spellbook; its own aura rings have no scripts.
+            for (int i = spellbook.transform.childCount - 1; i >= 0; i--)
+            {
+                var c = spellbook.transform.GetChild(i);
+                if (c.GetComponent<MonoBehaviour>() != null) Destroy(c.gameObject);
+            }
+            if (terrain) Destroy(terrain.gameObject);
+            BuildTerrain();
+            timeElapsed = 0f;
+            spawnAccum = 0f;
+            wave = 1;
+            miniSpawned = false;
+            finalStarted = false;
+            finalDefeated = false;
+            finalBoss = null;
+            miniBoss = null;
+            player.Teleport(StartPos);
+            pet.Pos = player.Pos + new Vector3(3, 3, -1);
+            SetSky();
+            Atmosphere(0f);
         }
 
         void Victory()
@@ -1008,42 +1222,53 @@ namespace Skyfall
             running = false;
             Time.timeScale = 1f;
             GameInput.MouseCaptured = false;
-            Save.gold += runGold;
-            bool best = Save.RecordRun(timeElapsed, kills, player.level, true);
+            bool best = Save.RecordRun(totalTime, kills, player.level, stage, true);
             hud.ShowEnd(true, Save.last_score, best);
         }
 
-        public void Restart(bool toHeroSelect)
+        /// Pause menu: keeps the run in the save file and returns to the title screen (Continue resumes it).
+        public void SaveAndQuit()
+        {
+            WriteRunSave();
+            Restart(false);
+        }
+
+        public void Restart(bool toHeroSelect, bool resume = false)
         {
             skipMenu = toHeroSelect;
+            continueRun = resume;
             Time.timeScale = 1f;
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
 
         // ---------------------------------------------------------------- sky
 
-        /// The sky slowly burns toward an ashen dusk as the run goes on (k = 0..1).
+        /// The sky slowly burns toward dusk as the stage goes on (k = 0..1), in the stage's colors.
         void Atmosphere(float k)
         {
-            var top = Color.Lerp(new Color(0.28f, 0.38f, 0.52f), new Color(0.22f, 0.1f, 0.12f), k);
-            var horizon = Color.Lerp(new Color(0.72f, 0.64f, 0.55f), new Color(0.85f, 0.35f, 0.15f), k);
+            var st = Stage;
+            var top = Color.Lerp(st.skyTop, new Color(0.22f, 0.1f, 0.12f), k * 0.8f);
+            var horizon = Color.Lerp(st.skyHorizon, new Color(0.85f, 0.35f, 0.15f), k * 0.8f);
             var groundHorizon = new Color(0.5f, 0.45f, 0.4f);
             var groundBottom = new Color(0.12f, 0.1f, 0.09f);
             // Warmer haze under the sunset skybox so the distance blends into it.
-            var fog = Color.Lerp(packSky ? new Color(0.8f, 0.58f, 0.44f) : new Color(0.62f, 0.58f, 0.52f), new Color(0.55f, 0.25f, 0.15f), k);
-            var sunCol = Color.Lerp(new Color(1f, 0.9f, 0.78f), new Color(1f, 0.55f, 0.3f), k);
-            float pitch = Mathf.Lerp(-38f, -14f, k);
+            var baseFog = packSky && stage == 1 ? new Color(0.8f, 0.58f, 0.44f) : st.fog;
+            var fog = Color.Lerp(baseFog, new Color(0.55f, 0.25f, 0.15f), k * 0.8f);
+            var sunCol = Color.Lerp(st.sunColor, new Color(1f, 0.55f, 0.3f), k * 0.8f);
+            float pitch = Mathf.Lerp(st.sunPitch, -14f, k);
             // Godot rotated the light by (pitch, -40) with the light shining down its -Z; Unity lights shine down +Z.
             sun.transform.rotation = Quaternion.Euler(-pitch, -40f + 180f, 0f);
             sun.color = sunCol;
+            sun.intensity = stage == 3 ? 1.15f : 1.25f;
             RenderSettings.fogColor = fog;
+            RenderSettings.fogDensity = st.fogDensity;
             RenderSettings.ambientSkyColor = M.Mul(top, 0.9f);
             RenderSettings.ambientEquatorColor = M.Mul(horizon, 0.75f);
             RenderSettings.ambientGroundColor = M.Mul(groundHorizon, 0.45f);
             if (packSky)
             {
-                // Burn the pack sky toward a red dusk.
-                if (skyMat.HasProperty("_Tint")) skyMat.SetColor("_Tint", Color.Lerp(skyTint, new Color(0.62f, 0.34f, 0.28f, skyTint.a), k));
+                // Burn the stage's pack sky toward a red dusk as the stage goes on.
+                if (skyMat.HasProperty("_Tint")) skyMat.SetColor("_Tint", Color.Lerp(skyTint, new Color(0.62f, 0.34f, 0.28f, skyTint.a), k * (stage == 1 ? 1f : 0.6f)));
                 if (skyMat.HasProperty("_Exposure")) skyMat.SetFloat("_Exposure", Mathf.Lerp(skyExposure, skyExposure * 0.7f, k));
             }
             else

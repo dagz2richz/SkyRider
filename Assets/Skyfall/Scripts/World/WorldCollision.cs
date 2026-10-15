@@ -17,8 +17,8 @@ namespace Skyfall
         public readonly List<Obstacle> obstacles = new List<Obstacle>();
 
         const float OB_CELL = 6f;
-        const float OB_ORIGIN = -216f;
-        const int OB_N = 72;
+        const float OB_ORIGIN = -282f;
+        const int OB_N = 94;
         List<int>[] obGrid;
         int[] obStamp = new int[0];
         int obQuery;
@@ -268,6 +268,40 @@ namespace Skyfall
         /// piece's footprint that has surface between 1 and 2.2 m above the ground is solid (so walls, pillars and building
         /// shells block, while rubble, pews, low tombs and floor slabs stay walk-over, and hollow buildings stay open inside).
         /// Solid columns are merged into boxes whose top is the highest surface in them, so wall tops can be stood on.
+        /// Makes a placed prop (a house, a crypt wall) solid: one upright box around its renderers, turned with its yaw and
+        /// shrunk a little so the player can brush past the eaves.
+        public void AddPropObstacle(Transform t, float shrink = 0.85f)
+        {
+            var rends = t.GetComponentsInChildren<Renderer>();
+            if (rends.Length == 0) return;
+            // Measure in the prop's own yaw frame so the box hugs it.
+            var rot = Quaternion.Euler(0f, t.eulerAngles.y, 0f);
+            var inv = Quaternion.Inverse(rot);
+            var center = t.position;
+            Vector3 lo = Vector3.positiveInfinity, hi = Vector3.negativeInfinity;
+            foreach (var r in rends)
+            {
+                if (r is ParticleSystemRenderer) continue;
+                var b = r.bounds;
+                for (int i = 0; i < 8; i++)
+                {
+                    var c = b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                    var l = inv * (c - center);
+                    lo = Vector3.Min(lo, l);
+                    hi = Vector3.Max(hi, l);
+                }
+            }
+            if (float.IsInfinity(lo.x)) return;
+            var mid = rot * new Vector3((lo.x + hi.x) * 0.5f, 0f, (lo.z + hi.z) * 0.5f) + center;
+            var ax = rot * Vector3.right;
+            AddObstacle(new Obstacle
+            {
+                cx = mid.x, cz = mid.z, ux = ax.x, uz = ax.z,
+                hx = (hi.x - lo.x) * 0.5f * shrink, hz = (hi.z - lo.z) * 0.5f * shrink,
+                bottom = center.y + lo.y - 0.5f, top = center.y + hi.y, name = t.name,
+            });
+        }
+
         int RegisterKitObstacles(Transform holder, string name, float groundY, float baseY)
         {
             if (name.StartsWith("vitrail") || name.StartsWith("iron_gate")) return 0;

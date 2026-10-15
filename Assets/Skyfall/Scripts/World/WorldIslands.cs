@@ -92,9 +92,9 @@ namespace Skyfall
             var root = new GameObject("Islands").transform;
             root.SetParent(transform, false);
 
-            // The big island: far from the start, over fairly low ground.
+            // The big island (twice its original size): far from the start, over fairly low ground.
             float bestScore = float.MaxValue, bestAngle = 0f;
-            const float dist = 120f, bigR = 25f;
+            const float dist = 156f, bigR = 50f;
             for (int i = 0; i < 12; i++)
             {
                 float a = rng.Randf() * M.TAU;
@@ -111,14 +111,14 @@ namespace Skyfall
             float bigTop = bossIsland.topY;
 
             // Stepping stones: ground -> big island in hops of ~24 units, each a few units higher.
-            var s = Polar(44f, bestAngle - 1.9f);
+            var s = Polar(57f, bestAngle - 1.9f);
             float sr, prevTop = Height(s.x, s.y) + 7f;
-            const int steps = 6;
+            const int steps = 7;
             for (int i = 0; i < steps; i++)
             {
                 float t = i / (float)(steps - 1);
                 // Curve through polar space so the chain sweeps around toward the big island.
-                float r = Mathf.Lerp(44f, 82f, t), ang = Mathf.Lerp(bestAngle - 1.9f, bestAngle - 0.15f, t);
+                float r = Mathf.Lerp(57f, 97f, t), ang = Mathf.Lerp(bestAngle - 1.9f, bestAngle - 0.2f, t);
                 var p = Polar(r, ang);
                 sr = rng.Range(5.5f, 8.5f);
                 float plan = Mathf.Lerp(Height(s.x, s.y) + 7f, bigTop - 5f, t);
@@ -136,6 +136,22 @@ namespace Skyfall
                 if (Mathf.Max(Mathf.Abs(p.x), Mathf.Abs(p.y)) > PLAY_LIMIT - 6f) continue;
                 NewIsland(p.x, p.y, rng.Range(5f, 7.5f), bigTop + lift[k], false);
                 extra++;
+            }
+
+            // More islands all over the land, from little rocks to wide meadows in the sky.
+            int scattered = 0;
+            for (int tries = 0; tries < 120 && scattered < 14; tries++)
+            {
+                float r = scattered < 4 ? rng.Range(13f, 20f) : rng.Range(4f, 11f);
+                var p = new Vector2(rng.Range(-PLAY_LIMIT + r + 6f, PLAY_LIMIT - r - 6f), rng.Range(-PLAY_LIMIT + r + 6f, PLAY_LIMIT - r - 6f));
+                if (p.magnitude < 34f + r) continue;
+                if (Height(p.x, p.y) < WATER_LEVEL + 1f) continue;
+                bool clear = true;
+                foreach (var o in islands)
+                    if (Vector2.Distance(p, new Vector2(o.center.x, o.center.z)) < (o.radius + r) * 1.25f + 8f) { clear = false; break; }
+                if (!clear) continue;
+                NewIsland(p.x, p.y, r, Height(p.x, p.y) + rng.Range(9f, 24f), false);
+                scattered++;
             }
 
             foreach (var isl in islands)
@@ -267,7 +283,7 @@ namespace Skyfall
                 {
                     // A ruined arena: broken pillars and wall segments in a ring, leaving the middle and the approach open.
                     string[] pillars = { "pillar_broke_01", "pillar_02", "pillar_broke_01", "pillar_broke_part_01" };
-                    int count = 11;
+                    int count = 19;
                     for (int i = 0; i < count; i++)
                     {
                         float a = M.TAU * i / count + 0.2f;
@@ -300,13 +316,13 @@ namespace Skyfall
                         PlaceOnIsland(Props.RuinedHouse(rng), OnIsland(isl, isl.EdgeRadius(a) * 0.78f, a));
                     }
                 }
-                ScatterOnIsland(isl, 26, 0.55f, 0.92f, true);
+                ScatterOnIsland(isl, 70, 0.45f, 0.92f, true);
             }
             else
             {
                 if (kit && rng.Randf() < 0.6f)
                     KitPiece(rng.Randf() < 0.5f ? "pillar_broke_01" : "destroyed_wall_02", OnIsland(isl, isl.radius * 0.45f, rng.Randf() * M.TAU), rng.Randf() * 360f, 0.8f, 0.1f);
-                ScatterOnIsland(isl, 6, 0.25f, 0.8f, false);
+                ScatterOnIsland(isl, Mathf.Max(4, (int)(isl.radius * 0.9f)), 0.2f, 0.85f, isl.radius > 9f);
             }
         }
 
@@ -319,7 +335,7 @@ namespace Skyfall
                 float roll = rng.Randf();
                 if (trees && roll < 0.12f)
                 {
-                    if (!(Lib && PlacePack(Lib.deadTrees, p - new Vector3(0, 0.1f, 0), rng.Range(5f, 8f)))) PlaceOnIsland(Props.DeadTree(rng), p);
+                    if (!(Lib && PlacePack(StageTrees, p - new Vector3(0, 0.1f, 0), rng.Range(5f, 9f)))) PlaceOnIsland(Props.DeadTree(rng), p);
                 }
                 else if (roll < 0.4f)
                 {

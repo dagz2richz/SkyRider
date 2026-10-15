@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Skyfall
 {
     /// A power-up lying in the world: a glowing, spinning, bobbing model (cyan wings = Swiftness, red sword = Fury,
-    /// gold coin stack with x2 = Fortune) with a light that magnets to the player like an XP gem and is collected on touch.
+    /// violet horseshoe magnet = Lodestone) with a light that magnets to the player like an XP gem and is collected on touch.
     public class PowerUpPickup : MonoBehaviour
     {
         const float LIFE = 90f;
@@ -28,7 +28,7 @@ namespace Skyfall
             {
                 case "speed": p.BuildWings(d.color); break;
                 case "damage": p.BuildSword(d.color); break;
-                default: p.BuildCoins(d.color); break;
+                default: p.BuildMagnet(d.color); break;
             }
             // A ground ring, a light and a few drifting sparks make it easy to spot in a crowd.
             FX.NoShadow(FX.Part(p.transform, MeshGen.Ring(), FX.Glow(new Color(d.color.r, d.color.g, d.color.b, 0.6f), 1.6f), new Vector3(0, 0.05f, 0), new Vector3(0.9f, 0.4f, 0.9f)));
@@ -86,31 +86,33 @@ namespace Skyfall
             FX.NoShadow(FX.Part(body, MeshGen.Ring(), G(M.WithA(c, 0.5f), 1.6f), Vector3.zero, new Vector3(0.75f, 0.4f, 0.75f), new Vector3(M.PI * 0.5f, 0, 0)));
         }
 
-        void BuildCoins(Color c)
+        /// The Lodestone: a horseshoe magnet in glowing violet with silver poles, crackling between its tips.
+        void BuildMagnet(Color c)
         {
-            var gold = FX.Lit(new Color(1f, 0.85f, 0.25f), 0.3f, 0.8f, 0.7f);
-            var rim = FX.Lit(new Color(0.9f, 0.6f, 0.1f), 0.4f, 0.6f, 0.5f);
-            var coin = MeshGen.Cylinder(0.5f, 0.5f, 16);
-            for (int i = 0; i < 3; i++)
+            var tilt = FX.Node(body, "Tilt", Vector3.zero, new Vector3(0, 0, 0.3f));
+            var arm = G(c, 2.6f);
+            var silver = FX.Lit(new Color(0.85f, 0.88f, 0.95f), 0.2f, 0.95f, 0.6f);
+            // The bend: a half ring of segments.
+            const int segs = 9;
+            const float r = 0.36f;
+            for (int i = 0; i <= segs; i++)
             {
-                var t = new Vector3((i - 1) * 0.04f, -0.22f + i * 0.17f, (i == 1 ? 0.04f : -0.03f));
-                FX.NoShadow(FX.Part(body, coin, rim, t, new Vector3(0.78f, 0.15f, 0.78f)));
-                FX.NoShadow(FX.Part(body, coin, gold, t + new Vector3(0, 0.02f, 0), new Vector3(0.62f, 0.15f, 0.62f)));
+                float a = M.PI * i / segs;
+                var p = new Vector3(Mathf.Cos(a) * r, -Mathf.Sin(a) * r, 0f);
+                FX.NoShadow(FX.Part(tilt, MeshGen.Box(), arm, p, new Vector3(0.2f, 0.16f, 0.2f), new Vector3(0, 0, a)));
             }
-            // "x2" in glowing boxes, drawn facing the camera above the coins.
-            label = FX.Node(transform, "Label", new Vector3(0, 1.85f, 0));
-            var m = G(Color.Lerp(c, Color.white, 0.2f), 3f);
-            const float w = 0.2f, h = 0.38f, t2 = 0.055f;
-            void Seg(float cx, float cy, float sx, float sy, float rot = 0f) => FX.NoShadow(FX.Part(label, MeshGen.Box(), m, new Vector3(cx, cy, 0), new Vector3(sx, sy, t2), new Vector3(0, 0, rot)));
-            const float ox = 0.3f;
-            Seg(-ox - 0.0f, 0f, 0.3f, t2, M.PI * 0.25f);
-            Seg(-ox - 0.0f, 0f, 0.3f, t2, -M.PI * 0.25f);
-            Seg(ox, h * 0.5f, w + t2, t2);
-            Seg(ox + w * 0.5f, h * 0.25f, t2, h * 0.5f);
-            Seg(ox, 0f, w + t2, t2);
-            Seg(ox - w * 0.5f, -h * 0.25f, t2, h * 0.5f);
-            Seg(ox, -h * 0.5f, w + t2, t2);
+            foreach (int s in new[] { -1, 1 })
+            {
+                FX.NoShadow(FX.Part(tilt, MeshGen.Box(), arm, new Vector3(s * r, 0.22f, 0), new Vector3(0.2f, 0.44f, 0.2f)));
+                FX.NoShadow(FX.Part(tilt, MeshGen.Box(), silver, new Vector3(s * r, 0.53f, 0), new Vector3(0.22f, 0.18f, 0.22f)));
+            }
+            // A crackle between the poles.
+            FX.NoShadow(FX.Part(tilt, MeshGen.Box(), G(Color.Lerp(c, Color.white, 0.6f), 3.5f), new Vector3(0, 0.6f, 0), new Vector3(0.56f, 0.03f, 0.03f)));
+            FX.NoShadow(FX.Part(body, MeshGen.Ring(), G(M.WithA(c, 0.5f), 1.6f), Vector3.zero, new Vector3(0.8f, 0.4f, 0.8f), new Vector3(M.PI * 0.5f, 0, 0)));
         }
+
+        /// Starts flying to the player right away (the Lodestone pulls other pickups too).
+        public void Pull() => pulled = true;
 
         // ---------------------------------------------------------------- behavior
 

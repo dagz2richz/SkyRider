@@ -9,7 +9,7 @@ namespace Skyfall
     {
         public static readonly Color GOLD = new Color(0.95f, 0.78f, 0.4f);
         public static readonly Color PARCHMENT = new Color(0.93f, 0.88f, 0.76f);
-        public static readonly Color INK = new Color(0.08f, 0.06f, 0.05f, 0.92f);
+        public static readonly Color INK = new Color(0.06f, 0.05f, 0.05f, 0.86f);
 
         public const float VIRTUAL_H = 900f;
         public static float Scale => Screen.height / VIRTUAL_H;
@@ -73,7 +73,11 @@ namespace Skyfall
         public static GUIStyle PanelStyle(Color? bg = null, Color? border = null, int radius = 6, int borderW = 2, int padding = 14)
         {
             var b = bg ?? INK;
-            var bd = border ?? GOLD;
+            // Minimal look: soft rounded corners and thin, slightly translucent borders everywhere.
+            var bd = border ?? M.WithA(GOLD, 0.55f);
+            radius = Mathf.Max(radius, 8);
+            borderW = Mathf.Min(borderW, 2);
+            if (border.HasValue && borderW > 0) bd.a *= 0.8f;
             string key = $"panel{ColorUtility.ToHtmlStringRGBA(b)}_{ColorUtility.ToHtmlStringRGBA(bd)}_{radius}_{borderW}_{padding}";
             if (styleCache.TryGetValue(key, out var st) && st.normal.background) return st;
             st = new GUIStyle
@@ -119,15 +123,16 @@ namespace Skyfall
                 padding = new RectOffset(16, 16, 10, 10),
                 margin = new RectOffset(0, 0, 0, 0),
             };
-            var edge = new Color(0.4f, 0.28f, 0.1f);
-            st.normal.background = PanelTex(GOLD, edge, 4, 2);
-            st.hover.background = PanelTex(new Color(1f, 0.88f, 0.55f), edge, 4, 2);
-            st.active.background = PanelTex(new Color(0.8f, 0.6f, 0.3f), edge, 4, 2);
+            // Minimal buttons: dark glass with a thin gold edge and gold text; they fill with gold on hover.
+            st.border = new RectOffset(10, 10, 10, 10);
+            st.normal.background = PanelTex(new Color(0.07f, 0.06f, 0.05f, 0.82f), M.WithA(GOLD, 0.8f), 8, 1);
+            st.hover.background = PanelTex(new Color(0.95f, 0.78f, 0.4f, 0.95f), GOLD, 8, 1);
+            st.active.background = PanelTex(new Color(0.75f, 0.58f, 0.28f, 0.95f), GOLD, 8, 1);
             st.focused.background = st.normal.background;
-            st.normal.textColor = INK;
-            st.hover.textColor = new Color(0.2f, 0.05f, 0f);
-            st.active.textColor = INK;
-            st.focused.textColor = INK;
+            st.normal.textColor = GOLD;
+            st.hover.textColor = new Color(0.12f, 0.07f, 0.03f);
+            st.active.textColor = new Color(0.12f, 0.07f, 0.03f);
+            st.focused.textColor = GOLD;
             styleCache[key] = st;
             return st;
         }
@@ -260,6 +265,36 @@ namespace Skyfall
                 coinTex.Apply();
             }
             GUI.DrawTexture(r, coinTex);
+        }
+
+        // ---------------------------------------------------------------- icons (Basic RPG Icons pack)
+
+        /// An icon texture from the skin library by name (null without the pack).
+        public static Texture2D IconTex(string name) => Skins.Lib && name != null ? Skins.Lib.Icon(name) : null;
+
+        /// An icon in a thin rounded frame; without the pack, a soft colored tile stands in.
+        public static void DrawIcon(Rect r, string name, Color accent, float alpha = 1f, bool dim = false)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            Panel(r, new Color(0.04f, 0.03f, 0.03f, 0.9f * alpha), M.WithA(accent, 0.85f * alpha), 8, 1);
+            var tex = IconTex(name);
+            var inner = new Rect(r.x + 3, r.y + 3, r.width - 6, r.height - 6);
+            var prev = GUI.color;
+            if (tex)
+            {
+                GUI.color = dim ? new Color(0.45f, 0.45f, 0.45f, alpha) : new Color(1f, 1f, 1f, alpha);
+                GUI.DrawTexture(inner, tex, ScaleMode.ScaleToFit);
+            }
+            else Panel(inner, M.WithA(M.Mul(accent, 0.6f), 0.8f * alpha), M.WithA(accent, 0f), 6, 0);
+            GUI.color = prev;
+        }
+
+        /// A framed icon in the layout.
+        public static Rect IconBox(string name, float size, Color accent, bool dim = false)
+        {
+            var r = GUILayoutUtility.GetRect(size, size, GUILayout.Width(size), GUILayout.Height(size));
+            DrawIcon(r, name, accent, 1f, dim);
+            return r;
         }
 
         public static void Space(float px) => GUILayout.Space(px);

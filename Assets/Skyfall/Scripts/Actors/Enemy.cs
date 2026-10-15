@@ -30,11 +30,11 @@ namespace Skyfall
         float weakenT, weakenF;
         public bool lanceMarked;
         float bleedT, bleedDps;
-        public float buffT;          // empowered by a shaman: faster and hits harder
+        public float buffT;          // empowered by a shaman: faster and hits harder (no glow: the buff is stats only)
         string role = "";            // "", "archer", "shaman"
         float shootCd = 2f, buffCd = 1f;
-        Transform buffRing;
         float burnT, burnDps;
+        float poisonT, poisonDps;
         public Vector3 knock;
         float pop, flash;
         public bool dead;
@@ -101,13 +101,13 @@ namespace Skyfall
             return e;
         }
 
-        public static Enemy MakeBoss(Game g, int idx, float hpMult, float dmgMult = 1f)
+        public static Enemy MakeBoss(Game g, int idx, float hpMult, float dmgMult = 1f, string name = null, Color? tint = null)
         {
             var d = Data.BOSSES[idx];
             var e = new GameObject("Boss_" + idx).AddComponent<Enemy>();
             e.game = g;
             e.kind = "boss";
-            e.displayName = d.name;
+            e.displayName = name ?? d.name;
             e.size = d.size;
             e.maxHp = d.hp * hpMult;
             e.hp = e.maxHp;
@@ -118,7 +118,8 @@ namespace Skyfall
             e.isBoss = true;
             e.xpValue = 60 + idx * 60;
             e.abilityCd = 3f;
-            if (!e.TrySkin(true, idx)) e.BuildOgre(d.skin, true, true);
+            if (!e.TrySkin(true, idx)) e.BuildOgre(tint.HasValue ? d.skin * tint.Value : d.skin, true, true);
+            else if (tint.HasValue && tint.Value != Color.white) e.TintModel(tint.Value);
             return e;
         }
 
@@ -181,9 +182,6 @@ namespace Skyfall
                     FX.Part(st, MeshGen.Sphere(8), FX.Lit(new Color(0.9f, 0.86f, 0.75f)), new Vector3(0, 1.55f, 0), new Vector3(0.3f, 0.32f, 0.3f));
                     FX.Part(st, MeshGen.Sphere(8), FX.Glow(new Color(0.3f, 1f, 0.4f), 3f), new Vector3(0, 1.55f, -0.12f), Vector3.one * 0.12f);
                 }
-                var ring = FX.Part(transform, MeshGen.Ring(), FX.Glow(new Color(0.3f, 1f, 0.4f, 0.5f), 1.3f), new Vector3(0, 0.2f, 0), new Vector3(9f, 0.5f, 9f));
-                FX.NoShadow(ring);
-                buffRing = ring.transform;
             }
             if (boss && headBone)
             {
@@ -207,9 +205,31 @@ namespace Skyfall
             return true;
         }
 
+        readonly System.Collections.Generic.List<Material> tintMats = new System.Collections.Generic.List<Material>();
+
         void OnDestroy()
         {
             if (skinMat) Destroy(skinMat);
+            foreach (var m in tintMats) if (m) Destroy(m);
+        }
+
+        /// Recolors a pack model (stage bosses): per-instance material copies multiplied by the tint.
+        void TintModel(Color tint)
+        {
+            if (model == null) return;
+            foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r is ParticleSystemRenderer) continue;
+                var mats = r.materials;
+                foreach (var m in mats)
+                {
+                    if (m == null) continue;
+                    tintMats.Add(m);
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.GetColor("_BaseColor") * tint);
+                    else if (m.HasProperty("_Color")) m.SetColor("_Color", m.GetColor("_Color") * tint);
+                }
+                r.materials = mats;
+            }
         }
 
         public Vector3 Pos
@@ -320,9 +340,6 @@ namespace Skyfall
             for (int k = 0; k < 3; k++)
                 P(model, MeshGen.Box(), FX.Lit(fc[k]), new Vector3((k - 1) * 0.12f * size, 2.35f * size, -0.25f * size), new Vector3(0.05f, 0.4f, 0.02f) * size,
                     new Vector3(0, 0, (k - 1) * 0.3f));
-            var ring = P(transform, MeshGen.Ring(), FX.Glow(new Color(0.3f, 1f, 0.4f, 0.5f), 1.3f), new Vector3(0, 0.2f, 0), new Vector3(9f, 0.5f, 9f));
-            FX.NoShadow(ring);
-            buffRing = ring.transform;
         }
 
         // ---------------------------------------------------------------- status effects
@@ -335,6 +352,23 @@ namespace Skyfall
         }
 
         public bool Buffed => buffT > 0f;
+        public bool Bleeding => bleedT > 0f;
+        public bool Burning => burnT > 0f;
+        public bool Poisoned => poisonT > 0f;
+
+        /// Poison (Venom Wyrm): damage over time; an ogre that dies poisoned bursts and poisons its neighbors.
+        public void Poison(float t, float dps)
+        {
+            poisonT = Mathf.Max(poisonT, t);
+            poisonDps = Mathf.Max(poisonDps, dps);
+        }
+
+        /// Slows movement to frac of normal speed for t seconds (bosses too).
+        public void Slow(float t, float frac)
+        {
+            slowT = Mathf.Max(slowT, t);
+            slowF = frac;
+        }
 
         public void HitPop()
         {
@@ -392,13 +426,19 @@ namespace Skyfall
             if (burnT > 0f)
             {
                 burnT -= delta;
-                game.DamageEnemy(this, burnDps * delta, Vector3.zero, 0f, false);
+                game.DamageEnemy(this, burnDps * player.BurnMult * delta, Vector3.zero, 0f, false);
             }
             if (bleedT > 0f)
             {
                 bleedT -= delta;
-                game.DamageEnemy(this, bleedDps * delta, Vector3.zero, 0f, false);
+                game.DamageEnemy(this, bleedDps * player.BleedMult * delta, Vector3.zero, 0f, false);
                 if (M.RandF() < delta * 6f) FX.Burst(Pos + new Vector3(0, size, 0), new Color(0.7f, 0f, 0.03f), 3, 2f, 0.12f);
+            }
+            if (poisonT > 0f)
+            {
+                poisonT -= delta;
+                game.DamageEnemy(this, poisonDps * delta, Vector3.zero, 0f, false);
+                if (M.RandF() < delta * 5f) FX.Burst(Pos + new Vector3(0, size * 1.2f, 0), new Color(0.5f, 1f, 0.2f), 3, 1.5f, 0.15f);
             }
             if (dead) return;
             slowT -= delta;
@@ -416,7 +456,6 @@ namespace Skyfall
             else if (shockT > 0f) SetEmission(new Color(0.5f, 0.65f, 1f), 0.6f + M.RandF() * 0.8f);
             else if (burnT > 0f) SetEmission(new Color(1f, 0.45f, 0.1f), 0.35f + Mathf.Sin(animT * 18f) * 0.2f);
             else if (weakenT > 0f) SetEmission(new Color(0.6f, 0f, 0.05f), 0.5f);
-            else if (buffT > 0f) SetEmission(new Color(0.25f, 1f, 0.35f), 0.35f + Mathf.Sin(animT * 6f) * 0.1f);
             else SetEmission(Color.black, 0f);
             // Crouch before a jump, stretch in the air, squash on landing.
             squash = Mathf.MoveTowards(squash, jumpWind > 0f ? -0.25f : (airborne ? 0.15f : 0f), delta * 2.2f);
@@ -465,9 +504,7 @@ namespace Skyfall
                     buffCd = 1f;
                     foreach (var o in game.EnemiesInRadius(Pos, 9f, 6f))
                         if (o != this && !o.isBoss) o.buffT = Mathf.Max(o.buffT, 1.6f);
-                    FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 9f, new Color(0.3f, 1f, 0.4f, 0.5f), 0.6f);
                 }
-                if (buffRing) buffRing.Rotate(0f, delta * Mathf.Rad2Deg, 0f, Space.Self);
             }
             else
             {
