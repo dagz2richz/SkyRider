@@ -211,6 +211,20 @@ namespace Skyfall
         /// The dragon's signature (E) cooldown before upgrades.
         public const float SIGNATURE_CD = 10f;
 
+        /// The dragon grows with each world: a hatchling in world 1 (too small to carry you), a young dragon in world 2
+        /// (flight), an adult in world 3 (Guardian Wings). Index by stage - 1.
+        public static readonly string[] DRAGON_AGE = { "Hatchling", "Young Dragon", "Adult Dragon" };
+        public static readonly float[] DRAGON_AGE_SCALE = { 0.6f, 0.85f, 1f };
+        public static readonly float[] DRAGON_AGE_DAMAGE = { 0.7f, 1f, 1.3f };
+        /// First world in which the dragon can carry you.
+        public const int FLIGHT_STAGE = 2;
+        /// Adult dragon (world 3) passive: below this health it shields you with its wings and heals you.
+        public const int GUARDIAN_WINGS_STAGE = 3;
+        public const float GUARDIAN_WINGS_HP = 0.3f;
+        public const float GUARDIAN_WINGS_HEAL = 0.5f;
+        public const float GUARDIAN_WINGS_SHIELD = 3f;
+        public const float GUARDIAN_WINGS_CD = 60f;
+
         /// Eggs: the first final boss you ever slay always drops one (for a dragon you don't own); after that it's a coin flip.
         public const float EGG_CHANCE = 0.5f;
 
@@ -260,9 +274,9 @@ namespace Skyfall
 
         // ------------------------------------------------------------ armor (chosen every 5 levels)
 
-        /// Armor pieces are offered every ARMOR_EVERY levels: pick one of three. Each piece fills a slot (replacing what was
-        /// there) and carries stats drawn from the stat buckets. Tiers: Common (3 stats), Superior (4), Mythic (6, rare);
-        /// each tier is 15% stronger per stat than the one below.
+        /// One armor piece is offered every ARMOR_EVERY levels, for the slots in ARMOR_SLOTS order (helm first, then around
+        /// again to upgrade). The tier is rolled once per offer, so all three choices share it: same slot, same rarity,
+        /// different stats. Tiers: Common (3 stats), Superior (4), Mythic (6, rare); each 15% stronger per stat.
         public const int ARMOR_EVERY = 5;
         public static readonly string[] ARMOR_SLOTS = { "helm", "chest", "gloves", "legs", "boots" };
         public static readonly Dictionary<string, string> ARMOR_SLOT_NAMES = new Dictionary<string, string>
@@ -595,18 +609,22 @@ namespace Skyfall
         };
 
         /// Global enemy tuning (health and damage raised 25% twice: 1.3 -> 1.625 -> 2.03 and 1.5 -> 1.875 -> 2.34).
-        public const float SPAWN_RATE_MULT = 0.7f;
+        /// Monster density was raised 25% (spawn rate 0.7 -> 0.875 and the on-field cap x1.25).
+        public const float SPAWN_RATE_MULT = 0.875f;
+        public const float SPAWN_CAP_MULT = 1.25f;
+        /// Regular monsters (not bosses) get this much extra health on top of everything else.
+        public const float ENEMY_HP_MULT = 1.5f;
         public const float ENEMY_STAT_MULT = 2.03125f;
         public const float BOSS_STAT_MULT = 2.34375f;
 
         /// Spawn weights per wave (four 2-minute waves, the hardest mix last), as (kind, weight) pairs in a fixed order.
-        /// Ranged ogres were halved, and one in five of those left is a harpooner that only hunts riders in the air.
+        /// Ranged ogres were halved; harpooners (they only hunt riders in the air) are about one in ten of those left.
         public static readonly (string kind, int weight)[][] WAVE_WEIGHTS =
         {
-            new[] { ("runt", 650), ("ogre", 300), ("archer", 20), ("harpooner", 5) },
-            new[] { ("runt", 450), ("ogre", 350), ("brute", 80), ("archer", 40), ("harpooner", 10), ("shaman", 20) },
-            new[] { ("runt", 350), ("ogre", 300), ("brute", 150), ("hulk", 40), ("archer", 48), ("harpooner", 12), ("shaman", 40) },
-            new[] { ("runt", 200), ("ogre", 270), ("brute", 230), ("hulk", 120), ("archer", 48), ("harpooner", 12), ("shaman", 60) },
+            new[] { ("runt", 650), ("ogre", 300), ("archer", 20), ("harpooner", 2) },
+            new[] { ("runt", 450), ("ogre", 350), ("brute", 80), ("archer", 40), ("harpooner", 5), ("shaman", 20) },
+            new[] { ("runt", 350), ("ogre", 300), ("brute", 150), ("hulk", 40), ("archer", 48), ("harpooner", 6), ("shaman", 40) },
+            new[] { ("runt", 200), ("ogre", 270), ("brute", 230), ("hulk", 120), ("archer", 48), ("harpooner", 6), ("shaman", 60) },
         };
 
         /// Ogre Harpooner: wind-up (telegraphed) before each throw, seconds between throws, and what a hit does.
@@ -614,6 +632,8 @@ namespace Skyfall
         public const float HARPOON_WINDUP = 1.1f;
         public const float HARPOON_COOLDOWN = 6f;
         public const float HARPOON_RANGE = 42f;
+        /// Harpoons fly slowly enough to see coming and dodge.
+        public const float HARPOON_SPEED = 24f;
         public const float HARPOON_FLIGHT_DRAIN = 3f;
         public const float HARPOON_HOOK_TIME = 3f;
         public const float HARPOON_SLOW = 0.55f;
@@ -671,14 +691,14 @@ namespace Skyfall
                 skyTint = Color.white, fogDensity = 0.0045f, sunPitch = -38f, bossTint = Color.white },
             new StageDef { name = "The Verdant Marches", intro = "The portal sets you down among forest villages. The clans followed you through.",
                 waves = new[] { "Whispering Pines", "The Hunted Hamlet", "Moonlit Clearing", "Wolfsbane Dusk" },
-                miniBoss = "Vorna the Thornhide", finalBoss = "Ulgrim, the Forest Tyrant", islandName = "Forest Tyrant's Island", enemyMult = 1.9f,
+                miniBoss = "Vorna the Thornhide", finalBoss = "Ulgrim, the Forest Tyrant", islandName = "Forest Tyrant's Island", enemyMult = 2.185f,
                 grass = C(0.22f, 0.42f, 0.14f), grass2 = C(0.32f, 0.5f, 0.17f), dry = C(0.42f, 0.45f, 0.22f), dirt = C(0.36f, 0.27f, 0.17f),
                 rock = C(0.45f, 0.45f, 0.42f), ash = C(0.2f, 0.22f, 0.12f), mud = C(0.24f, 0.22f, 0.14f), scorch = 0.15f,
                 fog = C(0.55f, 0.66f, 0.6f), skyTop = C(0.3f, 0.48f, 0.66f), skyHorizon = C(0.72f, 0.78f, 0.7f), sunColor = C(1f, 0.96f, 0.85f),
                 skyTint = C(0.75f, 0.95f, 0.85f), fogDensity = 0.004f, sunPitch = -48f, bossTint = C(0.55f, 0.85f, 0.5f) },
             new StageDef { name = "The Sunken Crypts", intro = "A land of buried halls and torchlight. Their warlord waits at the end.",
                 waves = new[] { "Crypt Gate", "Halls of Bone", "The Drowned Chapel", "Last Torch" },
-                miniBoss = "Mordak the Gravecaller", finalBoss = "Skarnath, the Crypt Warlord", islandName = "Crypt Warlord's Island", enemyMult = 3.0f,
+                miniBoss = "Mordak the Gravecaller", finalBoss = "Skarnath, the Crypt Warlord", islandName = "Crypt Warlord's Island", enemyMult = 4.2f,
                 grass = C(0.31f, 0.3f, 0.25f), grass2 = C(0.38f, 0.34f, 0.27f), dry = C(0.46f, 0.39f, 0.29f), dirt = C(0.33f, 0.27f, 0.21f),
                 rock = C(0.42f, 0.4f, 0.42f), ash = C(0.13f, 0.11f, 0.12f), mud = C(0.2f, 0.17f, 0.15f), scorch = 0.35f,
                 fog = C(0.4f, 0.37f, 0.48f), skyTop = C(0.22f, 0.2f, 0.34f), skyHorizon = C(0.55f, 0.45f, 0.58f), sunColor = C(0.95f, 0.85f, 1f),

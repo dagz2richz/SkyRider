@@ -203,7 +203,10 @@ namespace Skyfall
         /// Rank of a dragon card that starts at 0 (size, cone, haste, guardian instincts, the dragon's own).
         int Card(string id) => player.spells.TryGetValue(id, out int v) ? v : 0;
 
-        float DmgMult => player.DamageMult * DataDef.damage * player.DragonDamageMult;
+        /// 0 = hatchling (world 1), 1 = young (world 2), 2 = adult (world 3).
+        int Age => Mathf.Clamp(game.stage - 1, 0, Data.DRAGON_AGE.Length - 1);
+
+        float DmgMult => player.DamageMult * DataDef.damage * player.DragonDamageMult * Data.DRAGON_AGE_DAMAGE[Age];
 
         /// On foot the dragon dive-bombs crowds by itself on this cooldown.
         float CommandCooldown => (12f - 1f * (Lvl("dragonfire") - 1)) * player.DragonCdMult;
@@ -216,7 +219,7 @@ namespace Skyfall
         float SigArea => player.AreaMult * (1f + player.Pct("sigarea%")) * (1f + 0.1f * Card("d_red"));
         /// Dive radius: the dragon's size, Shatterscale (red) and tree picks.
         float DiveArea => player.AreaMult * (1f + 0.67f * (player.DragonSizeMult - 1f)) * (1f + player.Pct("diverad%")) * (1f + 0.1f * Card("d_red"));
-        float PetScale => PET_SCALE * Mathf.Min(player.DragonSizeMult, 1.8f);
+        float PetScale => PET_SCALE * Mathf.Min(player.DragonSizeMult, 1.8f) * Data.DRAGON_AGE_SCALE[Age];
 
         /// Every hit the dragon lands goes through here, so its kills count toward bond XP and Blood Thirst /
         /// Sanguine Breath can heal you from them.
@@ -626,6 +629,27 @@ namespace Skyfall
             FX.Telegraph(at, rad, 0.2f, new Color(fire.r, fire.g, fire.b, 0.4f));
             Blast(at, rad, (150f + 40f * Lvl("dragonfire")) * DmgMult, 1f);
             game.hud.Toast("Your dragon shields you!");
+        }
+
+        /// Guardian Wings (adult dragon): it lands beside you, spreads its wings around you (no damage gets through for a
+        /// few seconds) and heals you.
+        public void GuardianWings(Vector3 at)
+        {
+            var col = Color.Lerp(fire, Color.white, 0.35f);
+            if (state != "mount") Pos = at + new Vector3(0, 2.5f, 0);
+            if (skin) skin.Action(1.2f, SK_ROAR);
+            model.jawOpen = 1f;
+            FX.Flash(at + Vector3.up, 6f, M.WithA(col, 0.7f), 0.5f);
+            FX.Shockwave(at + new Vector3(0, 0.3f, 0), 8f, M.WithA(col, 0.9f), 0.5f, DataDef.glowBreath);
+            Sfx.Play("roar", 2f, 0f);
+            // The shield: a glowing dome of wings around the hero while it lasts.
+            var dome = FX.Node(player.transform, "GuardianWings", new Vector3(0, 1.2f, 0));
+            FX.NoShadow(FX.Part(dome, MeshGen.Sphere(16), FX.Glow(M.WithA(col, 0.22f), 1.4f), Vector3.zero, Vector3.one * 4.2f));
+            FX.NoShadow(FX.Part(dome, MeshGen.Ring(), FX.Glow(M.WithA(col, 0.8f), 2f), new Vector3(0, -1.1f, 0), new Vector3(2.4f, 0.3f, 2.4f)));
+            Tw.After(Data.GUARDIAN_WINGS_SHIELD, () => { if (dome) Destroy(dome.gameObject); });
+            foreach (var e in game.EnemiesInRadius(at, 5f, 4f))
+                if (!e.isBoss) e.knock += M.Flat(e.Pos - at).normalized * 14f;
+            game.hud.Banner("Guardian Wings", "Your dragon shields you and heals your wounds");
         }
 
         /// A guardian revive: the dragon sweeps down over you, scattering everything nearby.

@@ -100,8 +100,8 @@ namespace Skyfall
 
         int SpellLv(string id, int dflt = 1) => spells.TryGetValue(id, out int v) ? v : dflt;
 
-        /// Permanent growth every level: +5% damage, +2% health, +0.5% parry.
-        public float LevelDamageBonus => 0.05f * (level - 1);
+        /// Permanent growth every level: +1% damage, +1% health, +0.5% parry.
+        public float LevelDamageBonus => 0.01f * (level - 1);
         public float CritChance => 0.08f + 0.03f * S("offense", 1);
         public float ParryChance => Mathf.Min(0.03f + 0.005f * (level - 1) + 0.02f * S("defense", 2), 0.4f);
         public bool IsKnight => heroId == "knight";
@@ -238,6 +238,8 @@ namespace Skyfall
         public bool RemountLanded => remountLanded;
         /// Dragon flight time: a flat 10 s (no upgrades lengthen it).
         public float MaxFlight => 10f;
+        /// The hatchling (world 1) is too small to carry you.
+        public bool CanFly => game == null || game.stage >= Data.FLIGHT_STAGE;
         public float Armor => 1.5f * S("defense", 1) + (Has("p_molten") ? 6f : 0f) + Mod("armor");
         public float Regen => 0.5f * S("health", 1) + Mod("regen");
         public float XpMult => 1f
@@ -249,7 +251,7 @@ namespace Skyfall
         public float ManaRegen => 0.8f * S("mana", 1) + (Has("p_font") ? 2f : 0f) + Mod("manaregen");
 
         /// Max health from the hero's base, +2% per level, the Health stat and talents.
-        public float MaxHpTarget => Data.HEROES[heroId].hp * Mathf.Pow(1.02f, level - 1) * (1f + 0.12f * S("health", 0)) * (Has("k_rally") ? 1.2f : 1f) * (1f + Pct("hp%"));
+        public float MaxHpTarget => Data.HEROES[heroId].hp * Mathf.Pow(1.01f, level - 1) * (1f + 0.12f * S("health", 0)) * (Has("k_rally") ? 1.2f : 1f) * (1f + Pct("hp%"));
 
         /// Recomputes max health; gains also heal by the same amount.
         public void RecalcMaxHp()
@@ -810,6 +812,7 @@ namespace Skyfall
             if (GameInput.FlyPressed && !leaping && !SoaringForm)
             {
                 if (flying) ReleaseDragon();
+                else if (!CanFly) game.hud.Toast($"Your {Data.DRAGON_AGE[0].ToLower()} is too small to carry you yet: it grows in the next world");
                 else if (remountWait > 0f) game.hud.Toast(remountLanded ? "Your dragon is circling back..." : "Land first: your dragon can only pick you up from solid ground");
                 else if (flightStamina > 0.3f)
                 {
@@ -867,7 +870,7 @@ namespace Skyfall
                 if (flying) flightStamina -= delta;
                 if (GameInput.JumpHeld) velocity.y = Mathf.MoveTowards(velocity.y, 10f, 30f * delta);
                 else if (GameInput.DescendHeld) velocity.y = Mathf.MoveTowards(velocity.y, -16f, 45f * delta);
-                else velocity.y = Mathf.MoveTowards(velocity.y, SoaringForm ? 0f : -1.5f, 14f * delta);
+                else velocity.y = Mathf.MoveTowards(velocity.y, 0f, 14f * delta);   // the dragon holds its height until told otherwise
                 if (Pos.y > ground + MAX_ALTITUDE) velocity.y = Mathf.Min(velocity.y, 0f);
                 if (flying && flightStamina <= 0f) ReleaseDragon("Your dragon tires and sets you down...");
             }
@@ -898,6 +901,12 @@ namespace Skyfall
             {
                 float hstep = new Vector2(pos.x - Pos.x, pos.z - Pos.z).magnitude;
                 if (pos.y - g <= GROUND_SNAP + hstep * 1.2f) pos.y = g;
+            }
+            // On the dragon, brushing the ground (rising terrain) just skims over it; only descending (Shift) lands you.
+            if (flying && pos.y <= g + 0.6f && !GameInput.DescendHeld)
+            {
+                pos.y = g + 0.6f;
+                if (velocity.y < 0f) velocity.y = 0f;
             }
             if (pos.y <= g)
             {
@@ -1290,7 +1299,7 @@ namespace Skyfall
 
         /// An Ogre Harpooner's harpoon struck you in the air: it drains flight and slows the dragon. Only a second
         /// harpoon while the first is still hooked pulls you out of the sky.
-        public void HarpoonHit(float damage)
+        public void HarpoonHit(float damage, Enemy thrower = null)
         {
             if (!flying || game == null || !game.running || game.traveling) return;
             if (pet.TryWingGuard(Center)) return;
@@ -1306,8 +1315,16 @@ namespace Skyfall
             if (hookedT > 0f)
             {
                 hookedT = 0f;
-                ReleaseDragon("A second harpoon drags you from the sky!");
+                ReleaseDragon();
                 velocity.y = Mathf.Min(velocity.y, -8f);
+                // Make the dismount unmistakable: banner, red flash, a heavy shake and the chain yanking you down.
+                game.hud.Banner("DRAGGED FROM THE SKY", "A second harpoon pulled you off your dragon");
+                game.hud.HurtFlash();
+                game.Shake(0.9f);
+                Sfx.Play("roar", -2f, 0f);
+                if (thrower != null && !thrower.dead)
+                    FX.Bolt(Center, thrower.Pos + new Vector3(0, 2f * thrower.size, 0), new Color(1f, 0.35f, 0.15f), 0.3f, 0.6f, 4);
+                FX.Shockwave(Center, 4f, new Color(1f, 0.3f, 0.15f, 0.8f), 0.4f);
                 return;
             }
             hookedT = Data.HARPOON_HOOK_TIME;
@@ -1434,7 +1451,8 @@ namespace Skyfall
                 pendingLevels++;
                 // +2% max health each level (and heal that much).
                 RecalcMaxHp();
-                xpNext = 6f + (level - 1) * 7f + Mathf.Pow(level - 1, 1.5f) * 1.5f;
+                // Each level costs much more than the last (level 2: 18, level 10: ~180, level 50: ~2600, level 100: ~8600).
+            xpNext = 8f + (level - 1) * 8f + Mathf.Pow(level - 1, 1.8f) * 2f;
             }
         }
     }

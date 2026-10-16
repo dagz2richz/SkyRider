@@ -256,6 +256,7 @@ namespace Skyfall
             player.OnStageStart();
             WriteRunSave();
             hud.Banner($"Stage 1 — {Stage.name}", Stage.intro);
+            Tw.After(3.8f, DragonGrowthBanner);
         }
 
         /// Resumes the saved run at the start of the stage it was on, with the hero exactly as saved.
@@ -380,7 +381,7 @@ namespace Skyfall
             if (finalStarted) return;
             float t = timeElapsed;
             float rate = (1f + t * 0.045f) * Data.SPAWN_RATE_MULT * (1f + 0.15f * (stage - 1));
-            int cap = Mathf.Min(MAX_ENEMIES, 60 + (int)(t * 0.55f) + 20 * (stage - 1));
+            int cap = Mathf.Min(MAX_ENEMIES, (int)((60 + t * 0.55f + 20 * (stage - 1)) * Data.SPAWN_CAP_MULT));
             spawnAccum += rate * delta;
             while (spawnAccum >= 1f)
             {
@@ -400,6 +401,8 @@ namespace Skyfall
                         break;
                     }
                 }
+                // Harpooners only hunt riders: where the dragon can't fly yet they come as archers.
+                if (kind == "harpooner" && stage < Data.FLIGHT_STAGE) kind = "archer";
                 float a = M.RandF() * M.TAU;
                 float d = M.RandRange(34f, 52f);
                 var p = player.Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * d;
@@ -408,7 +411,7 @@ namespace Skyfall
         }
 
         /// Health and damage multipliers for ogres right now: they grow through the stage, and each stage starts tougher.
-        float EnemyHpMult => (1f + timeElapsed / 60f * 0.38f) * Data.ENEMY_STAT_MULT * Stage.enemyMult;
+        float EnemyHpMult => (1f + timeElapsed / 60f * 0.38f) * Data.ENEMY_STAT_MULT * Data.ENEMY_HP_MULT * Stage.enemyMult;
         float EnemyDmgMult => (1f + timeElapsed / 600f) * Data.ENEMY_STAT_MULT * Mathf.Sqrt(Stage.enemyMult);
 
         /// Spawns an ogre on the terrain, or (with fromY, e.g. an island's top) on the surface at or below that height.
@@ -488,7 +491,7 @@ namespace Skyfall
             finalBoss = b;
             Sfx.Play("roar", 3f, 0f);
             Shake(0.9f);
-            hud.Banner("FINAL BATTLE", $"{Stage.finalBoss} awaits on the floating island");
+            hud.Banner("FINAL BATTLE", isl != null ? $"{Stage.finalBoss} awaits on the floating island" : $"{Stage.finalBoss} comes for you");
             FX.Vfx("portal_red", b.Pos + new Vector3(0, b.size, 0), b.size / 2f, 2.5f, null, 0f);
             FX.Flash(b.Pos + new Vector3(0, b.size, 0), 14f, new Color(1f, 0.5f, 0.2f, 0.7f), 0.8f);
         }
@@ -747,12 +750,7 @@ namespace Skyfall
                 bossesSlain++;
                 Shake(1f);
                 FX.Flash(pos + new Vector3(0, 3, 0), 10f, new Color(FX.EnemyRed.r, 0.25f, 0.12f, 0.8f), 0.8f);
-                for (int i = 0; i < 5; i++)
-                {
-                    var gp = pos + new Vector3(M.RandRange(-4f, 4f), 0, M.RandRange(-4f, 4f));
-                    gp.y = terrain.SurfaceHeight(gp.x, gp.z, pos.y);
-                    DropGem(gp, e.xpValue / 10f * 3f * Data.GEM_VALUE_MULT);
-                }
+                // Bosses drop no experience (the final boss may drop an egg).
                 // Bosses always drop two random power-ups.
                 for (int i = 0; i < Data.BOSS_POWERUPS; i++)
                 {
@@ -925,7 +923,7 @@ namespace Skyfall
             else if (lvl % Data.ARMOR_EVERY == 0)
             {
                 kind = "armor";
-                options = ArmorOptions();
+                options = ArmorOptions(lvl);
             }
             else
             {
@@ -1040,25 +1038,31 @@ namespace Skyfall
             return list;
         }
 
-        /// Three random armor pieces.
-        List<LevelOption> ArmorOptions()
+        /// Three pieces for this level's slot (helm at 5, breastplate at 10, ... then around again), all of one rolled tier.
+        List<LevelOption> ArmorOptions(int lvl)
         {
             var list = new List<LevelOption>();
-            var slots = new List<string>(Data.ARMOR_SLOTS);
-            M.Shuffle(slots);
+            string slot = Data.ARMOR_SLOTS[(lvl / Data.ARMOR_EVERY - 1) % Data.ARMOR_SLOTS.Length];
+            int tier = RollArmorTier();
             for (int i = 0; i < 3; i++)
             {
-                var piece = RollArmor(slots[i]);
+                var piece = RollArmor(slot, tier);
                 list.Add(new LevelOption { type = "armor", id = piece.slot, armor = piece, name = ArmorName(piece), level = piece.tier + 1,
                     desc = ArmorText(piece), tag = $"ARMOR · {Data.ARMOR_TIER_NAMES[piece.tier].ToUpper()}", color = Data.ARMOR_TIER_COLORS[piece.tier] });
             }
             return list;
         }
 
-        public static Save.ArmorPiece RollArmor(string slot)
+        public static int RollArmorTier()
         {
             float r = M.RandF();
-            int tier = r < Data.ARMOR_TIER_ODDS[2] ? 2 : (r < Data.ARMOR_TIER_ODDS[2] + Data.ARMOR_TIER_ODDS[1] ? 1 : 0);
+            return r < Data.ARMOR_TIER_ODDS[2] ? 2 : (r < Data.ARMOR_TIER_ODDS[2] + Data.ARMOR_TIER_ODDS[1] ? 1 : 0);
+        }
+
+        public static Save.ArmorPiece RollArmor(string slot) => RollArmor(slot, RollArmorTier());
+
+        public static Save.ArmorPiece RollArmor(string slot, int tier)
+        {
             var keys = new List<string>();
             foreach (var b in Data.BUCKET_ORDER)
                 for (int i = 0; i < Data.BUCKETS[b].stats.Length; i++) keys.Add(Data.StatKey(b, i));
@@ -1158,14 +1162,7 @@ namespace Skyfall
                 hud.Banner($"{Stage.finalBoss} has fallen!", "A dragon egg glows where he stood");
                 return;
             }
-            // No egg: a hoard of experience instead.
-            for (int i = 0; i < 8; i++)
-            {
-                var gp = pos + new Vector3(M.RandRange(-5f, 5f), 0, M.RandRange(-5f, 5f));
-                gp.y = terrain.SurfaceHeight(gp.x, gp.z, pos.y);
-                DropGem(gp, 25f * stage);
-            }
-            hud.Banner($"{Stage.finalBoss} has fallen!", locked.Count > 0 ? "No egg this time... but his hoard of power is yours" : "His hoard of power is yours");
+            hud.Banner($"{Stage.finalBoss} has fallen!", locked.Count > 0 ? "No egg this time..." : "The way onward opens");
             Tw.After(4f, StageCleared);
         }
 
@@ -1209,8 +1206,19 @@ namespace Skyfall
                     FX.Vfx("portal_blue", player.Pos + new Vector3(0, 1.5f, 0), 2.2f, 2.5f, null, 0f);
                     hud.Banner($"Stage {stage} — {Stage.name}", Stage.intro);
                     traveling = false;
+                    Tw.After(3.8f, DragonGrowthBanner);
                 });
             });
+        }
+
+        /// The dragon grows each world: say what it can do now.
+        void DragonGrowthBanner()
+        {
+            if (this == null || ended || !running) return;
+            string age = Data.DRAGON_AGE[Mathf.Clamp(stage - 1, 0, Data.DRAGON_AGE.Length - 1)];
+            if (stage < Data.FLIGHT_STAGE) hud.Banner($"Your dragon is a {age}", "Too small to carry you yet: it grows with every world");
+            else if (stage < Data.GUARDIAN_WINGS_STAGE) hud.Banner($"Your dragon has grown: {age}", "It can carry you now (Q)");
+            else hud.Banner($"Your dragon is grown: {age}", "Guardian Wings: at 30% health it shields you and heals you");
         }
 
         /// Replaces the world with a new stage's land (30% bigger maps, more islands, the stage's scenery) and puts the hero

@@ -63,7 +63,7 @@ namespace Skyfall
         public float dragonFormT, dragonFormCd;
         /// Which capstone form is active: "dragon", "specter" or "phoenix".
         string formKind = "";
-        float rescueCd, bulwarkCd, tideTick, phoenixRainT;
+        float rescueCd, bulwarkCd, tideTick, phoenixRainT, guardianWingsCd;
         bool guardianReviveUsed;
         Vector3 chargeDir;
         readonly HashSet<Enemy> chargeHit = new HashSet<Enemy>();
@@ -78,7 +78,7 @@ namespace Skyfall
         {
             rallyT = 0f; aegisCd = 0f; chargeCd = 3f; chargeT = 0f; sanguineCd = 0f; shadowCd = 0f; moonT = 0f; moonCd = 30f;
             walkFireT = 0f; blinkCd = 0f; novaT = 35f; pillarT = 12f; vowUsed = false; invulnT = 0f; swingCount = 0; throwCount = 0;
-            rescueCd = 0f; bulwarkCd = 0f; guardianReviveUsed = false;
+            rescueCd = 0f; bulwarkCd = 0f; guardianReviveUsed = false; guardianWingsCd = 0f;
             EndDragonForm();
             dragonFormCd = 0f;
             OnTalentsChanged();
@@ -166,6 +166,7 @@ namespace Skyfall
             dragonFormCd = Mathf.Max(0f, dragonFormCd - delta);
             rescueCd = Mathf.Max(0f, rescueCd - delta);
             bulwarkCd = Mathf.Max(0f, bulwarkCd - delta);
+            guardianWingsCd = Mathf.Max(0f, guardianWingsCd - delta);
             TickGuardian(delta);
             if (talents.Count == 0 && !DragonFormActive) return;
 
@@ -291,9 +292,17 @@ namespace Skyfall
             }
         }
 
-        /// After taking damage: Aegis of Scales, Living Bulwark, Guardian's Talons.
+        /// After taking damage: Guardian Wings (adult dragon), Aegis of Scales, Living Bulwark, Guardian's Talons.
         void AfterHurt()
         {
+            if (game.stage >= Data.GUARDIAN_WINGS_STAGE && guardianWingsCd <= 0f && hp < maxHp * Data.GUARDIAN_WINGS_HP)
+            {
+                guardianWingsCd = Data.GUARDIAN_WINGS_CD;
+                invulnT = Mathf.Max(invulnT, Data.GUARDIAN_WINGS_SHIELD);
+                Heal(maxHp * Data.GUARDIAN_WINGS_HEAL);
+                pet.GuardianWings(Pos);
+                return;
+            }
             if (Has("dr_bulwark") && bulwarkCd <= 0f && hp < maxHp * 0.3f)
             {
                 bulwarkCd = 45f;
@@ -362,6 +371,15 @@ namespace Skyfall
             int r = RescueRank;
             if (r <= 0 || rescueCd > 0f || flying || leaping || DragonFormActive || hp > maxHp * 0.35f || hp <= 0f) return;
             rescueCd = Mathf.Max(30f, 100f - 10f * r);
+            if (!CanFly)
+            {
+                // A hatchling can't carry you: it crashes down beside you and scatters what's close instead.
+                invulnT = Mathf.Max(invulnT, 1.5f);
+                pet.GuardianSwoop(Pos);
+                game.rescues++;
+                game.hud.Toast("Your hatchling leaps to your defense!");
+                return;
+            }
             SummonDragon();
             remountWait = 0f;
             velocity.y = 14f;

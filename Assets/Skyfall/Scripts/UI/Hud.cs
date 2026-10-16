@@ -1359,7 +1359,7 @@ namespace Skyfall
                     case "ability": sub = "Choose an ability to upgrade, or feed your dragon."; break;
                     default: sub = "Choose a stat bucket (you gain all of its stats), or feed your dragon."; break;
                 }
-                Label(sub + "   (Every level: +5% damage · +2% health · +0.5% parry)", 20, PARCHMENT, 6, TextAnchor.UpperCenter);
+                Label(sub + "   (Every level: +1% damage · +1% health · +0.5% parry)", 20, PARCHMENT, 6, TextAnchor.UpperCenter);
                 Space(18);
                 CenterRow(() =>
                 {

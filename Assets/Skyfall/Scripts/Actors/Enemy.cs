@@ -533,7 +533,9 @@ namespace Skyfall
                 if (harpoonWind > 0f)
                 {
                     harpoonWind -= delta;
-                    harpoonAim = player.Center + player.velocity * 0.35f;
+                    // Aim where you'll be about halfway through its flight: steady flight gets hit, turning away dodges.
+                    float lead = Vector3.Distance(HarpoonHand, player.Center) / Data.HARPOON_SPEED * 0.5f;
+                    harpoonAim = player.Center + player.velocity * lead;
                     if (M.RandF() < delta * 14f) FX.Bolt(HarpoonHand, harpoonAim, new Color(1f, 0.35f, 0.15f, 0.5f), 0.06f, 0.08f, 3);
                     if (harpoonWind <= 0f) ThrowHarpoon();
                 }
@@ -554,7 +556,9 @@ namespace Skyfall
                 else
                 {
                     move = dir * spd;
-                    if (jumpCd <= 0f && frozenT <= 0f) TryJump(player, dir, dist);
+                    var climb = IslandClimb(player);
+                    if (climb != Vector3.zero) move = climb * spd;
+                    if (jumpCd <= 0f && frozenT <= 0f && !TryIslandLeap(player)) TryJump(player, dir, dist);
                 }
             }
             else if (role == "shaman")
@@ -573,7 +577,9 @@ namespace Skyfall
             else
             {
                 move = dir * spd;
-                if (role == "" && jumpCd <= 0f && frozenT <= 0f) TryJump(player, dir, dist);
+                var climb = IslandClimb(player);
+                if (climb != Vector3.zero) move = climb * spd;
+                if (role == "" && jumpCd <= 0f && frozenT <= 0f && !TryIslandLeap(player)) TryJump(player, dir, dist);
             }
 
             if (airborne) FlyStep(delta);
@@ -678,10 +684,61 @@ namespace Skyfall
         float jumpCd = 1.5f, jumpWind, takeoffY, jumpLife, fallV, squash;
         bool airborne, perched;
         Vector3 jumpVel;
+        /// Top of the island this ogre is leaping onto (so the landing counts it as ground), or -infinity.
+        float leapTopY = float.NegativeInfinity;
+
+        /// The floating island the player is standing on (not flying over), or null.
+        WorldTerrain.Island PlayerIsland(Player player)
+        {
+            if (player.flying) return null;
+            var isl = game.terrain.IslandAt(player.Pos.x, player.Pos.z, player.Pos.y);
+            return isl != null && player.Pos.y - isl.topY < 1.5f ? isl : null;
+        }
+
+        /// While the player stands on a floating island, ogres caught underneath it walk out from under the rock toward
+        /// the rim (where they can leap up). Zero when not needed.
+        Vector3 IslandClimb(Player player)
+        {
+            if (isBoss || islandBound) return Vector3.zero;
+            var isl = PlayerIsland(player);
+            if (isl == null || Pos.y >= isl.topY - 0.5f) return Vector3.zero;
+            var flat = new Vector3(Pos.x - isl.center.x, 0f, Pos.z - isl.center.z);
+            float d = flat.magnitude;
+            float edge = isl.EdgeRadius(Mathf.Atan2(flat.z, flat.x));
+            if (d > edge * 1.05f) return Vector3.zero;
+            return d > 0.01f ? flat / d : Vector3.forward;
+        }
+
+        /// The player is up on a floating island: an ogre near its rim crouches, then makes a huge leap up onto it.
+        bool TryIslandLeap(Player player)
+        {
+            if (isBoss || islandBound || airborne || jumpWind > 0f) return false;
+            var isl = PlayerIsland(player);
+            if (isl == null || Pos.y >= isl.topY - 0.5f) return false;
+            var flat = new Vector3(Pos.x - isl.center.x, 0f, Pos.z - isl.center.z);
+            float d = flat.magnitude;
+            if (d < 0.01f) return false;
+            float edge = isl.EdgeRadius(Mathf.Atan2(flat.z, flat.x));
+            if (d < edge * 1.05f || d > edge + 14f) return false;   // still under the rock, or too far out
+            if (M.RandF() > 0.5f) { jumpCd = 0.6f; return true; }   // stagger the crowd a little
+            var land = isl.center + flat / d * (edge * 0.82f);
+            float rise = isl.topY - Pos.y;
+            float vy0 = Mathf.Sqrt(2f * JUMP_G * (rise + 2.5f));
+            float flight = (vy0 + Mathf.Sqrt(Mathf.Max(0f, vy0 * vy0 - 2f * JUMP_G * rise))) / JUMP_G;
+            var hd = new Vector3(land.x - Pos.x, 0f, land.z - Pos.z);
+            jumpVel = new Vector3(hd.x / flight, vy0, hd.z / flight);
+            jumpWind = 0.6f;
+            jumpLife = flight + 0.8f;
+            leapTopY = isl.topY;
+            jumpCd = 2f;
+            if (rig) rig.Loop("Idle", "Idle01");
+            else armR.KeysX((-0.6f, 0.2f), (0.2f, 0.3f));
+            return true;
+        }
 
         /// Leaps at a player who is above this ogre (on a ruin, a ledge or hovering low on the dragon). The landing spot is
-        /// always the terrain or a ruin top within about 4.6 m of the take-off height, never an island, so ground ogres can
-        /// not reach the floating islands.
+        /// always the terrain or a ruin top within about 4.6 m of the take-off height; floating islands are reached with
+        /// the bigger TryIslandLeap instead.
         void TryJump(Player player, Vector3 dir, float dist)
         {
             jumpCd = 0.3f;
@@ -745,13 +802,14 @@ namespace Skyfall
             var p = Pos + (jumpVel + new Vector3(knock.x, 0f, knock.z)) * delta;
             knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
             highestJump = Mathf.Max(highestJump, p.y - takeoffY);
-            float surface = terrain.SurfaceHeight(p.x, p.z, takeoffY);
+            float surface = terrain.SurfaceHeight(p.x, p.z, Mathf.Max(takeoffY, leapTopY));
             float og = terrain.ObstacleTop(p.x, p.z, Pos.y);
             float g = Mathf.Max(surface, og);
             if ((jumpVel.y < 0f && p.y <= g) || jumpLife <= 0f)
             {
                 p.y = g;
                 airborne = false;
+                leapTopY = float.NegativeInfinity;
                 perched = og > surface + 0.05f;
                 squash = -0.3f;
                 fallV = 0f;
@@ -768,7 +826,7 @@ namespace Skyfall
         {
             shootCd = Data.HARPOON_COOLDOWN * M.RandRange(0.85f, 1.15f);
             var from = HarpoonHand;
-            Harpoon.Spawn(game, this, from, (harpoonAim - from).normalized * 46f, damage * AtkMult * 1.5f);
+            Harpoon.Spawn(game, this, from, (harpoonAim - from).normalized * Data.HARPOON_SPEED, damage * AtkMult * 1.5f);
             Sfx.Play("whoosh", Pos, -2f, 0.1f);
         }
 
@@ -987,7 +1045,7 @@ namespace Skyfall
         Enemy thrower;
         Vector3 velocity;
         float damage;
-        float life = 1.6f;
+        float life = 3.5f;
         LineRenderer chain;
 
         public static void Spawn(Game g, Enemy thrower, Vector3 from, Vector3 velocity, float damage)
@@ -1005,6 +1063,12 @@ namespace Skyfall
             h.chain.material = FX.Glow(new Color(0.55f, 0.5f, 0.45f), 0.6f);
             h.chain.startWidth = h.chain.endWidth = 0.07f;
             h.chain.positionCount = 2;
+            // A burning trail so it's easy to track in the air.
+            FX.Particles(h.transform, new FX.ParticleSpec
+            {
+                amount = 40, lifetime = 0.45f, size = 0.45f, speedMin = 0.2f, speedMax = 0.8f, spread = 25f, worldSpace = true,
+                startColor = new Color(1f, 0.55f, 0.2f, 0.9f), endColor = new Color(0.4f, 0.1f, 0f, 0f),
+            });
             h.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
         }
 
@@ -1020,7 +1084,7 @@ namespace Skyfall
             var p = game.player;
             if (p != null && p.flying && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.6f)
             {
-                p.HarpoonHit(damage);
+                p.HarpoonHit(damage, thrower);
                 Destroy(gameObject);
                 return;
             }
