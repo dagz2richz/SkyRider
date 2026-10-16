@@ -16,6 +16,7 @@ MonoBehaviour:
   pyromancer: {fileID: 1248815240492774, guid: ccd8c3b89aa02e943a08ab9238a8a70c, type: 3}
   huntress: {fileID: 7991373657290914776, guid: 0d1dc15b702800b41900704ee66dac39, type: 3}
   huntressController: {fileID: 9100000, guid: 70015e4d52e077d4894c25a94115fb2f, type: 2}
+  knightController: {fileID: 9100000, guid: 131dccc378951544e9641ea5c7ee05b3, type: 2}
   dragonBlue: {fileID: 194904, guid: 445a5c29e7f715947b713a753f242af0, type: 3}
   dragonRed: {fileID: 139696, guid: eb58e8f2831a51f45a44a261e6710cdd, type: 3}
   dragonBlack: {fileID: 116688, guid: 09ade59177310454ba3c93ae4b7dc125, type: 3}
@@ -35,6 +36,10 @@ MonoBehaviour:
   shaman: {fileID: 388476414, guid: 7df524699deb44341b3693c8538df185, type: 3}
   golem: {fileID: 1067925524328404, guid: 6bbfea6690ef7724ba495c866081f855, type: 3}
   golemKing: {fileID: 1077356408, guid: c6cfc32748fb5004aa11a1be074b5c58, type: 3}
+  skeleton: {fileID: 165424, guid: 9f4313a771e05c64d8da7ae6bd19a19f, type: 3}
+  skeletonController: {fileID: 9100000, guid: 101f2a0308156ab4a8b5521181b24337, type: 2}
+  humanSoldier: {fileID: 100050, guid: ba24e610e0a338545b447ff44a3cf1cc, type: 3}
+  humanController: {fileID: 9100000, guid: 875bc5f42caf6fa43b3c543cfee5b74b, type: 2}
   deadTrees:
   - {fileID: 1932841404346126693, guid: c7827efbbf7212f42803476ce3f9d082, type: 3}
   - {fileID: 3611794222474779789, guid: 53e1939cdeda3f04caaa240bfd830e5e, type: 3}
@@ -247,8 +252,6 @@ MonoBehaviour:
     icon: {fileID: 2800000, guid: 2531e15fe967a354d9d28c9cfc1d71ca, type: 3}
   - name: spellblade
     icon: {fileID: 2800000, guid: 3a88d46ed00b9214a8cc55ba6e67ab09, type: 3}
-  - name: windwalker
-    icon: {fileID: 2800000, guid: 62ce59ce09148c847b198159a3abc9f6, type: 3}
   - name: sword
     icon: {fileID: 2800000, guid: d31aa8412a4d374458c912d11686642a, type: 3}
   - name: blood_lance

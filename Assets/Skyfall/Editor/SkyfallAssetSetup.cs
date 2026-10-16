@@ -23,7 +23,7 @@ namespace Skyfall.EditorTools
         static readonly string[] CharacterFolders =
         {
             "Assets/FourEvilDragonsPBR", "Assets/RPGHero", "Assets/WizardPolyArt", "Assets/Mini Legion Grunt PBR HP Polyart",
-            "Assets/Mini Legion Rock Golem PBR HP Polyart", "Assets/Ogre",
+            "Assets/Mini Legion Rock Golem PBR HP Polyart", "Assets/Ogre", "Assets/Toon_RTS", "Assets/Toon_RTS_demo",
         };
 
         static readonly string[] EffectFolders = { "Assets/Hovl Studio", "Assets/Matthew Guz", "Assets/Polygonal Particles" };
@@ -33,6 +33,9 @@ namespace Skyfall.EditorTools
 
         const string KI = "Assets/Kevin Iglesias/Human Animations/";
         const string HuntressControllerPath = "Assets/Skyfall/Resources/Skyfall/Huntress.controller";
+        const string SkeletonControllerPath = "Assets/Skyfall/Resources/Skyfall/Skeleton.controller";
+        const string HumanControllerPath = "Assets/Skyfall/Resources/Skyfall/RenegadeKnight.controller";
+        const string KnightControllerPath = "Assets/Skyfall/Resources/Skyfall/Dragonguard.controller";
         const string Icons = "Assets/Basic_RPG_Icons/";
         const string Slavic = "Assets/EmaceArt/Slavic World Free/Prefabs/";
         const string Trees = "Assets/BrokenVector/LowPolyTreePack/Prefabs/";
@@ -263,6 +266,7 @@ namespace Skyfall.EditorTools
             lib.pyromancer = Load<GameObject>("Assets/WizardPolyArt/Prefabs/PolyArtWizardStandardMat.prefab");
             lib.huntress = Load<GameObject>(KI + "Unity Demo Scenes/Human Melee Animations/Prefabs/Characters/HumanF_Dummy_Red - Polearm.prefab");
             lib.huntressController = BuildHuntressController();
+            lib.knightController = BuildKnightController(lib.knight);
 
             // Dragons: every dragon is the Usurper; the game tints the variants per dragon (albino is the base for the new ones).
             lib.dragonBlue = Load<GameObject>(Dragons + "DragonUsurper/Blue.prefab");
@@ -304,6 +308,41 @@ namespace Skyfall.EditorTools
             lib.shaman = Load<GameObject>("Assets/Mini Legion Grunt PBR HP Polyart/Prefab/GruntPolyart.prefab");
             lib.golem = Load<GameObject>("Assets/Mini Legion Rock Golem PBR HP Polyart/Prefabs/PBR_Golem.prefab");
             lib.golemKing = Load<GameObject>("Assets/Mini Legion Rock Golem PBR HP Polyart/Prefabs/Polyart_Golem.prefab");
+
+            // The swarm: Toon RTS skeletons (humanoid rig, so they share the Grunt's clips and their own) and Toon RTS
+            // knights (generic rig, driven by the knight's own clips).
+            // Both FBX models come with an untextured embedded material; use the textured one shipped beside them.
+            RemapMaterials("Assets/Toon_RTS/unded_Demo/model/UD_demo_character.FBX", "Assets/Toon_RTS/unded_Demo/model/Materials/Undead_RTS_units_demo.mat");
+            RemapMaterials("Assets/Toon_RTS_demo/models/ToonRTS_demo_Knight.FBX", "Assets/Toon_RTS_demo/models/Materials/DemoMat.mat");
+            // The Toon RTS packs only ship idle, walk and one or two attacks, so both swarm foes borrow the Kevin
+            // Iglesias male clips for running, a second attack, flinching and dying. The knight's rig is imported as
+            // humanoid (its own clips copy its avatar) so those clips retarget onto it.
+            const string UD = "Assets/Toon_RTS/unded_Demo/animation/", WK = "Assets/Toon_RTS_demo/animations/", KnightFbx = "Assets/Toon_RTS_demo/models/ToonRTS_demo_Knight.FBX";
+            string m = KI + "Animations/Male/";
+            MakeHumanoid(KnightFbx, WK + "WK_heavy_infantry_04_charge.FBX", WK + "WK_heavy_infantry_05_combat_idle.FBX",
+                WK + "WK_heavy_infantry_06_combat_walk.FBX", WK + "WK_heavy_infantry_08_attack_B.FBX");
+            lib.skeleton = Load<GameObject>("Assets/Toon_RTS/unded_Demo/prefab/UD_demo_character.prefab");
+            lib.skeletonController = BuildController(SkeletonControllerPath, new (string, string)[]
+            {
+                ("Idle", UD + "UD_infantry_05_combat_idle.FBX"),
+                ("Walk", UD + "UD_infantry_06_combat_walk.FBX"),
+                ("Run", m + "Movement/Run/HumanM@Run01_Forward.fbx"),
+                ("Attack01", UD + "UD_infantry_07_attack_A.FBX"),
+                ("Attack02", m + "Combat/1H/HumanM@Attack1H01_R.fbx"),
+                ("GetHit", m + "Combat/HumanM@CombatDamage01.fbx"),
+                ("Die", m + "Combat/HumanM@Death01.fbx"),
+            });
+            lib.humanSoldier = Load<GameObject>(KnightFbx);
+            lib.humanController = BuildController(HumanControllerPath, new (string, string)[]
+            {
+                ("Idle", WK + "WK_heavy_infantry_05_combat_idle.FBX"),
+                ("Walk", WK + "WK_heavy_infantry_06_combat_walk.FBX"),
+                ("Run", WK + "WK_heavy_infantry_04_charge.FBX"),
+                ("Attack01", WK + "WK_heavy_infantry_08_attack_B.FBX"),
+                ("Attack02", m + "Combat/Shield/HumanM@AttackShield01.fbx"),
+                ("GetHit", m + "Combat/HumanM@CombatDamage01.fbx"),
+                ("Die", m + "Combat/HumanM@Death01.fbx"),
+            });
 
             // Scenery.
             lib.deadTrees = Prefabs(Nature + "Trees/PT_Pine_Tree_03_dead.prefab", Nature + "Trees/PT_Pine_Tree_03_dead_cut.prefab",
@@ -394,22 +433,87 @@ namespace Skyfall.EditorTools
         }
 
         /// A controller whose state names match what the game asks for (Idle, Walk, Run, JumpAir, Attack01, GetHit),
-        /// built from the Kevin Iglesias female clips.
+        /// built from the Kevin Iglesias female clips. Her attack is an overhand right-hand throw (the javelin).
         static RuntimeAnimatorController BuildHuntressController()
         {
             string f = KI + "Animations/Female/";
-            var states = new (string name, string fbx)[]
+            return BuildController(HuntressControllerPath, new (string, string)[]
             {
                 ("Idle", f + "Combat/Polearm/HumanF@CombatIdlePolearm01.fbx"),
                 ("Walk", f + "Movement/Walk/HumanF@Walk01_Forward.fbx"),
                 ("Run", f + "Movement/Run/HumanF@Run01_Forward.fbx"),
                 ("JumpAir", f + "Movement/Jump/HumanF@Fall01.fbx"),
-                ("Attack01", f + "Combat/Polearm/HumanF@AttackPolearm01.fbx"),
+                ("Attack01", f + "Combat/Spellcasting/MagicAttacks/Directional/HumanF@MagicAttackDirect1H01_R - Cast.fbx"),
+                ("Attack02", f + "Combat/Polearm/HumanF@AttackPolearm01.fbx"),
+                ("JumpUpAttack", f + "Combat/Polearm/HumanF@AttackPolearm01.fbx"),
                 ("GetHit", f + "Combat/HumanF@CombatDamage01.fbx"),
-            };
+                ("Die", f + "Combat/HumanF@Death01.fbx"),
+            });
+        }
+
+        /// The Dragonguard: the RPG Hero pack's own sword-and-shield states, plus what that pack lacks (a fall for
+        /// jumps, and an overhead two-handed strike for the leap slam), from the Kevin Iglesias male clips.
+        static RuntimeAnimatorController BuildKnightController(GameObject hero)
+        {
+            var an = hero ? hero.GetComponentInChildren<Animator>() : null;
+            var src = an ? an.runtimeAnimatorController as UnityEditor.Animations.AnimatorController : null;
+            if (src == null) return null;
+            string m = KI + "Animations/Male/";
+            SetLoop(m + "Movement/Jump/HumanM@Fall01.fbx");
+            AssetDatabase.DeleteAsset(KnightControllerPath);
+            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(KnightControllerPath);
+            var sm = ctrl.layers[0].stateMachine;
+            foreach (var cs in src.layers[0].stateMachine.states)
+            {
+                if (cs.state.motion == null) continue;
+                var st = sm.AddState(cs.state.name);
+                st.motion = cs.state.motion;
+                st.speed = cs.state.speed;
+                if (cs.state == src.layers[0].stateMachine.defaultState) sm.defaultState = st;
+            }
+            foreach (var (name, fbx) in new[] { ("JumpAir", m + "Movement/Jump/HumanM@Fall01.fbx"), ("JumpUpAttack", m + "Combat/2H/HumanM@Attack2H01.fbx") })
+            {
+                var clip = Clip(fbx);
+                if (clip == null) continue;
+                sm.AddState(name).motion = clip;
+            }
+            EditorUtility.SetDirty(ctrl);
+            return ctrl;
+        }
+
+        /// Imports a model as humanoid (making its own avatar) and its separate animation files as humanoid clips
+        /// copying that avatar, so its clips and other packs' humanoid clips both drive it.
+        static void MakeHumanoid(string model, params string[] anims)
+        {
+            if (!(AssetImporter.GetAtPath(model) is ModelImporter imp)) return;
+            if (imp.animationType != ModelImporterAnimationType.Human)
+            {
+                imp.animationType = ModelImporterAnimationType.Human;
+                imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                imp.SaveAndReimport();
+            }
+            var avatar = AssetDatabase.LoadAllAssetsAtPath(model).OfType<Avatar>().FirstOrDefault();
+            if (avatar == null || !avatar.isHuman) { Debug.LogWarning("Skyfall: no humanoid avatar for " + model); return; }
+            foreach (var a in anims)
+            {
+                if (!(AssetImporter.GetAtPath(a) is ModelImporter ai)) continue;
+                if (ai.animationType == ModelImporterAnimationType.Human && ai.sourceAvatar == avatar) continue;
+                ai.animationType = ModelImporterAnimationType.Human;
+                ai.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
+                ai.sourceAvatar = avatar;
+                ai.SaveAndReimport();
+            }
+        }
+
+        /// Builds (or rebuilds) an animator controller with one state per clip, named as the game asks for them;
+        /// the first state is the default. Locomotion and idle clips are set to loop. Null if the first clip is missing.
+        static RuntimeAnimatorController BuildController(string path, (string name, string fbx)[] states)
+        {
             if (!File.Exists(states[0].fbx)) return null;
-            AssetDatabase.DeleteAsset(HuntressControllerPath);
-            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(HuntressControllerPath);
+            foreach (var (name, fbx) in states)
+                if (name == "Idle" || name == "Walk" || name == "Run" || name == "JumpAir") SetLoop(fbx);
+            AssetDatabase.DeleteAsset(path);
+            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(path);
             var sm = ctrl.layers[0].stateMachine;
             foreach (var (name, fbx) in states)
             {
@@ -417,10 +521,44 @@ namespace Skyfall.EditorTools
                 if (clip == null) continue;
                 var st = sm.AddState(name);
                 st.motion = clip;
-                if (name == "Idle") sm.defaultState = st;
+                if (sm.defaultState == null || name == "Idle") sm.defaultState = st;
             }
             EditorUtility.SetDirty(ctrl);
             return ctrl;
+        }
+
+        /// Points every material embedded in a model at one external material (and fixes prefabs that copied the
+        /// embedded one).
+        static void RemapMaterials(string fbx, string matPath)
+        {
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+            if (mat == null || !(AssetImporter.GetAtPath(fbx) is ModelImporter imp)) return;
+            bool changed = false;
+            foreach (var emb in AssetDatabase.LoadAllAssetsAtPath(fbx).OfType<Material>().ToList())
+            {
+                var id = new AssetImporter.SourceAssetIdentifier(typeof(Material), emb.name);
+                if (imp.GetExternalObjectMap().TryGetValue(id, out var cur) && cur == mat) continue;
+                imp.AddRemap(id, mat);
+                changed = true;
+            }
+            if (changed) imp.SaveAndReimport();
+        }
+
+        /// Makes an FBX's clips loop (the Toon RTS packs ship their combat idle and walk as one-shots).
+        static void SetLoop(string fbx)
+        {
+            if (!(AssetImporter.GetAtPath(fbx) is ModelImporter imp)) return;
+            var clips = imp.clipAnimations.Length > 0 ? imp.clipAnimations : imp.defaultClipAnimations;
+            bool changed = false;
+            foreach (var c in clips)
+            {
+                if (c.loopTime) continue;
+                c.loopTime = true;
+                changed = true;
+            }
+            if (!changed) return;
+            imp.clipAnimations = clips;
+            imp.SaveAndReimport();
         }
 
         // ---------------------------------------------------------------- UI icons

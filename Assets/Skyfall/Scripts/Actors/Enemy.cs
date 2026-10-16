@@ -139,6 +139,9 @@ namespace Skyfall
 
         CharacterRig rig;
 
+        /// "skeleton", "human" or "" (ogre) for regular foes.
+        string ModelKind => !isBoss && Data.OGRES.TryGetValue(kind, out var d) ? d.model : "";
+
         /// Uses an Asset Store model when the skin library has one for this ogre. Returns false to fall back
         /// to the procedural model.
         bool TrySkin(bool boss, int bossIdx)
@@ -156,12 +159,16 @@ namespace Skyfall
             }
             else if (role == "archer") prefab = lib.archer;
             else if (role == "shaman") prefab = lib.shaman;
+            else if (ModelKind == "skeleton" && lib.skeleton) { prefab = lib.skeleton; ctrl = lib.skeletonController; }
+            else if (ModelKind == "human" && lib.humanSoldier) { prefab = lib.humanSoldier; ctrl = lib.humanController; }
             else { prefab = Skins.Pick(lib.ogres); isOgreModel = true; }
             if (prefab == null) return false;
             if (isOgreModel) ctrl = lib.ogreController;
 
             model = FX.Node(transform, "Model");
-            rig = Skins.SpawnCharacter(prefab, model, 2.0f * size, ctrl);
+            // Skeletons and knights stand at human height (scaled with their size roll); ogres tower at 2 m per size.
+            float headHeight = !boss && ModelKind != "" && !isOgreModel ? 1.75f * size / Data.OGRES[kind].size : 2.0f * size;
+            rig = Skins.SpawnCharacter(prefab, model, headHeight, ctrl);
             var hand = rig.Bone(HumanBodyBones.RightHand);
             var leftHand = rig.Bone(HumanBodyBones.LeftHand);
             var headBone = rig.Bone(HumanBodyBones.Head);
@@ -402,10 +409,39 @@ namespace Skyfall
             slowF = frac;
         }
 
-        public void HitPop()
+        float flinchCd;
+
+        /// A hit landed: pop and flash; a heavy blow (a big chunk of health, or a knockback) also makes a pack model
+        /// flinch, at most every 1.5 s and never in the middle of its own attack.
+        public void HitPop(float amount = 0f, bool knocked = false)
         {
             pop = 1f;
             flash = 1f;
+            if (rig == null || isBoss || rig.InAction || Time.time < flinchCd) return;
+            if (!knocked && amount < maxHp * 0.08f) return;
+            if (rig.Action(0.4f, "GetHit")) flinchCd = Time.time + 1.5f;
+        }
+
+        /// On death, a pack model with a death animation is left behind to fall (it sinks into the ground and goes
+        /// away); everything else just vanishes in the death burst. Regular foes' corpses are capped so big waves stay
+        /// cheap. Returns true if a corpse was left.
+        public bool LeaveCorpse()
+        {
+            if (rig == null || model == null || !rig.Has("Die") || frozenT > 0f) return false;
+            if (!isBoss && EnemyCorpse.Active >= EnemyCorpse.MAX_REGULAR) return false;
+            var go = new GameObject("Corpse_" + displayName);
+            if (FX.root) go.transform.SetParent(FX.root, false);   // cleared with the stage
+            go.transform.SetPositionAndRotation(transform.position, transform.rotation);
+            model.SetParent(go.transform, true);
+            rig.SetEmission(Color.black);
+            rig.Speed = 1f;
+            rig.Action(10f, "Die");
+            var c = go.AddComponent<EnemyCorpse>();
+            c.Init(isBoss ? 4f : 1.4f, (isBoss ? 2.5f : 1.2f) * size, tintMats);
+            tintMats.Clear();   // the corpse owns the boss tint materials now
+            model = null;
+            rig = null;
+            return true;
         }
 
         /// Shock: a 1-second stun on everything but bosses, with crackling sparks.
@@ -515,14 +551,14 @@ namespace Skyfall
             else if (isBoss) move = BossAi(delta, player, dir, dist, spd);
             else if (role == "archer")
             {
-                // Keep at bow range and loose arrows.
+                // Keep at throwing range and lob potions.
                 if (dist > 18f) move = dir * spd;
                 else if (dist < 11f) move = -dir * spd * 0.7f;
                 shootCd -= delta;
                 if (shootCd <= 0f && dist < 30f)
                 {
-                    shootCd = M.RandRange(2.2f, 3f) / (buffT > 0f ? 1.3f : 1f);
-                    ShootArrow(player);
+                    shootCd = M.RandRange(2.6f, 3.4f) / (buffT > 0f ? 1.3f : 1f);
+                    ThrowPotion(player);
                 }
             }
             else if (role == "harpooner")
@@ -830,14 +866,18 @@ namespace Skyfall
             Sfx.Play("whoosh", Pos, -2f, 0.1f);
         }
 
-        void ShootArrow(Player player)
+        /// Lobs a potion in a slow arc at where the player is heading; it shatters in a splash (telegraphed on the ground).
+        void ThrowPotion(Player player)
         {
-            var from = Pos + new Vector3(0, 1.6f * size, 0);
-            var target = player.Center + player.velocity * 0.25f;
-            OgreArrow.Spawn(game, from, (target - from).normalized * 34f, damage * AtkMult * (buffT > 0f ? 1.3f : 1f));
+            var from = Pos + new Vector3(0, 1.8f * size, 0);
+            float dist = M.Flat(player.Pos - Pos).magnitude;
+            float flightTime = Mathf.Lerp(Data.POTION_FLIGHT_MIN, Data.POTION_FLIGHT_MAX, Mathf.InverseLerp(6f, 30f, dist));
+            // Lead the target by half its movement over the flight: running in a straight line gets you hit.
+            var target = (player.flying ? player.Center : player.Pos) + M.Flat(player.velocity) * flightTime * 0.5f;
+            ThrownPotion.Spawn(game, from, target, flightTime, damage * AtkMult * (buffT > 0f ? 1.3f : 1f), !player.flying);
             if (rig) rig.Action(0.6f, "Attack02", "Attack01");
-            else armL.KeysX((-1.5f, 0.15f), (0f, 0.3f));
-            Sfx.Play("bow", Pos, -8f, 0.2f);
+            else armR.KeysX((-2.2f, 0.18f), (0f, 0.3f));
+            Sfx.Play("whoosh", Pos, -10f, 0.2f);
         }
 
         // ---------------------------------------------------------------- bosses
@@ -991,6 +1031,37 @@ namespace Skyfall
         }
     }
 
+    /// A fallen foe playing its death animation: it lies there a moment, then sinks into the ground and is removed.
+    public class EnemyCorpse : MonoBehaviour
+    {
+        public const int MAX_REGULAR = 24;
+        public static int Active;
+        float hold, depth, t;
+        const float SINK_TIME = 0.8f;
+        System.Collections.Generic.List<Material> mats;
+
+        public void Init(float holdTime, float sinkDepth, System.Collections.Generic.List<Material> ownedMats)
+        {
+            hold = holdTime;
+            depth = sinkDepth;
+            mats = new System.Collections.Generic.List<Material>(ownedMats);
+            Active++;
+        }
+
+        void Update()
+        {
+            t += Time.deltaTime;
+            if (t > hold) transform.position += Vector3.down * (depth / SINK_TIME) * Time.deltaTime;
+            if (t > hold + SINK_TIME) Destroy(gameObject);
+        }
+
+        void OnDestroy()
+        {
+            Active--;
+            if (mats != null) foreach (var m in mats) if (m) Destroy(m);
+        }
+    }
+
     /// A boulder hurled by an ogre boss: flies in an arc and bursts on the ground or the player.
     public class Boulder : MonoBehaviour
     {
@@ -1092,23 +1163,41 @@ namespace Skyfall
         }
     }
 
-    /// An ogre archer's arrow.
-    public class OgreArrow : MonoBehaviour
+    /// An alchemist's potion: a glowing flask lobbed in a slow, high arc that shatters in a splash where it lands
+    /// (or on the player, if it hits them in flight). Its landing spot is marked on the ground so it can be dodged.
+    public class ThrownPotion : MonoBehaviour
     {
+        static readonly Color BREW = new Color(0.45f, 1f, 0.3f);
+        const float G = 18f;
         Game game;
         Vector3 velocity;
-        float damage = 6f;
-        float life = 2f;
+        float damage;
+        float life;
+        Vector3 spin;
 
-        public static void Spawn(Game g, Vector3 from, Vector3 velocity, float damage)
+        public static void Spawn(Game g, Vector3 from, Vector3 to, float flightTime, float damage, bool telegraph)
         {
-            var a = new GameObject("Arrow").AddComponent<OgreArrow>();
-            a.game = g;
-            a.velocity = velocity;
-            a.damage = damage;
-            FX.Part(a.transform, MeshGen.Box(), FX.Lit(new Color(0.4f, 0.28f, 0.15f)), Vector3.zero, new Vector3(0.06f, 0.06f, 1.1f));
-            FX.Part(a.transform, MeshGen.Box(), FX.Glow(new Color(1f, 0.4f, 0.3f), 1.5f), new Vector3(0, 0, -0.6f), new Vector3(0.1f, 0.1f, 0.2f));
-            a.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
+            var b = new GameObject("Potion").AddComponent<ThrownPotion>();
+            b.game = g;
+            b.damage = damage;
+            b.life = flightTime + 2f;
+            b.spin = new Vector3(M.RandRange(4f, 8f), M.RandRange(-3f, 3f), M.RandRange(2f, 5f));
+            var d = to - from;
+            b.velocity = new Vector3(d.x / flightTime, (d.y + 0.5f * G * flightTime * flightTime) / flightTime, d.z / flightTime);
+            if (telegraph)
+                FX.Telegraph(new Vector3(to.x, g.terrain.SurfaceHeight(to.x, to.z, to.y + 1f), to.z), Data.POTION_SPLASH, flightTime,
+                    new Color(BREW.r, BREW.g, BREW.b, 0.3f));
+            // Round glass flask with a cork, full of glowing brew.
+            FX.Part(b.transform, MeshGen.Sphere(10), FX.Glow(BREW, 2.2f), Vector3.zero, Vector3.one * 0.42f);
+            FX.Part(b.transform, MeshGen.Sphere(10), FX.Lit(new Color(0.8f, 0.95f, 1f, 0.35f), 0.05f, 0f, 0.35f), Vector3.zero, Vector3.one * 0.5f);
+            FX.Part(b.transform, MeshGen.Cylinder(0.5f, 0.5f, 8), FX.Lit(new Color(0.8f, 0.95f, 1f, 0.5f), 0.05f), new Vector3(0, 0.3f, 0), new Vector3(0.14f, 0.2f, 0.14f));
+            FX.Part(b.transform, MeshGen.Cylinder(0.5f, 0.5f, 8), FX.Lit(Props.BARK), new Vector3(0, 0.43f, 0), new Vector3(0.16f, 0.1f, 0.16f));
+            FX.Particles(b.transform, new FX.ParticleSpec
+            {
+                amount = 30, lifetime = 0.5f, size = 0.25f, speedMin = 0.1f, speedMax = 0.5f, spread = 40f, worldSpace = true,
+                startColor = new Color(BREW.r, BREW.g, BREW.b, 0.8f), endColor = new Color(0.1f, 0.4f, 0.05f, 0f),
+            });
+            b.transform.position = from;
         }
 
         void Update()
@@ -1116,18 +1205,32 @@ namespace Skyfall
             float delta = Time.deltaTime;
             if (delta <= 0f) return;
             life -= delta;
-            velocity.y -= 3f * delta;
+            velocity.y -= G * delta;
             transform.position += velocity * delta;
-            transform.rotation = M.FaceNegZ(velocity);
+            transform.Rotate(spin * delta * Mathf.Rad2Deg, Space.Self);
             var p = game.player;
             var pos = transform.position;
-            if (p != null && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.3f)
+            bool hitPlayer = p != null && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.5f;
+            float gh = game.terrain.SurfaceHeight(pos.x, pos.z, pos.y - velocity.y * delta);
+            if (hitPlayer || pos.y < gh || life <= 0f) Shatter(hitPlayer ? p.Center : new Vector3(pos.x, Mathf.Max(pos.y, gh), pos.z));
+        }
+
+        void Shatter(Vector3 at)
+        {
+            FX.Burst(at, BREW, 18, 6f, 0.45f);
+            FX.Burst(at, new Color(0.85f, 0.95f, 1f), 8, 5f, 0.25f);
+            FX.Shockwave(at + new Vector3(0, 0.15f, 0), Data.POTION_SPLASH, M.WithA(BREW, 0.7f), 0.35f, true);
+            FX.Vfx("hit_magic", at, 1f, 1.5f, null, 0.02f, BREW);
+            Sfx.Play("arrow_hit", at, 0f);
+            Sfx.Play("frost", at, -12f, 0.3f);
+            var p = game.player;
+            if (p != null)
             {
-                if (!p.pet.TryWingGuard(p.Center)) p.TakeDamage(damage);
-                Destroy(gameObject);
-                return;
+                var v = p.Center - at;
+                bool inSplash = new Vector2(v.x, v.z).magnitude < Data.POTION_SPLASH + p.HitRadius && Mathf.Abs(v.y) < 2.6f;
+                if (inSplash && !p.pet.TryWingGuard(p.Center)) p.TakeDamage(damage);
             }
-            if (life <= 0f || pos.y < game.terrain.Height(pos.x, pos.z)) Destroy(gameObject);
+            Destroy(gameObject);
         }
     }
 }

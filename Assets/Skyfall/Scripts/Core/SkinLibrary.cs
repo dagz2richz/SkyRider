@@ -16,6 +16,8 @@ namespace Skyfall
         public GameObject huntress;
         /// Animator for the Blood Huntress model (built from the Kevin Iglesias female clips by the setup).
         public RuntimeAnimatorController huntressController;
+        /// The RPG Hero's own sword-and-shield clips plus a fall and a leap attack (built by the setup).
+        public RuntimeAnimatorController knightController;
 
         [Header("Dragons (all the Usurper model; its color variants)")]
         public GameObject dragonBlue;
@@ -32,6 +34,13 @@ namespace Skyfall
         public GameObject shaman;
         public GameObject golem;
         public GameObject golemKing;
+
+        [Header("Swarm (skeletons and renegade knights)")]
+        public GameObject skeleton;
+        public RuntimeAnimatorController skeletonController;
+        public GameObject humanSoldier;
+        /// Built by the setup from the Toon RTS knight's own (generic-rig) clips.
+        public RuntimeAnimatorController humanController;
 
         [Header("Scenery")]
         public GameObject[] deadTrees;
@@ -128,7 +137,7 @@ namespace Skyfall
         }
 
         public GameObject Hero(string id) => id == "knight" ? knight : id == "pyromancer" ? pyromancer : id == "huntress" ? huntress : null;
-        public RuntimeAnimatorController HeroController(string id) => id == "huntress" ? huntressController : null;
+        public RuntimeAnimatorController HeroController(string id) => id == "huntress" ? huntressController : id == "knight" ? knightController : null;
         /// A color variant of the dragon model: blue, red, black or albino.
         public GameObject Dragon(string skin) => skin == "blue" ? dragonBlue : skin == "red" ? dragonRed : skin == "black" ? dragonBlack : skin == "albino" ? dragonAlbino : null;
     }

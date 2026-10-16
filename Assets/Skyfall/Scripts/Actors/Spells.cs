@@ -53,7 +53,7 @@ namespace Skyfall
 
         public float Cost => Spell.cost * (1f - 0.04f * (Level - 1)) * player.SpellCostMult;
 
-        /// True once the spell has reached its evolved form (its third upgrade).
+        /// True once the spell has reached its evolved form (level 5).
         public bool Evolved => Level >= Data.EVOLVE_LEVEL;
 
         float CooldownTime => Spell.cd * player.CooldownMult;
@@ -177,7 +177,7 @@ namespace Skyfall
             var at = game.DensestPoint(player.Pos, 24f);
             if (M.IsInf(at)) return false;
             SpawnWell(at, L, area, dm);
-            if (L >= 5)
+            if (L >= Data.SPELL_FINAL_LEVEL)
             {
                 var at2 = game.DensestPoint(player.Pos, 24f, at, 10f);
                 if (!M.IsInf(at2)) SpawnWell(at2, L, area, dm);
@@ -209,7 +209,7 @@ namespace Skyfall
                 shards: 6 + (L >= 2 ? 2 : 0) + (L >= 4 ? 2 : 0),
                 shardDamage: (12f + 5f * L) * dm,
                 freezeChance: 0.2f + (L >= 3 ? 0.15f : 0f) + 0.03f * L,
-                pierce: L >= 5,
+                pierce: L >= Data.SPELL_FINAL_LEVEL,
                 radius: 2.2f * area * (evo ? 1.6f : 1f),
                 evolved: evo);
             Sfx.Play("frost", -8f, 0.1f);
@@ -222,7 +222,7 @@ namespace Skyfall
             if (first == null) return false;
             var hit = new List<Enemy>();
             Chain(first, L, dm, hit);
-            if (L >= 5)
+            if (L >= Data.SPELL_FINAL_LEVEL)
             {
                 var second = game.NearestEnemy(first.Pos, 14f, 10f, null, hit);
                 if (second) Chain(second, L, dm, hit);
@@ -281,7 +281,7 @@ namespace Skyfall
                 if (near && M.RandF() < 0.6f) at = near.Pos;
                 DropMeteor(at, rad, dmg, i * 0.12f, 1f, ignite, evo);
             }
-            if (L >= 5) DropMeteor(center, rad * 2.2f, dmg * 3f, count * 0.12f + 0.3f, 2.5f, 1f, evo);
+            if (L >= Data.SPELL_FINAL_LEVEL) DropMeteor(center, rad * 2.2f, dmg * 3f, count * 0.12f + 0.3f, 2.5f, 1f, evo);
             FX.Telegraph(center, 7f * area, 0.6f, evo ? new Color(0.5f, 0.7f, 1f, 0.35f) : new Color(1f, 0.5f, 0.1f, 0.3f));
             Sfx.Play("whoosh", -2f, 0.05f);
             return true;

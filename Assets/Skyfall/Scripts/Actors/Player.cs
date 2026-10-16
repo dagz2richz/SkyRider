@@ -101,7 +101,9 @@ namespace Skyfall
         int SpellLv(string id, int dflt = 1) => spells.TryGetValue(id, out int v) ? v : dflt;
 
         /// Permanent growth every level: +1% damage, +1% health, +0.5% parry.
-        public float LevelDamageBonus => 0.01f * (level - 1);
+        /// Damage gained per hero level: 2%, or 5% for the Ember Mage.
+        public float DamagePerLevel => IsPyro ? 0.05f : 0.02f;
+        public float LevelDamageBonus => DamagePerLevel * (level - 1);
         public float CritChance => 0.08f + 0.03f * S("offense", 1);
         public float ParryChance => Mathf.Min(0.03f + 0.005f * (level - 1) + 0.02f * S("defense", 2), 0.4f);
         public bool IsKnight => heroId == "knight";
@@ -240,6 +242,11 @@ namespace Skyfall
         public float MaxFlight => 10f;
         /// The hatchling (world 1) is too small to carry you.
         public bool CanFly => game == null || game.stage >= Data.FLIGHT_STAGE;
+        /// From 0:00 (the final battle) the dragon never tires.
+        public bool UnlimitedFlight => game != null && game.finalStarted;
+        /// True after jumping off the ground (until landing): flight recharges in a jump as well as on the ground,
+        /// but not while falling after leaving the dragon.
+        bool jumpedFromGround;
         public float Armor => 1.5f * S("defense", 1) + (Has("p_molten") ? 6f : 0f) + Mod("armor");
         public float Regen => 0.5f * S("health", 1) + Mod("regen");
         /// Experience multiplier: the Utility stat's +8% per rank (and the dev menu's 10x).
@@ -482,7 +489,7 @@ namespace Skyfall
             level = Mathf.Max(1, s.level);
             xp = s.xp;
             xpNext = Mathf.Max(6f, s.xpNext);
-            foreach (var e in s.spells) spells[e.key] = Mathf.Clamp(e.value, 1, Data.MAX_LEVEL);
+            foreach (var e in s.spells) spells[e.key] = Mathf.Clamp(e.value, 1, Data.SPELL_MAX_LEVEL);
             foreach (var e in s.buckets) relics[e.key] = Mathf.Max(0, e.value);
             foreach (var t in s.talents) if (Data.IsRunTalent(t)) talents.Add(t);
             armor.Clear();
@@ -524,6 +531,7 @@ namespace Skyfall
         static readonly string[] THROW = { "Attack01" };
         static readonly string[] HURT = { "GetHit_SwordShield", "GetHit" };
         static readonly string[] LEAP = { "JumpUpAttack", "NormalAttack02_SwordShield", "Attack01" };
+        static readonly string[] DIE = { "Die_SwordShield", "Die" };
 
         /// Swaps the procedural hero for the Asset Store model when the skin library has one for this hero.
         void ApplySkin()
@@ -547,20 +555,82 @@ namespace Skyfall
             SetHeroVisible(true);
         }
 
-        /// The Blood Huntress model (a female warrior with a spear) gets crimson-and-black materials that render in URP,
-        /// a glowing blood tip on the spear and a hood with glowing eyes on her head bone.
+        /// The Blood Huntress model (the Kevin Iglesias female mannequin) is dressed for the part: a dark leather
+        /// bodysuit, a crimson cuirass, pauldrons, belt and tassets, steel bracers and greaves, a cape, a hood with
+        /// glowing eyes, and a glowing Blood Javelin held where the pack's polearm sits (that polearm is hidden).
         void DressHuntress()
         {
-            var body = FX.Lit(new Color(0.72f, 0.08f, 0.12f), 0.4f, 0.3f);
-            var spear = FX.Lit(new Color(0.3f, 0.08f, 0.1f), 0.3f, 0.7f);
+            var suit = FX.Lit(new Color(0.16f, 0.07f, 0.08f), 0.75f);
+            var crimson = FX.Lit(new Color(0.55f, 0.04f, 0.08f), 0.45f, 0.35f);
+            var darkSteel = FX.Lit(new Color(0.22f, 0.2f, 0.22f), 0.35f, 0.85f);
+            var leather = FX.Lit(new Color(0.1f, 0.05f, 0.04f), 0.8f);
+            var capeMat = FX.Lit(new Color(0.32f, 0.02f, 0.05f), 0.8f);
+            Transform polearm = null;
             foreach (var r in rig.model.GetComponentsInChildren<Renderer>(true))
             {
                 if (r is ParticleSystemRenderer) continue;
+                if (r.name.IndexOf("Polearm", System.StringComparison.OrdinalIgnoreCase) >= 0 || r.name.IndexOf("Weapon", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    polearm = r.transform;
+                    r.enabled = false;
+                    r.gameObject.SetActive(false);
+                    continue;
+                }
                 var mats = r.sharedMaterials;
-                bool weapon = r.name.IndexOf("Polearm", System.StringComparison.OrdinalIgnoreCase) >= 0 || r.name.IndexOf("Weapon", System.StringComparison.OrdinalIgnoreCase) >= 0;
-                for (int i = 0; i < mats.Length; i++) mats[i] = weapon ? spear : body;
+                for (int i = 0; i < mats.Length; i++) mats[i] = suit;
                 r.sharedMaterials = mats;
             }
+            var faceRot = transform.rotation;   // the model faces -Z in the hero's frame
+            // A node on a bone in world units (bones carry the model's import scale), turned to the hero's frame.
+            Transform On(HumanBodyBones b, string name, Vector3 offset = default)
+            {
+                var bone = rig.Bone(b);
+                if (bone == null) return null;
+                var n = FX.Node(bone, name);
+                n.localScale = Vector3.one / Mathf.Max(0.0001f, bone.lossyScale.x);
+                n.SetPositionAndRotation(bone.position + faceRot * offset, faceRot);
+                return n;
+            }
+            // A piece running down a limb from bone a toward bone b (between fractions t0 and t1 of the way).
+            void Limb(HumanBodyBones a, HumanBodyBones b, Material m, float radius, float t0, float t1, string name)
+            {
+                var ta = rig.Bone(a);
+                var tb = rig.Bone(b);
+                if (ta == null || tb == null) return;
+                var dir = tb.position - ta.position;
+                var n = FX.Node(ta, name);
+                n.localScale = Vector3.one / Mathf.Max(0.0001f, ta.lossyScale.x);
+                n.SetPositionAndRotation(ta.position + dir * (t0 + t1) * 0.5f, Quaternion.FromToRotation(Vector3.up, dir.normalized));
+                FX.Part(n, MeshGen.Cylinder(0.5f, 0.5f, 10), m, Vector3.zero, new Vector3(radius * 2f, dir.magnitude * (t1 - t0), radius * 2f));
+            }
+            var chestBone = rig.Bone(HumanBodyBones.UpperChest) != null ? HumanBodyBones.UpperChest : HumanBodyBones.Chest;
+            var chest = On(chestBone, "Cuirass");
+            if (chest)
+            {
+                FX.Part(chest, MeshGen.Sphere(14), crimson, new Vector3(0, -0.02f, -0.02f), new Vector3(0.34f, 0.36f, 0.25f));
+                FX.Part(chest, MeshGen.Box(), darkSteel, new Vector3(0, -0.02f, -0.14f), new Vector3(0.05f, 0.24f, 0.03f));
+                // Cape from the shoulders down the back.
+                FX.Part(chest, MeshGen.Box(), capeMat, new Vector3(0, -0.42f, 0.17f), new Vector3(0.44f, 0.9f, 0.025f), new Vector3(-0.12f, 0, 0));
+                FX.Part(chest, MeshGen.Box(), crimson, new Vector3(0, 0.05f, 0.15f), new Vector3(0.46f, 0.08f, 0.06f));
+            }
+            var hips = On(HumanBodyBones.Hips, "Belt");
+            if (hips)
+            {
+                FX.Part(hips, MeshGen.Cylinder(0.5f, 0.5f, 12), leather, new Vector3(0, 0.06f, 0), new Vector3(0.33f, 0.07f, 0.24f));
+                FX.Part(hips, MeshGen.Sphere(8), darkSteel, new Vector3(0, 0.06f, -0.12f), new Vector3(0.07f, 0.06f, 0.03f));
+                foreach (int s in new[] { -1, 1 })
+                    FX.Part(hips, MeshGen.Box(), crimson, new Vector3(s * 0.11f, -0.07f, -0.04f), new Vector3(0.12f, 0.2f, 0.03f), new Vector3(0.15f, 0, s * 0.15f));
+            }
+            foreach (var (bone, s) in new[] { (HumanBodyBones.LeftUpperArm, -1), (HumanBodyBones.RightUpperArm, 1) })
+            {
+                var p = On(bone, "Pauldron", new Vector3(0, 0.03f, 0));
+                if (p) FX.Part(p, MeshGen.Sphere(10), crimson, Vector3.zero, new Vector3(0.15f, 0.1f, 0.15f));
+            }
+            Limb(HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand, darkSteel, 0.05f, 0.35f, 0.9f, "Bracer");
+            Limb(HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand, darkSteel, 0.05f, 0.35f, 0.9f, "Bracer");
+            Limb(HumanBodyBones.LeftLowerLeg, HumanBodyBones.LeftFoot, darkSteel, 0.06f, 0.3f, 0.95f, "Greave");
+            Limb(HumanBodyBones.RightLowerLeg, HumanBodyBones.RightFoot, darkSteel, 0.06f, 0.3f, 0.95f, "Greave");
+            BuildHuntressJavelin(polearm);
             var head = rig.Bone(HumanBodyBones.Head);
             if (head)
             {
@@ -573,6 +643,48 @@ namespace Skyfall
                 foreach (int e in new[] { -1, 1 })
                     FX.NoShadow(FX.Part(hood, MeshGen.Sphere(8), FX.Glow(new Color(1f, 0.15f, 0.15f), 3f), new Vector3(e * 0.05f, 0.08f, -0.13f), Vector3.one * 0.04f));
             }
+        }
+
+        /// The Blood Javelin in the Huntress's hand: laid along the pack polearm's long axis (so the pack's grip and
+        /// animations hold it right), its glowing blood tip at the end away from her hand.
+        void BuildHuntressJavelin(Transform polearm)
+        {
+            var hand = rig.Bone(HumanBodyBones.RightHand);
+            Transform parent = polearm ? polearm.parent : hand;
+            if (parent == null) return;
+            Vector3 center, axis;
+            float length = 1.9f;
+            var mf = polearm ? polearm.GetComponent<MeshFilter>() : null;
+            var smr = polearm ? polearm.GetComponent<SkinnedMeshRenderer>() : null;
+            var mesh = mf ? mf.sharedMesh : smr ? smr.sharedMesh : null;
+            if (mesh != null)
+            {
+                var b = mesh.bounds;
+                int k = b.size.x >= b.size.y && b.size.x >= b.size.z ? 0 : (b.size.y >= b.size.z ? 1 : 2);
+                var local = Vector3.zero;
+                local[k] = 1f;
+                center = polearm.TransformPoint(b.center);
+                axis = polearm.TransformVector(local * b.size[k]);
+                length = Mathf.Clamp(axis.magnitude, 1.5f, 2.2f);
+                axis = axis.normalized;
+                // Point the tip away from the grip.
+                if (Vector3.Dot(center - parent.position, axis) < 0f) axis = -axis;
+            }
+            else
+            {
+                center = parent.position;
+                axis = transform.rotation * new Vector3(0, 1f, -0.2f).normalized;
+            }
+            var n = FX.Node(parent, "BloodJavelin");
+            n.localScale = Vector3.one / Mathf.Max(0.0001f, parent.lossyScale.x);
+            n.SetPositionAndRotation(center, Quaternion.FromToRotation(Vector3.up, axis));
+            var shaft = FX.Lit(new Color(0.18f, 0.06f, 0.07f), 0.5f, 0.3f);
+            var glow = FX.Glow(new Color(1f, 0.1f, 0.12f), 2.8f);
+            FX.Part(n, MeshGen.Cylinder(0.5f, 0.5f, 8), shaft, Vector3.zero, new Vector3(0.05f, length, 0.05f));
+            FX.NoShadow(FX.Part(n, MeshGen.Cylinder(0f, 0.5f, 6), glow, new Vector3(0, length * 0.5f + 0.18f, 0), new Vector3(0.11f, 0.38f, 0.11f)));
+            FX.Part(n, MeshGen.Cylinder(0.5f, 0.5f, 8), FX.Lit(new Color(0.75f, 0.75f, 0.78f), 0.3f, 0.9f), new Vector3(0, length * 0.5f - 0.02f, 0), new Vector3(0.08f, 0.05f, 0.08f));
+            FX.Part(n, MeshGen.Cylinder(0.5f, 0.5f, 8), FX.Lit(new Color(0.08f, 0.04f, 0.03f), 0.9f), new Vector3(0, -length * 0.1f, 0), new Vector3(0.065f, 0.3f, 0.065f));
+            FX.NoShadow(FX.Part(n, MeshGen.Cylinder(0.5f, 0f, 6), glow, new Vector3(0, -length * 0.5f - 0.06f, 0), new Vector3(0.07f, 0.14f, 0.07f)));
         }
 
         /// Shows the hero (procedural body or the skin) or hides it (Dragon Form). With a skin, the procedural body stays
@@ -820,6 +932,7 @@ namespace Skyfall
                     SummonDragon();
                     velocity.y = 10f;
                     onGround = false;
+                    jumpedFromGround = false;
                 }
                 else game.hud.Toast("Your dragon needs to rest...");
             }
@@ -855,6 +968,7 @@ namespace Skyfall
                 {
                     velocity.y = JUMP_VELOCITY * Mathf.Sqrt(JumpMult);
                     onGround = false;
+                    jumpedFromGround = true;
                     airJumps = 0;
                 }
                 else if (airJumps < MaxAirJumps)
@@ -868,7 +982,7 @@ namespace Skyfall
             }
             if (soaring)
             {
-                if (flying) flightStamina -= delta;
+                if (flying && !UnlimitedFlight) flightStamina -= delta;
                 if (GameInput.JumpHeld) velocity.y = Mathf.MoveTowards(velocity.y, 10f, 30f * delta);
                 else if (GameInput.DescendHeld) velocity.y = Mathf.MoveTowards(velocity.y, -16f, 45f * delta);
                 else velocity.y = Mathf.MoveTowards(velocity.y, 0f, 14f * delta);   // the dragon holds its height until told otherwise
@@ -920,13 +1034,17 @@ namespace Skyfall
             }
             else onGround = false;
             Pos = pos;
-            // Flight stamina refills while you're on the ground. The remount timer starts the moment you first touch
-            // solid ground after leaving the dragon, and keeps running from then on (jumping doesn't reset it).
+            // Flight stamina refills while you're on the ground or in a jump from it (not while falling off the dragon);
+            // from 0:00 it stays full. The remount timer starts the moment you first touch solid ground after leaving
+            // the dragon, and keeps running from then on (jumping doesn't reset it).
             if (onGround)
             {
-                flightStamina = Mathf.Min(MaxFlight, flightStamina + delta * FLIGHT_REGEN_RATE);
+                jumpedFromGround = false;
                 remountLanded = true;
             }
+            if (UnlimitedFlight) flightStamina = MaxFlight;
+            else if (onGround || (jumpedFromGround && !flying && !SoaringForm))
+                flightStamina = Mathf.Min(MaxFlight, flightStamina + delta * FLIGHT_REGEN_RATE);
             if (remountLanded) remountWait = Mathf.Max(0f, remountWait - delta);
 
             float hspeed = new Vector2(velocity.x, velocity.z).magnitude;
@@ -1121,6 +1239,8 @@ namespace Skyfall
         // ---------------------------------------------------------------- combat
 
         int swingCount;
+        /// How far the sword reaches above an ogre's head and below its feet (from the hero's chest).
+        const float SWORD_REACH_UP = 6f, SWORD_REACH_DOWN = 6f;
 
         bool Attack()
         {
@@ -1128,7 +1248,7 @@ namespace Skyfall
             float rngMult = AreaMult * (1f + 0.06f * (weaponLevel - 1)) * (Has("k_reach") ? 1.35f : 1f);
             float reach = w.range * rngMult;
             var c = Center;
-            var target = game.NearestEnemy(c, reach + 1.5f, 4.5f);
+            var target = game.NearestEnemy(c, reach + 1.5f, SWORD_REACH_DOWN + 2f);
             if (target == null) return false;
             swingCount++;
             bool spin = Has("k_whirlwind") && swingCount % 5 == 0;
@@ -1144,8 +1264,8 @@ namespace Skyfall
                 var e = list[i];
                 if (e.dead) continue;
                 var to = e.Pos - Pos;
-                float vy = Mathf.Abs(e.Pos.y + 1f - c.y);
-                if (vy > 4.5f + e.radius) continue;
+                // Tall hitbox: anything whose body (feet to head) comes within reach above or below the blade.
+                if (c.y > e.Pos.y + 2f * e.size + SWORD_REACH_UP || c.y < e.Pos.y - SWORD_REACH_DOWN) continue;
                 to.y = 0f;
                 float dist = to.magnitude;
                 if (dist > reach + e.radius) continue;
@@ -1429,6 +1549,7 @@ namespace Skyfall
             if (hp <= 0f && !CheatDeath())
             {
                 hp = 0f;
+                if (rig && !flying) rig.Action(60f, DIE);
                 game.OnPlayerDied();
                 return;
             }
@@ -1450,10 +1571,10 @@ namespace Skyfall
                 xp -= xpNext;
                 level++;
                 pendingLevels++;
-                // +2% max health each level (and heal that much).
+                // +1% max health each level (and heal that much).
                 RecalcMaxHp();
-                // Each level costs much more than the last (level 2: 18, level 10: ~180, level 50: ~2600, level 100: ~8600).
-            xpNext = 8f + (level - 1) * 8f + Mathf.Pow(level - 1, 1.8f) * 2f;
+                // Each level costs more than the last, easing off at the top (level 10: ~165, level 30: ~855, level 50: ~1950).
+                xpNext = 8f + (level - 1) * 8f + Mathf.Pow(level - 1, 1.7f) * 2f;
             }
         }
     }

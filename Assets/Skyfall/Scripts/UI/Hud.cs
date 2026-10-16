@@ -478,9 +478,9 @@ namespace Skyfall
                 return;
             }
             bool landing = !p.flying && p.RemountWait > 0f;
-            var fill = landing ? new Color(0.22f, 0.4f, 0.6f) : blue;
+            var fill = landing ? new Color(0.22f, 0.4f, 0.6f) : p.UnlimitedFlight ? new Color(1f, 0.8f, 0.35f) : blue;
             Bar(new Rect(bx + 80, by, bw - 80, 10), p.flightStamina / p.MaxFlight, fill);
-            string label = landing ? (p.RemountLanded ? "Landing" : "Land!") : "Flight (Q)";
+            string label = landing ? (p.RemountLanded ? "Landing" : "Land!") : p.UnlimitedFlight ? "Unlimited" : "Flight (Q)";
             var labelCol = landing ? new Color(1f, 0.7f, 0.4f) : new Color(0.6f, 0.85f, 1f);
             DrawText(new Rect(bx, by - 6, 80, 20), label, Text(15), labelCol, 5);
         }
@@ -1274,7 +1274,7 @@ namespace Skyfall
             { "Q", "Call your dragon and take flight (again to drop off); after you leave it, Q is ready 1 s after you touch the ground" },
             { "E", "Dragon signature ability (from the air you leap down and slam; Q is locked for 3 s after)" },
             { "F", "Capstone form (Dragon Form / Crimson Specter / Phoenix Form)" },
-            { "Shift / Ctrl", "Dive while flying" },
+            { "Shift / C", "Dive while flying" },
             { "Tab", "Stats screen" },
             { "Esc / P", "Pause" },
             { "1 / 2 / 3", "Pick a level-up card" },
@@ -1368,7 +1368,7 @@ namespace Skyfall
                     case "ability": sub = "Choose an ability to upgrade, or feed your dragon."; break;
                     default: sub = "Choose a stat bucket (you gain all of its stats), or feed your dragon."; break;
                 }
-                Label(sub + "   (Every level: +1% damage · +1% health · +0.5% parry)", 20, PARCHMENT, 6, TextAnchor.UpperCenter);
+                Label(sub + $"   (Every level: +{Mathf.RoundToInt(game.player.DamagePerLevel * 100f)}% damage · +1% health · +0.5% parry)", 20, PARCHMENT, 6, TextAnchor.UpperCenter);
                 Space(18);
                 CenterRow(() =>
                 {
@@ -1388,7 +1388,8 @@ namespace Skyfall
                         Space(8);
                         string lvlText = o.type == "bucket" ? $"Rank {o.level}" : o.type == "talent" ? $"Row {o.level} of {Data.TALENT_LEVELS.Length}"
                             : o.type == "armor" ? $"{Data.ARMOR_TIER_STATS[o.armor.tier]} stats · tier {o.armor.tier + 1} of 3"
-                            : o.type == "dragon" ? $"Rank {o.level} / {Data.FindDragonCard(o.id).max}" : $"Level {o.level} / {Data.MAX_LEVEL}";
+                            : o.type == "dragon" ? $"Rank {o.level} / {Data.FindDragonCard(o.id).max}"
+                            : $"Level {o.level} / {(Data.SPELLS.ContainsKey(o.id) ? Data.SPELL_MAX_LEVEL : Data.MAX_LEVEL)}";
                         Label(lvlText, 16, GOLD, 5);
                         Space(8);
                         Label(o.desc, 16, PARCHMENT, 5, TextAnchor.UpperLeft, 300, true);
@@ -1470,7 +1471,7 @@ namespace Skyfall
                     Label($"An egg hatched: the {hd.name} is yours!", 24, M.Lighten(hd.body, 0.35f), 8, TextAnchor.UpperCenter, 0, false, true);
                 }
                 Space(18);
-                Label($"Stage {game.stage} / {Data.STAGE_COUNT}   ·   {Clock(game.totalTime)}   ·   Level {p.level}   ·   {game.kills} ogres slain", 24, PARCHMENT, 6, TextAnchor.UpperCenter);
+                Label($"Stage {game.stage} / {Data.STAGE_COUNT}   ·   {Clock(game.totalTime)}   ·   Level {p.level}   ·   {game.kills} foes slain", 24, PARCHMENT, 6, TextAnchor.UpperCenter);
                 Space(18);
                 Label($"Score  {endScore}", 48, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(10);
@@ -1570,7 +1571,7 @@ namespace Skyfall
                         Kv("Time", Clock(game.totalTime), 16);
                         Kv("Stage", $"{game.stage} / {Data.STAGE_COUNT}", 16);
                         Kv("Wave", game.finalStarted ? "Final battle" : $"{game.wave} / {game.Stage.waves.Length}", 16);
-                        Kv("Ogres slain", game.kills.ToString(), 16);
+                        Kv("Foes slain", game.kills.ToString(), 16);
                         Kv("Damage dealt", ((int)game.damageDealt).ToString(), 16);
                         Kv("Biggest hit", ((int)game.biggestHit).ToString(), 16);
                         Kv("Bosses slain", game.bossesSlain.ToString(), 16);

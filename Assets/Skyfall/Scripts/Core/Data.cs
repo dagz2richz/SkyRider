@@ -11,9 +11,13 @@ namespace Skyfall
         public const float RUN_LENGTH = 480f;
         public const float WAVE_LENGTH = 120f;
         public const float MINI_BOSS_TIME = 240f;
+        /// Weapons and passives top out at level 5; spells at level 10.
         public const int MAX_LEVEL = 5;
-        /// Spells reach their evolved form (a unique, visually distinct upgrade) on their third upgrade.
-        public const int EVOLVE_LEVEL = 4;
+        public const int SPELL_MAX_LEVEL = 10;
+        /// Spells reach their evolved form (a unique, visually distinct upgrade) at level 5, and gain a second unique
+        /// upgrade at level 10.
+        public const int EVOLVE_LEVEL = 5;
+        public const int SPELL_FINAL_LEVEL = 10;
 
         static Color C(float r, float g, float b, float a = 1f) => new Color(r, g, b, a);
 
@@ -30,7 +34,7 @@ namespace Skyfall
         public static readonly Dictionary<string, HeroDef> HEROES = new Dictionary<string, HeroDef>
         {
             ["knight"] = new HeroDef { name = "Dragonguard Knight", color = C(0.55f, 0.7f, 1.0f), weapon = "sword", defense = "shield",
-                desc = "Armored melee battlemage. Longsword sweeps around you; a shield blocks blows.", hp = 100f },
+                desc = "Armored melee battlemage. Longsword sweeps around you; a shield blocks blows.", hp = 120f },
             ["huntress"] = new HeroDef { name = "Blood Huntress", color = C(0.9f, 0.2f, 0.25f), weapon = "blood_lance", defense = "evasion",
                 desc = "Ranged blood mage. Hurls piercing Blood Javelins paid for in her own blood that make ogres bleed; dodges instead of blocking.", hp = 90f },
             ["pyromancer"] = new HeroDef { name = "Ember Mage", color = C(1.0f, 0.55f, 0.15f), weapon = "staff", defense = "ward",
@@ -98,7 +102,7 @@ namespace Skyfall
             desc = "A chance to dodge any blow entirely.",
             ups = new[] { "", "+5% dodge chance", "+5% dodge; dodging heals 3% health", "+5% dodge chance", "+5% dodge; dodging hurls a counter-javelin" } };
 
-        public static readonly DefenseDef SHIELD = new DefenseDef { name = "Dragonguard Shield", color = C(0.45f, 0.65f, 1.0f), baseChance = 0.12f,
+        public static readonly DefenseDef SHIELD = new DefenseDef { name = "Dragonguard Shield", color = C(0.45f, 0.65f, 1.0f), baseChance = 0.25f,
             desc = "A chance to block any blow entirely.",
             ups = new[] { "", "+5% block chance", "+5% block; blocks stagger the attacker", "+5% block chance", "+5% block; blocks reflect double damage" } };
 
@@ -117,32 +121,37 @@ namespace Skyfall
         }
 
         public static readonly string[] SPELL_ORDER = { "gravity_well", "frost_bolt", "chain_lightning", "meteor" };
+        /// Level-up texts for a spell, indexed by the current level (ups[1] is the upgrade to level 2): three early
+        /// upgrades, the evolution at 5, four steady upgrades, then the level-10 unique upgrade.
+        static string[] SpellUps(string l2, string l3, string l4, string evolve, string steady, string l10) =>
+            new[] { "", l2, l3, l4, evolve, steady, steady, steady, steady, l10 };
+
         public static readonly Dictionary<string, SpellDef> SPELLS = new Dictionary<string, SpellDef>
         {
             ["gravity_well"] = new SpellDef { name = "Gravity Well", color = C(0.6f, 0.3f, 1.0f), cost = 40f, cd = 4f,
                 evolved = "Event Horizon", evolvedColor = C(1f, 0.78f, 0.3f),
                 desc = "Opens a crushing vortex in the thickest crowd, dragging ogres in before it implodes.",
-                ups = new[] { "", "+pull, +damage", "+radius, longer vortex",
+                ups = SpellUps("+pull, +damage", "+radius, longer vortex", "+pull, +damage",
                     "EVOLVES into Event Horizon: a golden-ringed black hole that drags ogres from far away, implodes twice and stuns everything it crushed",
-                    "opens a second well" } },
+                    "+pull, +damage, cheaper to cast", "UNIQUE: opens a second well") },
             ["frost_bolt"] = new SpellDef { name = "Frost Bolt", color = C(0.6f, 0.9f, 1.0f), cost = 16f, cd = 0.8f,
                 evolved = "Glacial Comet", evolvedColor = C(0.85f, 1f, 1f),
                 desc = "A bolt of ice that bursts on contact, sending shards out from the center. Shards can freeze.",
-                ups = new[] { "", "+2 shards, +damage", "+freeze chance",
+                ups = SpellUps("+2 shards, +damage", "+freeze chance", "+2 shards, +damage",
                     "EVOLVES into Glacial Comet: a huge comet that always freezes what it hits and leaves a field of ice that freezes ogres walking in",
-                    "shards pierce through foes" } },
+                    "+damage, +freeze chance, cheaper to cast", "UNIQUE: shards pierce through foes") },
             ["chain_lightning"] = new SpellDef { name = "Chain Lightning", color = C(0.75f, 0.75f, 1.0f), cost = 24f, cd = 1.4f,
                 evolved = "Storm Lord", evolvedColor = C(0.85f, 0.55f, 1f),
                 desc = "Lightning leaps from foe to foe, with a chance to shock (1s stun on all but bosses).",
-                ups = new[] { "", "+2 jumps, +damage", "+shock chance",
+                ups = SpellUps("+2 jumps, +damage", "+shock chance", "+2 jumps, +damage",
                     "EVOLVES into Storm Lord: violet lightning that never weakens as it jumps and leaves a crackling storm orb that keeps zapping",
-                    "forks into two chains" } },
+                    "+damage, +shock chance, cheaper to cast", "UNIQUE: forks into two chains") },
             ["meteor"] = new SpellDef { name = "Meteor Storm", color = C(1.0f, 0.65f, 0.25f), cost = 48f, cd = 5f,
                 evolved = "Starfall", evolvedColor = C(0.6f, 0.8f, 1f),
                 desc = "Burning stars rain on the thickest crowd, with a chance to ignite what they hit.",
-                ups = new[] { "", "+2 meteors, +damage", "+ignite chance, bigger impacts",
+                ups = SpellUps("+2 meteors, +damage", "+ignite chance, bigger impacts", "+2 meteors, +damage",
                     "EVOLVES into Starfall: blue-white stars that hit twice as hard and leave pools of starfire burning on the ground",
-                    "a giant final meteor" } },
+                    "+damage, +ignite chance, cheaper to cast", "UNIQUE: a giant final meteor") },
         };
 
         // ------------------------------------------------------------ passives
@@ -436,7 +445,7 @@ namespace Skyfall
             new[] { T("dt_fury", "Fury", "Your dragon deals 15% more damage.", "dragondmg%:15"),
                     T("dt_swift", "Swiftwing", "Your dragon's cooldowns are 12% shorter.", "dragoncd%:12"),
                     T("dt_vast", "Vast", "Your dragon grows 15% larger: its breath reaches farther and its dives hit wider.", "size%:15") },
-            new[] { T("dt_shelter", "Sheltering Wings", "+1 rank of Sheltering Wing: it shields you from arrows, boulders and harpoons.", "wing:1"),
+            new[] { T("dt_shelter", "Sheltering Wings", "+1 rank of Sheltering Wing: it shields you from potions, boulders and harpoons.", "wing:1"),
                     T("dt_talons", "Watchful Talons", "+1 rank of Guardian's Talons: it swoops in and carries you out when you're nearly dead.", "rescue:1"),
                     T("dt_wrath", "Wrathful", "+1 rank of Wrathful Guardian: it scorches anything that hurts you.", "wrath:1") },
             new[] { T("dt_skyrider", "Skyrider", "While riding you take 25% less damage.", "mountdr%:25"),
@@ -524,21 +533,21 @@ namespace Skyfall
         public class DragonCardDef
         {
             public string id, name, desc, only = "";
-            public int start, max = 5;
+            public int start, max = 5;   // breath and signature go to 10
             public bool guardian;
         }
 
         public static readonly DragonCardDef[] DRAGON_CARDS =
         {
-            new DragonCardDef { id = "dragonfire", name = "Breath", start = 1, desc = "+damage, +range, breathes and dives more often" },
-            new DragonCardDef { id = "ride", name = "Signature", start = 1, desc = "+damage, bigger area, shorter cooldown" },
+            new DragonCardDef { id = "dragonfire", name = "Breath", start = 1, max = 10, desc = "+damage, +range, breathes and dives more often" },
+            new DragonCardDef { id = "ride", name = "Signature", start = 1, max = 10, desc = "+damage, bigger area, shorter cooldown" },
             new DragonCardDef { id = "d_size", name = "Ancient Growth", desc = "Your dragon grows 12% larger: breath reaches 8% farther and dives hit 8% wider" },
             new DragonCardDef { id = "d_cone", name = "Wide Maw", desc = "Breath cone 6° wider" },
             new DragonCardDef { id = "d_haste", name = "Restless Wings", desc = "Breath, dives and signature cool down 8% faster" },
             new DragonCardDef { id = "d_rescue", name = "Guardian's Talons", guardian = true,
                 desc = "When you fall below 35% health on foot, your dragon swoops in and carries you off (90 s cooldown, -10 s per rank)" },
             new DragonCardDef { id = "d_wing", name = "Sheltering Wing", guardian = true,
-                desc = "12% chance per rank that your dragon's wing stops an arrow, boulder or harpoon meant for you" },
+                desc = "12% chance per rank that your dragon's wing stops a potion, boulder or harpoon meant for you" },
             new DragonCardDef { id = "d_wrath", name = "Wrathful Guardian", guardian = true,
                 desc = "20% chance per rank that your dragon scorches whatever hurts you" },
             new DragonCardDef { id = "d_blue", name = "Everburning", only = "blue", desc = "Its burns deal 30% more damage per rank" },
@@ -595,21 +604,24 @@ namespace Skyfall
 
         // ------------------------------------------------------------ ogres
 
+        /// A regular foe. The swarm is skeletons and renegade knights; ogres are the big ones (brutes, hulks, harpooners)
+        /// and the bosses; grunts throw potions and empower others. role: "", "archer" (potion thrower), "shaman",
+        /// "harpooner". model: "" for an ogre, "skeleton" or "human" (they are drawn at a human height instead).
         public class OgreDef
         {
-            public string name, role = "";
+            public string name, role = "", model = "";
             public float size;
         }
 
         public static readonly Dictionary<string, OgreDef> OGRES = new Dictionary<string, OgreDef>
         {
-            ["runt"] = new OgreDef { name = "Ogre Runt", size = 0.7f },
-            ["ogre"] = new OgreDef { name = "Ogre", size = 1.0f },
+            ["runt"] = new OgreDef { name = "Skeleton", size = 0.7f, model = "skeleton" },
+            ["ogre"] = new OgreDef { name = "Renegade Knight", size = 1.0f, model = "human" },
             ["brute"] = new OgreDef { name = "Ogre Brute", size = 1.45f },
             ["hulk"] = new OgreDef { name = "Ogre Hulk", size = 2.0f },
-            ["archer"] = new OgreDef { name = "Ogre Archer", size = 0.95f, role = "archer" },
+            ["archer"] = new OgreDef { name = "Grunt Alchemist", size = 0.95f, role = "archer" },
             ["harpooner"] = new OgreDef { name = "Ogre Harpooner", size = 1.15f, role = "harpooner" },
-            ["shaman"] = new OgreDef { name = "Ogre Shaman", size = 1.1f, role = "shaman" },
+            ["shaman"] = new OgreDef { name = "Grunt Shaman", size = 1.1f, role = "shaman" },
         };
 
         /// Global enemy tuning (health and damage raised 25% twice: 1.3 -> 1.625 -> 2.03 and 1.5 -> 1.875 -> 2.34).
@@ -630,6 +642,11 @@ namespace Skyfall
             new[] { ("runt", 350), ("ogre", 300), ("brute", 150), ("hulk", 40), ("archer", 48), ("harpooner", 6), ("shaman", 40) },
             new[] { ("runt", 200), ("ogre", 270), ("brute", 230), ("hulk", 120), ("archer", 48), ("harpooner", 6), ("shaman", 60) },
         };
+
+        /// Alchemists lob potions in a slow arc (flight time grows with distance) that splash where they land.
+        public const float POTION_FLIGHT_MIN = 1.1f;
+        public const float POTION_FLIGHT_MAX = 1.7f;
+        public const float POTION_SPLASH = 2.4f;
 
         /// Ogre Harpooner: wind-up (telegraphed) before each throw, seconds between throws, and what a hit does.
         /// One hit drains flight and slows the dragon; only a second hit while still hooked drags the rider down.

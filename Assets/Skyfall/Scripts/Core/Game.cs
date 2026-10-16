@@ -731,7 +731,7 @@ namespace Skyfall
             }
             if (show)
             {
-                e.HitPop();
+                e.HitPop(amount, knockForce > 2f);
                 FX.Number(e.Pos + new Vector3(0, 2.2f * e.size, 0), amount, crit ? new Color(1f, 0.85f, 0.2f) : (color ?? Color.white), crit);
             }
             if (e.hp <= 0f) Kill(e);
@@ -778,7 +778,9 @@ namespace Skyfall
                 if (M.RandF() < player.PowerUpDropChance) DropPowerUp(Data.POWERUP_ORDER[Random.Range(0, Data.POWERUP_ORDER.Length)], pos);
             }
             player.OnKill(e);
-            FX.Vfx("dust_puff", pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.6f, null, 0.25f, FX.EnemyRed);
+            // Pack models fall with their death animation (up to a cap); the rest vanish in a dust puff.
+            if (!e.LeaveCorpse())
+                FX.Vfx("dust_puff", pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.6f, null, 0.25f, FX.EnemyRed);
             e.gameObject.SetActive(false);
         }
 
@@ -999,15 +1001,16 @@ namespace Skyfall
                 pool.Add(new LevelOption { type = "spell", id = p.passiveId, name = ps.name, level = pl + 1, desc = ps.up, tag = "PASSIVE", color = ps.color });
             }
             int sl = p.spells.TryGetValue(p.spellId, out int v2) ? v2 : 1;
-            if (sl < Data.MAX_LEVEL)
+            if (sl < Data.SPELL_MAX_LEVEL)
             {
                 var sp = Data.SPELLS[p.spellId];
                 bool evolve = sl + 1 == Data.EVOLVE_LEVEL;
-                pool.Add(new LevelOption { type = "spell", id = p.spellId, name = evolve ? sp.evolved : (sl + 1 > Data.EVOLVE_LEVEL ? sp.evolved : sp.name), level = sl + 1, desc = sp.ups[sl],
-                    tag = evolve ? "SPELL · EVOLUTION" : "SPELL", color = sl + 1 >= Data.EVOLVE_LEVEL ? sp.evolvedColor : sp.color });
+                bool unique = sl + 1 == Data.SPELL_FINAL_LEVEL;
+                pool.Add(new LevelOption { type = "spell", id = p.spellId, name = sl + 1 >= Data.EVOLVE_LEVEL ? sp.evolved : sp.name, level = sl + 1, desc = sp.ups[sl],
+                    tag = evolve ? "SPELL · EVOLUTION" : unique ? "SPELL · UNIQUE" : "SPELL", color = sl + 1 >= Data.EVOLVE_LEVEL ? sp.evolvedColor : sp.color });
             }
             // The spell's evolution is too important to be shuffled away (it stays among the first two cards).
-            var evo = pool.Find(o => o.tag == "SPELL · EVOLUTION");
+            var evo = pool.Find(o => o.tag == "SPELL · EVOLUTION" || o.tag == "SPELL · UNIQUE");
             var picked = Pick3(pool);
             if (evo != null && picked.IndexOf(evo) != 0 && picked.IndexOf(evo) != 1)
             {

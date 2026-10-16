@@ -185,6 +185,8 @@ namespace Skyfall
         static readonly string[] SK_WALK = { "Walk", "walk", "Idle" };
         static readonly string[] SK_RUN = { "Run", "run", "Walk" };
         static readonly string[] SK_GROUND_BREATH = { "Flame Attack", "Fireball Shoot", "Basic Attack", "Idle" };
+        static readonly string[] SK_DEFEND = { "Defend", "Scream", "Idle01" };
+        static readonly string[] SK_SNAP = { "Flame Attack", "Basic Attack", "Claw Attack" };
 
         /// The hatchling (world 1) can't fly yet: it walks beside you and only breathes fire (no dives, no signature).
         public bool Grounded => game != null && game.stage < Data.FLIGHT_STAGE;
@@ -224,11 +226,11 @@ namespace Skyfall
         float DmgMult => player.DamageMult * DataDef.damage * player.DragonDamageMult * Data.DRAGON_AGE_DAMAGE[Age];
 
         /// On foot the dragon dive-bombs crowds by itself on this cooldown.
-        float CommandCooldown => (12f - 1f * (Lvl("dragonfire") - 1)) * player.DragonCdMult;
+        float CommandCooldown => 12f * Mathf.Pow(0.92f, Lvl("dragonfire") - 1) * player.DragonCdMult;
 
         public float CommandFrac => Mathf.Clamp01(commandCd / Mathf.Max(CommandCooldown, 0.01f));
 
-        float RideCooldown => Data.SIGNATURE_CD * (1f - 0.08f * (Lvl("ride") - 1)) * player.DragonCdMult * (1f - Mathf.Min(player.Pct("sigcd%"), 0.5f));
+        float RideCooldown => Data.SIGNATURE_CD * Mathf.Pow(0.94f, Lvl("ride") - 1) * player.DragonCdMult * (1f - Mathf.Min(player.Pct("sigcd%"), 0.5f));
 
         float SigDmg => 1f + player.Pct("sigdmg%");
         float SigArea => player.AreaMult * (1f + player.Pct("sigarea%")) * (1f + 0.1f * Card("d_red"));
@@ -402,7 +404,7 @@ namespace Skyfall
         {
             int L = Lvl("dragonfire");
             var mouth = MouthPos;
-            float reach = (11f + L * 1.2f) * player.AreaMult * player.DragonReachMult;
+            float reach = (11f + Mathf.Min(L, 5) * 1.2f + Mathf.Max(0, L - 5) * 0.5f) * player.AreaMult * player.DragonReachMult;
             var hitCol = Color.Lerp(fire, Color.white, 0.4f);
             if (breathActive > 0f)
             {
@@ -461,8 +463,8 @@ namespace Skyfall
                     breathTimer = 0.3f;
                     return;
                 }
-                breathTimer = (3f - 0.2f * L) * player.DragonCdMult;
-                breathActive = (1f + L * 0.12f) * (1f + player.Pct("breathtime%"));
+                breathTimer = 3f * Mathf.Pow(0.93f, L - 1) * player.DragonCdMult;
+                breathActive = (1f + Mathf.Min(L, 5) * 0.12f + Mathf.Max(0, L - 5) * 0.05f) * (1f + player.Pct("breathtime%"));
                 breathTick = 0f;
                 breathDir = (target.Pos + new Vector3(0, 0.8f, 0) - mouth).normalized;
                 breathNode.SetPositionAndRotation(mouth, Quaternion.LookRotation(breathDir));
@@ -650,7 +652,7 @@ namespace Skyfall
 
         // ---------------------------------------------------------------- guardian: it looks after you
 
-        /// Sheltering Wing: a chance to catch an arrow, boulder or harpoon meant for you. Returns true if it did.
+        /// Sheltering Wing: a chance to catch a potion, boulder or harpoon meant for you. Returns true if it did.
         public bool TryWingGuard(Vector3 at)
         {
             int r = Card("d_wing") + Mathf.RoundToInt(player.Mod("wing"));
@@ -659,7 +661,8 @@ namespace Skyfall
             FX.Shockwave(at, 2.2f, new Color(fire.r, fire.g, fire.b, 0.8f), 0.25f, DataDef.glowBreath);
             FX.Burst(at, Color.Lerp(fire, Color.white, 0.3f), 10, 6f, 0.2f);
             Sfx.Play("block", -2f, 0.1f);
-            if (skin && state != "mount") skin.Action(0.5f, SK_ROAR);
+            // On foot the hatchling throws a wing up (its Defend pose); in the air it roars.
+            if (skin && state != "mount") skin.Action(0.6f, Grounded ? SK_DEFEND : SK_ROAR);
             return true;
         }
 
@@ -672,6 +675,7 @@ namespace Skyfall
             FX.Bolt(mouth, to, Color.Lerp(fire, Color.white, 0.25f), 0.35f, 0.2f, 2);
             FX.Burst(to, fire, 12, 6f, 0.3f);
             Sfx.Play("flame", e.Pos, -4f, 0.1f);
+            if (skin && state != "mount" && !skin.InAction) skin.Action(0.5f, Grounded ? SK_SNAP : SK_BREATH);
             Hit(e, (40f + 10f * Lvl("dragonfire")) * DmgMult, M.Flat(e.Pos - player.Pos).normalized, 8f, true, Color.Lerp(fire, Color.white, 0.4f));
             Afflict(e, 1f);
         }
