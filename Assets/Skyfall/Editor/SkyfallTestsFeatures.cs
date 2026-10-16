@@ -297,7 +297,7 @@ namespace Skyfall.EditorTools
                 pl.flightStamina = pl.MaxFlight;
             }
 
-            // ---- Q lockout after E on the dragon, and the flight regen delay.
+            // ---- Remounting after E on the dragon (1 s on solid ground), and flight regen from the moment you land.
             const int Q0 = 1600;
             if (f == Q0)
             {
@@ -309,23 +309,23 @@ namespace Skyfall.EditorTools
                 GameInput.TestAbilityPress = true;   // E while mounted: leap off and slam
             }
             int e0 = Q0 + 41;   // frame of the E effect
-            if (f == e0 + 1) Debug.Log($"SKYFALL_TEST q after E: flying={pl.flying} lockLeft={pl.FlightLockLeft:0.00}s regenWait={pl.FlightRegenWait:0.00}");
+            if (f == e0 + 1) Debug.Log($"SKYFALL_TEST q after E: flying={pl.flying} remountWait={pl.RemountWait:0.00}s onGround={pl.onGround}");
             if (f == e0 + 60)   // 1 s after E
             {
                 GameInput.TestFlyPress = true;
             }
-            if (f == e0 + 62) Debug.Log($"SKYFALL_TEST q attempt at ~1s: flying={pl.flying} lockLeft={pl.FlightLockLeft:0.00}s toast={ToastNow(game)} onGround={pl.Pos.y - tr.Height(pl.Pos.x, pl.Pos.z) < 0.2f}");
+            if (f == e0 + 62) Debug.Log($"SKYFALL_TEST q attempt at ~1s: flying={pl.flying} remountWait={pl.RemountWait:0.00}s toast={ToastNow(game)} onGround={pl.Pos.y - tr.Height(pl.Pos.x, pl.Pos.z) < 0.2f}");
             if (f == e0 + 130)   // ~2.2 s after E
             {
                 GameInput.TestFlyPress = true;
             }
-            if (f == e0 + 132) Debug.Log($"SKYFALL_TEST q attempt at ~2.2s: flying={pl.flying} lockLeft={pl.FlightLockLeft:0.00}s toast={ToastNow(game)}");
+            if (f == e0 + 132) Debug.Log($"SKYFALL_TEST q attempt at ~2.2s: flying={pl.flying} remountWait={pl.RemountWait:0.00}s toast={ToastNow(game)}");
             if (f == e0 + 210)   // 3.5 s after E
             {
-                Debug.Log($"SKYFALL_TEST q before attempt at 3.5s: lockLeft={pl.FlightLockLeft:0.00}s stamina={pl.flightStamina:0.00}");
+                Debug.Log($"SKYFALL_TEST q before attempt at 3.5s: remountWait={pl.RemountWait:0.00}s stamina={pl.flightStamina:0.00}");
                 GameInput.TestFlyPress = true;
             }
-            if (f == e0 + 214) Debug.Log($"SKYFALL_TEST q attempt at ~3.5s: flying={pl.flying} lockLeft={pl.FlightLockLeft:0.00}s toast={ToastNow(game)}");
+            if (f == e0 + 214) Debug.Log($"SKYFALL_TEST q attempt at ~3.5s: flying={pl.flying} remountWait={pl.RemountWait:0.00}s toast={ToastNow(game)}");
 
             // Flight regen: fly for ~1 s (stamina drops), drop off with Q, then log the stamina every 0.5 s.
             int r0 = e0 + 214 + 60;
@@ -335,13 +335,13 @@ namespace Skyfall.EditorTools
                 GameInput.TestFlyPress = true;   // Q again: drop off
             }
             if (f > r0 && f <= r0 + 60 * 8 && (f - r0) % 30 == 0)
-                Debug.Log($"SKYFALL_TEST flight regen +{(f - r0) / 60f:0.0}s: stamina={pl.flightStamina:0.00} regenWait={pl.FlightRegenWait:0.00} flying={pl.flying} onGround={pl.Pos.y - tr.Height(pl.Pos.x, pl.Pos.z) < 0.2f}");
+                Debug.Log($"SKYFALL_TEST flight regen +{(f - r0) / 60f:0.0}s: stamina={pl.flightStamina:0.00} remountWait={pl.RemountWait:0.00} flying={pl.flying} onGround={pl.Pos.y - tr.Height(pl.Pos.x, pl.Pos.z) < 0.2f}");
             // A new flight resets the delay.
             int n0 = r0 + 60 * 8;
             if (f == n0) GameInput.TestFlyPress = true;
-            if (f == n0 + 30) { Debug.Log($"SKYFALL_TEST flight 2: flying={pl.flying} stamina={pl.flightStamina:0.00} regenWait={pl.FlightRegenWait:0.00}"); GameInput.TestFlyPress = true; }
+            if (f == n0 + 30) { Debug.Log($"SKYFALL_TEST flight 2: flying={pl.flying} stamina={pl.flightStamina:0.00} remountWait={pl.RemountWait:0.00}"); GameInput.TestFlyPress = true; }
             if (f > n0 + 30 && f <= n0 + 30 + 60 * 5 && (f - n0 - 30) % 30 == 0)
-                Debug.Log($"SKYFALL_TEST flight2 regen +{(f - n0 - 30) / 60f:0.0}s: stamina={pl.flightStamina:0.00} regenWait={pl.FlightRegenWait:0.00} flying={pl.flying}");
+                Debug.Log($"SKYFALL_TEST flight2 regen +{(f - n0 - 30) / 60f:0.0}s: stamina={pl.flightStamina:0.00} remountWait={pl.RemountWait:0.00} flying={pl.flying}");
             if (f == n0 + 30 + 60 * 5 + 5)
             {
                 LogStats(game, "end");

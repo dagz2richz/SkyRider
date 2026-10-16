@@ -446,7 +446,7 @@ namespace Skyfall.EditorTools
             // recolored electric blue-violet (written to a gitignored folder, since it is derived from the pack's art).
             string chain = TintedIcon(strike, "chain_lightning", new Color(0.55f, 0.65f, 1f));
             I("gravity_well", summon); I("frost_bolt", shards); I("chain_lightning", chain ?? strike); I("meteor", fireRain);
-            I("blood_aura", drain); I("lightning_storm", strike); I("bloodthirst", curse); I("spellblade", slash); I("windwalker", blink);
+            I("blood_aura", drain); I("lightning_storm", strike); I("bloodthirst", curse); I("spellblade", slash);
             I("sword", Wp + "09_Longsword.png"); I("blood_lance", TintedIcon(cone, "blood_lance", new Color(0.95f, 0.08f, 0.15f)) ?? cone); I("staff", Wp + "08_Mage_Staff.png");
             I("def_shield", Wp + "05_Shield.png"); I("def_evasion", blink); I("def_ward", fire);
             I("dragonfire", fireball); I("ride", aoe);

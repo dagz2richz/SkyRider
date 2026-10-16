@@ -26,7 +26,7 @@ namespace Skyfall
         Transform shieldNode;
 
         public Vector3 velocity;
-        bool onGround = true;
+        public bool onGround = true;
         public bool flying;                // mounted on the dragon
         public float flightStamina = 4f;
         public float camYaw, camPitch = 0.32f;
@@ -122,18 +122,19 @@ namespace Skyfall
         {
             get
             {
-                if (IsKnight) return Mathf.Min(Data.SHIELD.baseChance + 0.05f * (shieldLevel - 1) + DefenseExtra + (Has("k_bulwark") ? 0.12f : 0f), 0.7f);
-                if (IsPyro) return Mathf.Min(Data.WARD.baseChance + 0.05f * (shieldLevel - 1) + DefenseExtra + (Has("p_emberward") ? 0.12f : 0f), 0.7f);
+                if (IsKnight) return Mathf.Min(Data.SHIELD.baseChance + 0.05f * (shieldLevel - 1) + DefenseExtra + (Has("k_bulwark") ? 0.12f : 0f) + Pct("block%"), 0.7f);
+                if (IsPyro) return Mathf.Min(Data.WARD.baseChance + 0.05f * (shieldLevel - 1) + DefenseExtra + (Has("p_emberward") ? 0.12f : 0f) + Pct("block%"), 0.7f);
                 return 0f;
             }
         }
 
         public float JumpMult => 1f + 0.1f * S("utility", 0);
-        public float DamageMult => (1f + 0.08f * S("offense", 0)) * (1f + LevelDamageBonus) * (PowerActive("damage") ? 1f + Data.POWERUP_DAMAGE : 1f);
-        public float AttackSpeedMult => Mathf.Pow(0.94f, S("offense", 2));
+        public float DamageMult => (1f + 0.08f * S("offense", 0)) * (1f + LevelDamageBonus) * (PowerActive("damage") ? 1f + Data.POWERUP_DAMAGE : 1f)
+            * (1f + Pct("dmg%") + (flying ? Pct("mountdmg%") : 0f));
+        public float AttackSpeedMult => Mathf.Pow(0.94f, S("offense", 2)) / (1f + Pct("atkspd%"));
 
         /// Weapon damage per hit before the shared multipliers: base x weapon level (+15% per level) x talents.
-        public float WeaponBaseDamage => Weapon.damage * (1f + 0.15f * (weaponLevel - 1)) * (Has("k_wyrmsteel") ? 1.3f : 1f) * (Has("h_pact") ? 1.1f : 1f);
+        public float WeaponBaseDamage => Weapon.damage * (1f + 0.15f * (weaponLevel - 1)) * (Has("k_wyrmsteel") ? 1.3f : 1f) * (Has("h_pact") ? 1.1f : 1f) * (1f + Pct("wdmg%"));
 
         /// Seconds between attacks: weapon cooldown, faster with weapon level (0.93 per level) and Offense.
         public float AttackInterval => Weapon.cooldown * AttackSpeedMult * Mathf.Pow(0.93f, weaponLevel - 1) * (Has("h_phantom") && flying ? 0.5f : 1f);
@@ -144,16 +145,20 @@ namespace Skyfall
             get
             {
                 int n = 1 + (weaponLevel >= 3 ? 1 : 0) + (weaponLevel >= 5 ? 1 : 0) + (Has("h_volley") ? 2 : 0) + (Has("p_twin") ? 1 : 0);
-                return BloodMoon ? n * 3 : n;
+                return BloodMoon || SpecterActive ? n * 3 : n;
             }
         }
 
         /// Spell cooldown and mana cost multipliers (Spell Weaver).
-        public float CooldownMult => Has("p_weaver") ? 0.75f : 1f;
+        public float CooldownMult => (Has("p_weaver") ? 0.75f : 1f) * (1f - Pct("spellcd%"));
         public float SpellCostMult => Has("p_weaver") ? 0.8f : 1f;
-        public float DragonCdMult => Mathf.Pow(0.94f, S("dragon", 2)) * (Has("k_oath") ? 0.75f : 1f);
-        public float DragonDamageMult => 1f + 0.12f * S("dragon", 0) + (Has("k_oath") ? 0.4f : 0f) + (Has("h_wyrmbond") ? 0.3f : 0f) + (Has("p_dragonkin") ? 0.35f : 0f);
-        public float DragonReachMult => Has("p_dragonkin") ? 1.3f : 1f;
+        /// Dragon cooldowns: the Dragon stat, Restless Wings (dragon card), talents and tree picks.
+        public float DragonCdMult => Mathf.Pow(0.94f, S("dragon", 2)) * Mathf.Pow(0.92f, SpellLv("d_haste", 0)) * (Has("k_oath") ? 0.75f : 1f) * (1f - Pct("dragoncd%"));
+        public float DragonDamageMult => 1f + 0.12f * S("dragon", 0) + (Has("k_oath") ? 0.4f : 0f) + (Has("h_wyrmbond") ? 0.3f : 0f) + (Has("p_dragonkin") ? 0.35f : 0f) + Pct("dragondmg%");
+        /// Breath reach: Dragon Kin, the Dragon stat, the dragon's size and tree picks.
+        public float DragonReachMult => (Has("p_dragonkin") ? 1.3f : 1f) * (1f + 0.08f * S("dragon", 1) + Pct("reach%")) * (1f + 0.67f * (DragonSizeMult - 1f));
+        /// How big the dragon is: Ancient Growth (dragon card) and tree picks.
+        public float DragonSizeMult => 1f + 0.12f * SpellLv("d_size", 0) + Pct("size%");
         public float AreaMult => 1f;
         /// Burn and bleed damage multipliers (Kindling, Hemorrhage).
         public float BurnMult => Has("p_kindling") ? 1.6f : 1f;
@@ -162,21 +167,21 @@ namespace Skyfall
         /// Level of a passive, but only if it is the chosen passive.
         public int Plv(string id) => passiveId == id ? SpellLv(id, 0) : 0;
 
-        public float MoveMult => 1f + 0.07f * Plv("windwalker") + 0.06f * S("utility", 1) + (PowerActive("speed") ? Data.POWERUP_SPEED : 0f) + (Has("h_fleet") ? 0.15f : 0f);
+        public float MoveMult => 1f + 0.06f * S("utility", 1) + Pct("move%") + (SpecterActive ? 0.4f : 0f) + (PowerActive("speed") ? Data.POWERUP_SPEED : 0f) + (Has("h_fleet") ? 0.15f : 0f);
 
         public float DodgeChance
         {
             get
             {
                 float b = IsHuntress ? Data.EVASION.baseChance + 0.05f * (shieldLevel - 1) + DefenseExtra + (Has("h_fleet") ? 0.15f : 0f) : 0f;
-                return Mathf.Min(b + 0.05f * Plv("windwalker"), 0.7f);
+                return Mathf.Min(b + (IsHuntress ? Pct("block%") : 0f), 0.7f);
             }
         }
 
-        public float SpellDamageMult => DamageMult * (1f + 0.08f * Plv("spellblade"));
+        public float SpellDamageMult => DamageMult * (1f + 0.08f * Plv("spellblade") + Pct("spelldmg%"));
         public float WeaponDamageMult => DamageMult * (1f + 0.05f * Plv("bloodthirst"));
-        public float HealMult => 1f + 0.1f * S("health", 2);
-        public float Lifesteal => (Plv("bloodthirst") == 0 ? 0f : (0.02f + 0.012f * Plv("bloodthirst")) * HealMult) + (BloodMoon ? 0.1f : 0f);
+        public float HealMult => 1f + 0.1f * S("health", 2) + Pct("heal%");
+        public float Lifesteal => (Plv("bloodthirst") == 0 ? 0f : (0.02f + 0.012f * Plv("bloodthirst")) * HealMult) + (BloodMoon ? 0.1f : 0f) + (SpecterActive ? 0.08f : 0f);
 
         public float ManaPerHit =>
             3f * (1f + 0.15f * S("mana", 2)) * (1f + (Plv("spellblade") > 0 ? 0.6f + 0.25f * Plv("spellblade") : 0f));
@@ -220,26 +225,24 @@ namespace Skyfall
 
         // ---- dragon flight rules
 
-        /// Seconds before flight stamina starts to refill after a flight ends.
-        public const float FLIGHT_REGEN_DELAY = 3f;
-        /// Seconds after the E leap-slam before Q can call the dragon again.
-        public const float FLIGHT_LOCK = 3f;
-        float flightRegenWait;
-        float flightLockT;
-        public float FlightRegenWait => flightRegenWait;
-        public float FlightLockLeft => flightLockT;
-        /// Dragon flight time: 6 s base (+50% over the original 4 s), raised by the Dragon stat, Windwalker and Sky Sovereign.
-        public float MaxFlight => 6f * (1f + 0.2f * S("dragon", 1) + 0.1f * Plv("windwalker")) * (Has("k_sky") ? 2f : 1f);
-        public float Armor => 1.5f * S("defense", 1) + (Has("p_molten") ? 6f : 0f);
-        public float Regen => 0.5f * S("health", 1);
+        /// After leaving the dragon any way at all, the hero must stand on solid ground this long before Q works again
+        /// (time in the air resets it). Stamina refills the moment you touch the ground.
+        public const float REMOUNT_GROUND_TIME = 1f;
+        public const float FLIGHT_REGEN_RATE = 1.2f;
+        float remountWait;
+        public float RemountWait => remountWait;
+        /// Dragon flight time: a flat 10 s (no upgrades lengthen it).
+        public float MaxFlight => 10f;
+        public float Armor => 1.5f * S("defense", 1) + (Has("p_molten") ? 6f : 0f) + Mod("armor");
+        public float Regen => 0.5f * S("health", 1) + Mod("regen");
         public float XpMult => 1f;
         public float MaxMana => 100f + 15f * S("mana", 0) + (Has("p_font") ? 40f : 0f);
 
         /// No base mana regen: it only comes from the Mana bucket (and Mana Font).
-        public float ManaRegen => 0.8f * S("mana", 1) + (Has("p_font") ? 2f : 0f);
+        public float ManaRegen => 0.8f * S("mana", 1) + (Has("p_font") ? 2f : 0f) + Mod("manaregen");
 
         /// Max health from the hero's base, +2% per level, the Health stat and talents.
-        public float MaxHpTarget => Data.HEROES[heroId].hp * Mathf.Pow(1.02f, level - 1) * (1f + 0.12f * S("health", 0)) * (Has("k_rally") ? 1.2f : 1f);
+        public float MaxHpTarget => Data.HEROES[heroId].hp * Mathf.Pow(1.02f, level - 1) * (1f + 0.12f * S("health", 0)) * (Has("k_rally") ? 1.2f : 1f) * (1f + Pct("hp%"));
 
         /// Recomputes max health; gains also heal by the same amount.
         public void RecalcMaxHp()
@@ -440,7 +443,7 @@ namespace Skyfall
             xpNext = 6f;
             barrier = 0f;
             System.Array.Clear(powerT, 0, powerT.Length);
-            flightLockT = flightRegenWait = 0f;
+            remountWait = 0f;
             ResetTalentState();
             if (hero != heroId || weaponNode == null || weaponNode.childCount == 0)
             {
@@ -450,6 +453,9 @@ namespace Skyfall
                 BuildKnight();
             }
             for (int i = weaponNode.childCount - 1; i >= 0; i--) DestroyImmediate(weaponNode.GetChild(i).gameObject);
+            // The save slot's permanent hero and dragon tree picks.
+            LearnPermanentTalents();
+            OnTalentsChanged();
             maxHp = Data.HEROES[heroId].hp;
             RecalcMaxHp();
             hp = maxHp;
@@ -468,7 +474,7 @@ namespace Skyfall
             xpNext = Mathf.Max(6f, s.xpNext);
             foreach (var e in s.spells) spells[e.key] = Mathf.Clamp(e.value, 1, Data.MAX_LEVEL);
             foreach (var e in s.buckets) relics[e.key] = Mathf.Max(0, e.value);
-            foreach (var t in s.talents) if (Data.FindTalent(t) != null) talents.Add(t);
+            foreach (var t in s.talents) if (Data.IsRunTalent(t)) talents.Add(t);
             armor.Clear();
             foreach (var a in s.armor) armor.Add(a);
             OnTalentsChanged();
@@ -489,6 +495,7 @@ namespace Skyfall
             s.buckets.Clear();
             foreach (var kv in relics) s.buckets.Add(new Save.IntEntry { key = kv.Key, value = kv.Value });
             s.talents = new List<string>(talents);
+            s.talents.RemoveAll(t => !Data.IsRunTalent(t));
             s.armor = new List<Save.ArmorPiece>(armor);
         }
 
@@ -696,7 +703,7 @@ namespace Skyfall
 
         void AnimateKnight(float delta, float hspeed)
         {
-            mountT = Mathf.MoveTowards(mountT, flying || DragonFormActive ? 1f : 0f, delta * 5f);
+            mountT = Mathf.MoveTowards(mountT, flying || SoaringForm ? 1f : 0f, delta * 5f);
             float moving = Mathf.Clamp(hspeed / 10f, 0f, 1f);
             walkT += delta * (3f + hspeed * 0.9f);
             float stride = onGround ? Mathf.Sin(walkT) * 0.75f * moving : 0.35f;
@@ -732,6 +739,7 @@ namespace Skyfall
         {
             if (!flying) return;
             flying = false;
+            remountWait = REMOUNT_GROUND_TIME;
             if (msg != "") game.hud.Toast(msg);
             pet.Dismount();
         }
@@ -780,22 +788,21 @@ namespace Skyfall
             Move(delta);
             UpdateCamera(delta);
             hurtTimer = Mathf.Max(hurtTimer - delta, 0f);
-            flightLockT = Mathf.Max(0f, flightLockT - delta);
             TickPowerUps(delta);
             TickTalents(delta);
             hp = Mathf.Min(maxHp, hp + Regen * delta);
             AddMana(ManaRegen * delta);
             attackTimer -= delta;
-            if (attackTimer <= 0f && !DragonFormActive)
+            if (attackTimer <= 0f && !SoaringForm)
             {
                 bool attacked = IsKnight ? Attack() : (IsHuntress ? Throw() : CastBolts());
                 attackTimer = attacked ? AttackInterval : 0.1f;
             }
             // Q: call the dragon and take flight (Q again to drop off). E: dragon signature (ground or air).
-            if (GameInput.FlyPressed && !leaping && !DragonFormActive)
+            if (GameInput.FlyPressed && !leaping && !SoaringForm)
             {
                 if (flying) ReleaseDragon();
-                else if (flightLockT > 0f) game.hud.Toast($"Your dragon is circling back... ({Mathf.CeilToInt(flightLockT)}s)");
+                else if (remountWait > 0f) game.hud.Toast(onGround ? "Your dragon is circling back..." : "Land first: your dragon can only pick you up from solid ground");
                 else if (flightStamina > 0.3f)
                 {
                     SummonDragon();
@@ -804,7 +811,7 @@ namespace Skyfall
                 }
                 else game.hud.Toast("Your dragon needs to rest...");
             }
-            if (GameInput.AbilityPressed && !leaping && !DragonFormActive)
+            if (GameInput.AbilityPressed && !leaping && !SoaringForm)
                 if (pet.RideCommand()) CastAnim();
             if (GameInput.TalentPressed) TryDragonForm();
         }
@@ -818,10 +825,11 @@ namespace Skyfall
             var wish = right * input.x - fwd * input.y;
             if (wish.magnitude > 1f) wish = wish.normalized;
             if (leaping) wish = Vector3.zero;
-            bool soaring = flying || DragonFormActive;
+            bool soaring = flying || SoaringForm;
             float speed = 9.5f * MoveMult;
-            if (flying) speed = 17f * MoveMult;
-            if (DragonFormActive) speed = 19f * MoveMult;
+            if (flying) speed = 17f * MoveMult * (hookedT > 0f ? Data.HARPOON_SLOW : 1f);
+            hookedT = flying ? Mathf.Max(0f, hookedT - delta) : 0f;
+            if (SoaringForm) speed = 19f * MoveMult;
             float accel = (onGround || soaring) ? 10f : (leaping ? 0f : 4f);
             var hv = Vector3.Lerp(new Vector3(velocity.x, 0, velocity.z), wish * speed, Mathf.Clamp01(accel * delta));
             if (chargeT > 0f) hv = chargeDir * 42f;
@@ -851,7 +859,7 @@ namespace Skyfall
                 if (flying) flightStamina -= delta;
                 if (GameInput.JumpHeld) velocity.y = Mathf.MoveTowards(velocity.y, 10f, 30f * delta);
                 else if (GameInput.DescendHeld) velocity.y = Mathf.MoveTowards(velocity.y, -16f, 45f * delta);
-                else velocity.y = Mathf.MoveTowards(velocity.y, DragonFormActive ? 0f : -1.5f, 14f * delta);
+                else velocity.y = Mathf.MoveTowards(velocity.y, SoaringForm ? 0f : -1.5f, 14f * delta);
                 if (Pos.y > ground + MAX_ALTITUDE) velocity.y = Mathf.Min(velocity.y, 0f);
                 if (flying && flightStamina <= 0f) ReleaseDragon("Your dragon tires and sets you down...");
             }
@@ -887,10 +895,13 @@ namespace Skyfall
             }
             else onGround = false;
             Pos = pos;
-            // Flight stamina only starts to refill FLIGHT_REGEN_DELAY seconds after the flight ended (any new flight resets the wait).
-            if (flying) flightRegenWait = FLIGHT_REGEN_DELAY;
-            else flightRegenWait = Mathf.Max(0f, flightRegenWait - delta);
-            if (onGround && flightRegenWait <= 0f) flightStamina = Mathf.Min(MaxFlight, flightStamina + delta * 1.2f);
+            // Flight stamina refills the moment you touch the ground. Remounting needs REMOUNT_GROUND_TIME on solid ground in one go.
+            if (onGround)
+            {
+                flightStamina = Mathf.Min(MaxFlight, flightStamina + delta * FLIGHT_REGEN_RATE);
+                remountWait = Mathf.Max(0f, remountWait - delta);
+            }
+            else if (!flying && remountWait > 0f) remountWait = REMOUNT_GROUND_TIME;
 
             float hspeed = new Vector2(velocity.x, velocity.z).magnitude;
             if (hspeed > 0.6f)
@@ -908,12 +919,13 @@ namespace Skyfall
         // ---------------------------------------------------------------- solid world
 
         /// Body size used against islands, ruins and ogres (bigger on the dragon).
-        public float PhysRadius => flying || DragonFormActive ? 1.2f : 0.5f;
-        public float PhysHeight => flying || DragonFormActive ? 2.6f : 1.9f;
+        public float PhysRadius => flying || SoaringForm ? 1.2f : 0.5f;
+        public float PhysHeight => flying || SoaringForm ? 2.6f : 1.9f;
 
         /// Small ogres get shoved aside (and slow you a little), big ogres and bosses are solid. Flying above them ignores them.
         void CollideEnemies(ref Vector3 pos, float delta)
         {
+            if (SpecterActive) return;   // the Crimson Specter passes straight through
             float pr = PhysRadius;
             var back = Vector3.zero;
             int shoved = 0;
@@ -966,7 +978,7 @@ namespace Skyfall
             Pos = at;
             onGround = true;
             flightStamina = MaxFlight;
-            flightLockT = flightRegenWait = 0f;
+            remountWait = 0f;
             SnapCamera();
         }
 
@@ -976,7 +988,6 @@ namespace Skyfall
         public void LeapSlam(Vector3 target)
         {
             ReleaseDragon();
-            flightLockT = FLIGHT_LOCK;
             leaping = true;
             var flat = M.Flat(target - Pos);
             if (flat.magnitude > 22f) flat = flat.normalized * 22f;
@@ -1029,7 +1040,7 @@ namespace Skyfall
         {
             if (cam == null) return;
             camDist = Mathf.Lerp(camDist, camDistTarget, Mathf.Clamp01(delta * 8f));
-            camH = Mathf.Lerp(camH, flying || DragonFormActive ? 2.8f : 2f, Mathf.Clamp01(delta * 4f));
+            camH = Mathf.Lerp(camH, flying || SoaringForm ? 2.8f : 2f, Mathf.Clamp01(delta * 4f));
             var target = Pos + new Vector3(0, camH, 0);
             var offset = new Vector3(Mathf.Sin(camYaw) * Mathf.Cos(camPitch), Mathf.Sin(camPitch), Mathf.Cos(camYaw) * Mathf.Cos(camPitch)) * (camDist + mountT * 3f);
             var want = target + offset;
@@ -1258,6 +1269,36 @@ namespace Skyfall
 
         float invulnT;
 
+        /// Seconds left with a harpoon still hooked in the dragon (it flies slower; a second hit drags you down).
+        public float hookedT;
+
+        /// An Ogre Harpooner's harpoon struck you in the air: it drains flight and slows the dragon. Only a second
+        /// harpoon while the first is still hooked pulls you out of the sky.
+        public void HarpoonHit(float damage)
+        {
+            if (!flying || game == null || !game.running || game.traveling) return;
+            if (pet.TryWingGuard(Center)) return;
+            TakeDamage(damage);
+            FX.Burst(Center, new Color(1f, 0.45f, 0.2f), 14, 7f, 0.2f);
+            Sfx.Play("clang", -2f, 0.1f);
+            // A harpoon landing right after the first (a volley) only hurts: a dismount needs a real second hit.
+            if (hookedT > Data.HARPOON_HOOK_TIME - Data.HARPOON_GRACE)
+            {
+                game.hud.Toast("Harpooned again! Shake it off before the next one");
+                return;
+            }
+            if (hookedT > 0f)
+            {
+                hookedT = 0f;
+                ReleaseDragon("A second harpoon drags you from the sky!");
+                velocity.y = Mathf.Min(velocity.y, -8f);
+                return;
+            }
+            hookedT = Data.HARPOON_HOOK_TIME;
+            flightStamina = Mathf.Max(0.5f, flightStamina - Data.HARPOON_FLIGHT_DRAIN);
+            game.hud.Toast("Harpooned! Your dragon is slowed; another hit will drag you down");
+        }
+
         public void TakeDamage(float amount, Enemy attacker = null)
         {
             if (game == null || !game.running || game.traveling || hurtTimer > 0f || leaping || invulnT > 0f) return;
@@ -1329,6 +1370,7 @@ namespace Skyfall
             }
             float dmg = Mathf.Max(1f, amount - Armor) * DamageTakenMult;
             if (attackerAlive && Has("p_molten")) attacker.Ignite(4f, 10f + 2f * level);
+            if (attackerAlive) DragonWrath(attacker);
             if (Has("k_retribution")) Retribution(amount);
             // Barriers soak damage first.
             if (barrier > 0f)

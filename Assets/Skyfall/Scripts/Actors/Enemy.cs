@@ -31,8 +31,12 @@ namespace Skyfall
         public bool lanceMarked;
         float bleedT, bleedDps;
         public float buffT;          // empowered by a shaman: faster and hits harder (no glow: the buff is stats only)
-        string role = "";            // "", "archer", "shaman"
+        string role = "";            // "", "archer", "shaman", "harpooner"
         float shootCd = 2f, buffCd = 1f;
+        float harpoonWind;           // harpooner: seconds left in the telegraphed wind-up before a throw
+        Vector3 harpoonAim;
+        /// When any harpooner last started a wind-up (they take turns, Data.HARPOON_STAGGER apart).
+        static float lastHarpoonWindup = -99f;
         float burnT, burnDps;
         float poisonT, poisonDps;
         public Vector3 knock;
@@ -85,6 +89,14 @@ namespace Skyfall
                     e.shootCd = M.RandRange(1f, 2.5f);
                     e.BuildOgre(new Color(0.45f, 0.42f, 0.3f), false, false);
                     e.AddBow();
+                    break;
+                case "harpooner":
+                    e.maxHp *= 1.3f;
+                    e.hp = e.maxHp;
+                    e.xpValue = 4;
+                    e.shootCd = M.RandRange(2f, 4f);
+                    e.BuildOgre(new Color(0.4f, 0.38f, 0.42f), false, false);
+                    e.AddHarpoon(e.armR.t, 1f);
                     break;
                 case "shaman":
                     e.maxHp *= 1.2f;
@@ -154,7 +166,13 @@ namespace Skyfall
             var leftHand = rig.Bone(HumanBodyBones.LeftHand);
             var headBone = rig.Bone(HumanBodyBones.Head);
             float boneScale = rig.transform.localScale.x;
-            if (isOgreModel && lib.ogreWeapon && hand)
+            if (isOgreModel && role == "harpooner" && hand)
+            {
+                var h = AddHarpoon(hand, size / Mathf.Max(0.0001f, hand.lossyScale.x));
+                h.localPosition = Vector3.zero;
+                h.rotation = Quaternion.LookRotation(new Vector3(0f, 0.3f, -1f));
+            }
+            else if (isOgreModel && lib.ogreWeapon && hand)
             {
                 // The pack's demo scene places the club loose in the world, so it is attached here by hand:
                 // held in the right hand, pointing forward and a little down in the bind pose.
@@ -328,6 +346,20 @@ namespace Skyfall
             FX.NoShadow(quiver);
         }
 
+        /// A barbed iron harpoon, held in the given hand (bone).
+        Transform AddHarpoon(Transform hand, float scale)
+        {
+            var iron = FX.Lit(new Color(0.3f, 0.3f, 0.33f), 0.4f, 0.8f);
+            var hp = FX.Node(hand, "Harpoon", new Vector3(0.1f, -1.0f, -0.1f));
+            hp.localScale = Vector3.one * scale;
+            FX.Part(hp, MeshGen.Box(), FX.Lit(Props.BARK), new Vector3(0, 0.4f, 0), new Vector3(0.09f, 2.6f, 0.09f));
+            FX.Part(hp, MeshGen.Cylinder(0f, 0.22f, 4), iron, new Vector3(0, 1.9f, 0), new Vector3(1f, 0.5f, 1f));
+            foreach (int k in new[] { -1, 1 })
+                FX.Part(hp, MeshGen.Box(), iron, new Vector3(k * 0.12f, 1.62f, 0), new Vector3(0.05f, 0.3f, 0.05f), new Vector3(0, 0, k * 0.6f));
+            FX.Part(hp, MeshGen.Cylinder(0.14f, 0.14f, 8), iron, new Vector3(0, -0.6f, 0), new Vector3(1f, 0.25f, 1f));
+            return hp;
+        }
+
         void AddStaff()
         {
             var st = FX.Node(armR.t, "Staff", new Vector3(0.1f, -1.0f, -0.1f));
@@ -491,6 +523,38 @@ namespace Skyfall
                 {
                     shootCd = M.RandRange(2.2f, 3f) / (buffT > 0f ? 1.3f : 1f);
                     ShootArrow(player);
+                }
+            }
+            else if (role == "harpooner")
+            {
+                // Hunts riders: while you are on your dragon it keeps its distance and, after a loud, glowing wind-up,
+                // throws a chained harpoon. On foot it just closes in like any other ogre.
+                shootCd -= delta;
+                if (harpoonWind > 0f)
+                {
+                    harpoonWind -= delta;
+                    harpoonAim = player.Center + player.velocity * 0.35f;
+                    if (M.RandF() < delta * 14f) FX.Bolt(HarpoonHand, harpoonAim, new Color(1f, 0.35f, 0.15f, 0.5f), 0.06f, 0.08f, 3);
+                    if (harpoonWind <= 0f) ThrowHarpoon();
+                }
+                else if (player.flying)
+                {
+                    if (dist > 30f) move = dir * spd;
+                    else if (dist < 14f) move = -dir * spd * 0.7f;
+                    if (shootCd <= 0f && dist < Data.HARPOON_RANGE && Mathf.Abs(Time.time - lastHarpoonWindup) > Data.HARPOON_STAGGER)
+                    {
+                        lastHarpoonWindup = Time.time;
+                        harpoonWind = Data.HARPOON_WINDUP;
+                        if (rig) rig.Action(Data.HARPOON_WINDUP, "Attack02", "Attack01");
+                        else armR.KeysX((-2.6f, Data.HARPOON_WINDUP * 0.8f));
+                        Sfx.Play("roar", Pos, -4f, 0.15f);
+                        FX.Text(Pos + new Vector3(0, 3f * size, 0), "Harpoon!", new Color(1f, 0.45f, 0.2f));
+                    }
+                }
+                else
+                {
+                    move = dir * spd;
+                    if (jumpCd <= 0f && frozenT <= 0f) TryJump(player, dir, dist);
                 }
             }
             else if (role == "shaman")
@@ -698,6 +762,16 @@ namespace Skyfall
             Pos = p;
         }
 
+        Vector3 HarpoonHand => Pos + new Vector3(0, 2.2f * size, 0);
+
+        void ThrowHarpoon()
+        {
+            shootCd = Data.HARPOON_COOLDOWN * M.RandRange(0.85f, 1.15f);
+            var from = HarpoonHand;
+            Harpoon.Spawn(game, this, from, (harpoonAim - from).normalized * 46f, damage * AtkMult * 1.5f);
+            Sfx.Play("whoosh", Pos, -2f, 0.1f);
+        }
+
         void ShootArrow(Player player)
         {
             var from = Pos + new Vector3(0, 1.6f * size, 0);
@@ -899,9 +973,58 @@ namespace Skyfall
                 FX.Shockwave(pos + new Vector3(0, 0.2f, 0), 2.6f, M.WithA(FX.EnemyRed, 0.7f), 0.3f, false);
                 Sfx.Play("arrow_hit", pos, 2f);
                 FX.Vfx("stones_hit", pos, 1f, 2f, null, 0.04f, FX.EnemyRed);
-                if (p != null && Vector3.Distance(p.Center, pos) < 2.6f) p.TakeDamage(damage);
+                if (p != null && Vector3.Distance(p.Center, pos) < 2.6f && !p.pet.TryWingGuard(p.Center)) p.TakeDamage(damage);
                 Destroy(gameObject);
             }
+        }
+    }
+
+    /// An Ogre Harpooner's chained harpoon. It only matters to a rider in the air (Player.HarpoonHit); the chain back
+    /// to the thrower makes it easy to see where it came from.
+    public class Harpoon : MonoBehaviour
+    {
+        Game game;
+        Enemy thrower;
+        Vector3 velocity;
+        float damage;
+        float life = 1.6f;
+        LineRenderer chain;
+
+        public static void Spawn(Game g, Enemy thrower, Vector3 from, Vector3 velocity, float damage)
+        {
+            var h = new GameObject("Harpoon").AddComponent<Harpoon>();
+            h.game = g;
+            h.thrower = thrower;
+            h.velocity = velocity;
+            h.damage = damage;
+            var iron = FX.Lit(new Color(0.3f, 0.3f, 0.33f), 0.4f, 0.8f);
+            FX.Part(h.transform, MeshGen.Box(), FX.Lit(Props.BARK), Vector3.zero, new Vector3(0.1f, 0.1f, 2.2f));
+            FX.Part(h.transform, MeshGen.Box(), FX.Glow(new Color(1f, 0.4f, 0.15f), 2.5f), new Vector3(0, 0, -1.2f), new Vector3(0.22f, 0.22f, 0.45f));
+            FX.Part(h.transform, MeshGen.Box(), iron, new Vector3(0, 0, -0.95f), new Vector3(0.5f, 0.06f, 0.12f));
+            h.chain = h.gameObject.AddComponent<LineRenderer>();
+            h.chain.material = FX.Glow(new Color(0.55f, 0.5f, 0.45f), 0.6f);
+            h.chain.startWidth = h.chain.endWidth = 0.07f;
+            h.chain.positionCount = 2;
+            h.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
+        }
+
+        void Update()
+        {
+            float delta = Time.deltaTime;
+            if (delta <= 0f) return;
+            life -= delta;
+            transform.position += velocity * delta;
+            var pos = transform.position;
+            chain.SetPosition(0, thrower && !thrower.dead ? thrower.Pos + new Vector3(0, 2f * thrower.size, 0) : pos);
+            chain.SetPosition(1, pos);
+            var p = game.player;
+            if (p != null && p.flying && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.6f)
+            {
+                p.HarpoonHit(damage);
+                Destroy(gameObject);
+                return;
+            }
+            if (life <= 0f || pos.y < game.terrain.Height(pos.x, pos.z)) Destroy(gameObject);
         }
     }
 
@@ -936,7 +1059,7 @@ namespace Skyfall
             var pos = transform.position;
             if (p != null && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.3f)
             {
-                p.TakeDamage(damage);
+                if (!p.pet.TryWingGuard(p.Center)) p.TakeDamage(damage);
                 Destroy(gameObject);
                 return;
             }

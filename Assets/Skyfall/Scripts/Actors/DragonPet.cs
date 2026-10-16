@@ -3,9 +3,11 @@ using UnityEngine;
 
 namespace Skyfall
 {
-    /// Your dragon companion (Azure Wyrm, Crimson Drake, Night Wyrm, Venom Wyrm or Tempest Drake). Flies beside you, breathes on its own,
+    /// Your dragon partner (Azure Wyrm, Crimson Drake or Night Wyrm). Flies beside you, breathes on its own,
     /// dive-bombs crowds by itself, carries you when you press Q, and unleashes its signature ability on E
-    /// (on the ground or in the air; from the air your hero also leaps down and slams the ground).
+    /// (on the ground or in the air; from the air your hero also leaps down and slams the ground). It also looks after
+    /// you: its wing stops shots meant for you, it scorches what hurts you, and it snatches you out of danger.
+    /// Upgrades come from the dragon card on level-ups (player.spells) and the dragon's permanent tree (player.Mod).
     public class DragonPet : MonoBehaviour
     {
         const float PET_SCALE = 0.45f;
@@ -198,6 +200,8 @@ namespace Skyfall
         Data.DragonDef DataDef => Data.DRAGONS[dragonId];
 
         int Lvl(string id) => player.spells.TryGetValue(id, out int v) ? v : 1;
+        /// Rank of a dragon card that starts at 0 (size, cone, haste, guardian instincts, the dragon's own).
+        int Card(string id) => player.spells.TryGetValue(id, out int v) ? v : 0;
 
         float DmgMult => player.DamageMult * DataDef.damage * player.DragonDamageMult;
 
@@ -206,7 +210,43 @@ namespace Skyfall
 
         public float CommandFrac => Mathf.Clamp01(commandCd / Mathf.Max(CommandCooldown, 0.01f));
 
-        float RideCooldown => Data.SIGNATURE_CD * (1f - 0.08f * (Lvl("ride") - 1)) * player.DragonCdMult;
+        float RideCooldown => Data.SIGNATURE_CD * (1f - 0.08f * (Lvl("ride") - 1)) * player.DragonCdMult * (1f - Mathf.Min(player.Pct("sigcd%"), 0.5f));
+
+        float SigDmg => 1f + player.Pct("sigdmg%");
+        float SigArea => player.AreaMult * (1f + player.Pct("sigarea%")) * (1f + 0.1f * Card("d_red"));
+        /// Dive radius: the dragon's size, Shatterscale (red) and tree picks.
+        float DiveArea => player.AreaMult * (1f + 0.67f * (player.DragonSizeMult - 1f)) * (1f + player.Pct("diverad%")) * (1f + 0.1f * Card("d_red"));
+        float PetScale => PET_SCALE * Mathf.Min(player.DragonSizeMult, 1.8f);
+
+        /// Every hit the dragon lands goes through here, so its kills count toward bond XP and Blood Thirst /
+        /// Sanguine Breath can heal you from them.
+        public void Hit(Enemy e, float dmg, Vector3 dir = default, float knock = 0f, bool show = true, Color? col = null)
+        {
+            if (e == null || e.dead) return;
+            game.dragonSource = true;
+            game.DamageEnemy(e, dmg, dir, knock, show, col);
+            game.dragonSource = false;
+            float leech = 0.02f * Card("d_black") + player.Pct("leech%");
+            if (leech > 0f) player.hp = Mathf.Min(player.maxHp, player.hp + dmg * leech * player.HealMult);
+        }
+
+        /// An ogre your dragon killed: Hunger heals you, Chain Reaction blows it up.
+        public void OnDragonKill(Enemy e)
+        {
+            float heal = player.Pct("killheal%");
+            if (heal > 0f) player.hp = Mathf.Min(player.maxHp, player.hp + player.maxHp * heal * player.HealMult);
+            if (player.Has("dr_chain"))
+            {
+                var at = e.Pos;
+                float dmg = e.maxHp * 0.3f;
+                Tw.After(0.05f, () =>
+                {
+                    if (this == null) return;
+                    FX.Flash(at + Vector3.up, 2.5f, new Color(fire.r, fire.g, fire.b, 0.7f), 0.2f);
+                    foreach (var o in game.EnemiesInRadius(at, 3.5f, 3f)) Hit(o, dmg, M.Flat(o.Pos - at).normalized, 6f, false);
+                });
+            }
+        }
 
         public float RideFrac => Mathf.Clamp01(rideCd / Mathf.Max(RideCooldown, 0.01f));
 
@@ -216,20 +256,14 @@ namespace Skyfall
             switch (dragonId)
             {
                 case "blue":
-                    e.Ignite(4f, (4f + 2f * Lvl("dragonfire")) * strength);
+                    e.Ignite(4f, (4f + 2f * Lvl("dragonfire")) * strength * (1f + 0.3f * Card("d_blue") + player.Pct("burn%")));
                     break;
                 case "red":
                     if (M.RandF() < 0.15f * strength)
                         FX.Flash(e.Pos + new Vector3(0, e.size, 0), 1.2f, new Color(fire.r, fire.g, fire.b, 0.7f), 0.2f);
                     break;
                 case "black":
-                    e.Weaken(2.5f, 0.4f);
-                    break;
-                case "green":
-                    e.Poison(5f, (5f + 2.5f * Lvl("dragonfire")) * strength * DmgMult);
-                    break;
-                case "gold":
-                    if (M.RandF() < 0.2f * strength) e.Shock(1f);
+                    e.Weaken(2.5f, Mathf.Min(0.4f + player.Mod("weaken"), 0.8f));
                     break;
             }
             if (player.Has("h_wyrmbond")) e.Bleed(3f, (4f + 2f * Lvl("dragonfire")) * strength);
@@ -301,7 +335,7 @@ namespace Skyfall
             vel = Vector3.Lerp(vel, to * 3f, Mathf.Clamp01(delta * 3f));
             if (vel.magnitude > 30f) vel = vel.normalized * 30f;
             Pos += vel * delta;
-            transform.localScale = Vector3.Lerp(transform.localScale, Vector3.one * PET_SCALE, Mathf.Clamp01(delta * 6f));
+            transform.localScale = Vector3.Lerp(transform.localScale, Vector3.one * PetScale, Mathf.Clamp01(delta * 6f));
             var look = breathActive > 0f ? breathDir : new Vector3(vel.x, 0, vel.z);
             if (look.magnitude > 0.5f) faceDir = Vector3.Lerp(faceDir, look.normalized, Mathf.Clamp01(delta * 5f));
             if (new Vector2(faceDir.x, faceDir.z).magnitude > 0.1f) yaw = Mathf.Atan2(-faceDir.x, -faceDir.z);
@@ -335,10 +369,10 @@ namespace Skyfall
                 if (breathTick <= 0f)
                 {
                     breathTick = 0.18f;
-                    float dmg = (6f + 4f * L) * DmgMult;
-                    float cosA = Mathf.Cos((20f + L) * Mathf.Deg2Rad);
+                    float dmg = (6f + 4f * L) * DmgMult * (player.flying && player.Has("k_sky") ? 1.25f : 1f);
+                    float cosA = Mathf.Cos(Mathf.Min(20f + L + 6f * Card("d_cone") + player.Mod("cone"), 70f) * Mathf.Deg2Rad);
+                    bool scorchGround = player.Has("db_azure") && M.RandF() < 0.35f;
                     var list = game.enemies;
-                    Enemy lastHit = null;
                     for (int i = 0; i < list.Count; i++)
                     {
                         var e = list[i];
@@ -347,19 +381,14 @@ namespace Skyfall
                         float dist = v.magnitude;
                         if (dist > reach + e.radius || dist < 0.01f) continue;
                         if (Vector3.Dot(v.normalized, breathDir) < cosA && dist > 2f) continue;
-                        game.DamageEnemy(e, dmg, breathDir, dragonId == "red" ? 1.5f : 0.5f, true, hitCol);
+                        Hit(e, dmg, breathDir, dragonId == "red" ? 1.5f : 0.5f, true, hitCol);
                         Afflict(e, 1f);
-                        lastHit = e;
-                    }
-                    // Tempest Drake: the lightning breath arcs on to one more ogre beyond the cone.
-                    if (dragonId == "gold" && lastHit != null && !lastHit.dead)
-                    {
-                        var arc = game.NearestEnemy(lastHit.Pos, 9f, 6f, lastHit);
-                        if (arc)
+                        // Volatile: breath hits sometimes burst. Azure Inferno: the breath sets the ground alight.
+                        if (player.Has("dr_volatile") && M.RandF() < 0.2f) Blast(e.Pos, 2.5f, dmg * 2f, 0.3f);
+                        if (scorchGround)
                         {
-                            FX.Bolt(lastHit.Pos + new Vector3(0, lastHit.size, 0), arc.Pos + new Vector3(0, arc.size, 0), Color.Lerp(fire, Color.white, 0.3f), 0.15f, 0.15f);
-                            game.DamageEnemy(arc, dmg * 1.5f, Vector3.zero, 0f, true, hitCol);
-                            Afflict(arc, 1f);
+                            scorchGround = false;
+                            FirePatch.Spawn(game, e.Pos, 2.4f, 3f, dmg * 1.5f, fire);
                         }
                     }
                 }
@@ -381,7 +410,7 @@ namespace Skyfall
                     return;
                 }
                 breathTimer = (3f - 0.2f * L) * player.DragonCdMult;
-                breathActive = 1f + L * 0.12f;
+                breathActive = (1f + L * 0.12f) * (1f + player.Pct("breathtime%"));
                 breathTick = 0f;
                 breathDir = (target.Pos + new Vector3(0, 0.8f, 0) - mouth).normalized;
                 breathNode.SetPositionAndRotation(mouth, Quaternion.LookRotation(breathDir));
@@ -412,7 +441,7 @@ namespace Skyfall
             diveT = 0f;
             diveFrom = Pos;
             diveTo = at;
-            FX.Telegraph(at, (5f + 0.5f * L) * player.AreaMult, 0.75f, new Color(fire.r, fire.g, fire.b, 0.4f));
+            FX.Telegraph(at, (5f + 0.5f * L) * DiveArea, 0.75f, new Color(fire.r, fire.g, fire.b, 0.4f));
             model.jawOpen = 1f;
         }
 
@@ -455,18 +484,14 @@ namespace Skyfall
         void DiveImpact()
         {
             int L = Lvl("dragonfire");
-            float rad = (5f + 0.5f * L) * player.AreaMult * (dragonId == "red" ? 1.2f : 1f);
-            float dmg = (70f + 30f * L) * DmgMult;
+            float rad = (5f + 0.5f * L) * DiveArea * (dragonId == "red" ? 1.2f : 1f);
+            float dmg = (70f + 30f * L) * DmgMult * (1f + player.Pct("divedmg%"));
+            float stun = 0.8f + player.Mod("divestun");
+            if (player.Has("db_ash")) FirePatch.Spawn(game, diveTo, rad * 0.8f, 4f, dmg * 0.15f, fire);
             var at = diveTo;
             if (!FX.Vfx(dragonId == "black" ? "dark_explosion" : dragonId == "red" ? "red_explosion" : "explosion", at, rad / 4f, 2.5f, null, 0.04f, dragonId == "black" ? (Color?)null : fire))
                 FX.Flash(at + new Vector3(0, 1, 0), rad, new Color(fire.r, fire.g, fire.b, 0.85f), 0.45f);
             FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad * 1.3f, new Color(fire.r, fire.g, fire.b, 0.9f), 0.45f, DataDef.glowBreath);
-            if (dragonId == "gold")
-                for (int i = 0; i < 3; i++)
-                {
-                    var p = at + new Vector3(M.RandRange(-rad, rad) * 0.6f, 0, M.RandRange(-rad, rad) * 0.6f);
-                    FX.Bolt(p + new Vector3(0, 18f, 0), p, Color.Lerp(fire, Color.white, 0.4f), 0.35f, 0.25f);
-                }
             FX.Burst(at + new Vector3(0, 0.5f, 0), new Color(0.55f, 0.45f, 0.35f), 30, 13f, 0.6f);
             FX.Burst(at + new Vector3(0, 1f, 0), fire, 24, 10f, 0.5f);
             game.Shake(0.7f);
@@ -474,9 +499,9 @@ namespace Skyfall
             foreach (var e in game.EnemiesInRadius(at, rad, 5f))
             {
                 var outDir = M.Flat(e.Pos - at);
-                game.DamageEnemy(e, dmg, outDir.normalized, 12f, true, Color.Lerp(fire, Color.white, 0.4f));
+                Hit(e, dmg, outDir.normalized, 12f, true, Color.Lerp(fire, Color.white, 0.4f));
                 Afflict(e, 1.5f);
-                if (!e.isBoss) e.stunT = Mathf.Max(e.stunT, 0.8f);
+                if (!e.isBoss) e.stunT = Mathf.Max(e.stunT, stun);
             }
         }
 
@@ -495,11 +520,11 @@ namespace Skyfall
             {
                 case "blue":
                     // Inferno Wave: a torrent of fireballs that sets the crowd ablaze.
-                    for (int i = 0; i < 7 + L; i++)
+                    for (int i = 0; i < 7 + L + Mathf.RoundToInt(player.Mod("fireballs")); i++)
                     {
-                        var tgt = at + new Vector3(M.RandRange(-8f, 8f), 0.5f, M.RandRange(-8f, 8f));
+                        var tgt = at + new Vector3(M.RandRange(-8f, 8f), 0.5f, M.RandRange(-8f, 8f)) * SigArea;
                         var from = mouth + new Vector3(M.RandRange(-0.5f, 0.5f), 0, M.RandRange(-0.5f, 0.5f));
-                        Fireball.Spawn(game, null, from, (tgt - mouth).normalized * 36f, (38f + 14f * L) * DmgMult, (3f + 0.3f * L) * player.AreaMult, 0.35f, false, fire);
+                        Fireball.Spawn(game, null, from, (tgt - mouth).normalized * 36f, (38f + 14f * L) * DmgMult * SigDmg, (3f + 0.3f * L) * SigArea, 0.35f, false, fire);
                     }
                     Sfx.Play("flame", 2f, 0f);
                     Sfx.Play("whoosh", 0f, 0f);
@@ -507,8 +532,8 @@ namespace Skyfall
                 case "red":
                 {
                     // Cataclysm: one massive blast, then a ring of aftershocks.
-                    float rad = (7f + 0.5f * L) * player.AreaMult;
-                    float dmg = (110f + 40f * L) * DmgMult;
+                    float rad = (7f + 0.5f * L) * SigArea;
+                    float dmg = (110f + 40f * L) * DmgMult * SigDmg;
                     FX.Telegraph(at, rad, 0.6f, new Color(fire.r, fire.g, fire.b, 0.45f));
                     FX.Bolt(mouth, at + new Vector3(0, 1, 0), Color.Lerp(fire, Color.white, 0.1f), 0.5f, 0.6f, 1);
                     Tw.Run(CataclysmRoutine(at, rad, dmg));
@@ -520,29 +545,7 @@ namespace Skyfall
                     // Blood Rain: steady damage and -40% ogre attack over the crowd.
                     var ground = at;
                     ground.y = game.terrain.Height(at.x, at.z);
-                    BloodRain.Spawn(this, ground, (8f + 1f * L) * player.AreaMult, 4f + 0.5f * L, (10f + 4f * L) * DmgMult);
-                    Sfx.Play("roar", 0f, 0.05f);
-                    break;
-                }
-                case "green":
-                {
-                    // Plague Cloud: a drifting miasma that poisons and slows.
-                    var ground = at;
-                    ground.y = game.terrain.Height(at.x, at.z);
-                    PlagueCloud.Spawn(this, ground, (8f + 0.8f * L) * player.AreaMult, 6f + 0.5f * L, (9f + 4f * L) * DmgMult);
-                    FX.Bolt(mouth, ground + Vector3.up, Color.Lerp(fire, Color.white, 0.2f), 0.4f, 0.4f, 3);
-                    Sfx.Play("roar", 0f, 0.05f);
-                    Sfx.Play("whoosh", 0f, 0f);
-                    break;
-                }
-                case "gold":
-                {
-                    // Eye of the Storm: a tornado that hunts the crowd, pulling ogres in under falling lightning.
-                    var ground = at;
-                    ground.y = game.terrain.Height(at.x, at.z);
-                    StormTornado.Spawn(this, ground, (6f + 0.5f * L) * player.AreaMult, 5f + 0.4f * L, (22f + 9f * L) * DmgMult);
-                    FX.Bolt(mouth, ground + Vector3.up, Color.Lerp(fire, Color.white, 0.4f), 0.4f, 0.3f);
-                    Sfx.Play("zap", 2f, 0f);
+                    BloodRain.Spawn(this, ground, (8f + 1f * L) * SigArea * (1f + player.Pct("rainarea%")), 4f + 0.5f * L + player.Mod("raintime"), (10f + 4f * L) * DmgMult * SigDmg);
                     Sfx.Play("roar", 0f, 0.05f);
                     break;
                 }
@@ -550,6 +553,7 @@ namespace Skyfall
             model.jawOpen = 1f;
             if (skin) skin.Action(1.2f, SK_ROAR);
             rideCd = RideCooldown;
+            game.signatures++;
             return true;
         }
 
@@ -558,9 +562,10 @@ namespace Skyfall
             yield return Tw.Wait(0.6f);
             if (this == null) yield break;
             Blast(at, rad, dmg, 1f);
-            for (int i = 0; i < 5; i++)
+            int shocks = 5 + Mathf.RoundToInt(player.Mod("aftershocks"));
+            for (int i = 0; i < shocks; i++)
             {
-                float a = M.TAU * i / 5f + M.RandF() * 0.5f;
+                float a = M.TAU * i / shocks + M.RandF() * 0.5f;
                 var p = at + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * (rad + 2.5f);
                 p.y = game.terrain.Height(p.x, p.z);
                 yield return Tw.Wait(0.12f);
@@ -581,17 +586,74 @@ namespace Skyfall
             foreach (var e in game.EnemiesInRadius(at, rad, 6f))
             {
                 var outDir = M.Flat(e.Pos - at);
-                game.DamageEnemy(e, dmg, outDir.normalized, 14f * big, true, Color.Lerp(fire, Color.white, 0.4f));
+                Hit(e, dmg, outDir.normalized, 14f * big, true, Color.Lerp(fire, Color.white, 0.4f));
                 if (!e.isBoss) e.stunT = Mathf.Max(e.stunT, 1f * big);
             }
+        }
+
+        // ---------------------------------------------------------------- guardian: it looks after you
+
+        /// Sheltering Wing: a chance to catch an arrow, boulder or harpoon meant for you. Returns true if it did.
+        public bool TryWingGuard(Vector3 at)
+        {
+            int r = Card("d_wing") + Mathf.RoundToInt(player.Mod("wing"));
+            if (r <= 0 || M.RandF() > Mathf.Min(0.12f * r, 0.75f)) return false;
+            FX.Text(at + Vector3.up * 1.5f, "Sheltered", Color.Lerp(fire, Color.white, 0.4f));
+            FX.Shockwave(at, 2.2f, new Color(fire.r, fire.g, fire.b, 0.8f), 0.25f, DataDef.glowBreath);
+            FX.Burst(at, Color.Lerp(fire, Color.white, 0.3f), 10, 6f, 0.2f);
+            Sfx.Play("block", -2f, 0.1f);
+            if (skin && state != "mount") skin.Action(0.5f, SK_ROAR);
+            return true;
+        }
+
+        /// Wrathful Guardian: a gout of breath on whatever just hurt you.
+        public void Scorch(Enemy e)
+        {
+            if (e == null || e.dead) return;
+            var mouth = MouthPos;
+            var to = e.Pos + new Vector3(0, e.size, 0);
+            FX.Bolt(mouth, to, Color.Lerp(fire, Color.white, 0.25f), 0.35f, 0.2f, 2);
+            FX.Burst(to, fire, 12, 6f, 0.3f);
+            Sfx.Play("flame", e.Pos, -4f, 0.1f);
+            Hit(e, (40f + 10f * Lvl("dragonfire")) * DmgMult, M.Flat(e.Pos - player.Pos).normalized, 8f, true, Color.Lerp(fire, Color.white, 0.4f));
+            Afflict(e, 1f);
+        }
+
+        /// Living Bulwark: the dragon crashes down around you and blasts everything away.
+        public void Eruption(Vector3 at)
+        {
+            float rad = 9f * DiveArea;
+            FX.Telegraph(at, rad, 0.2f, new Color(fire.r, fire.g, fire.b, 0.4f));
+            Blast(at, rad, (150f + 40f * Lvl("dragonfire")) * DmgMult, 1f);
+            game.hud.Toast("Your dragon shields you!");
+        }
+
+        /// A guardian revive: the dragon sweeps down over you, scattering everything nearby.
+        public void GuardianSwoop(Vector3 at)
+        {
+            Blast(at, 8f * DiveArea, (100f + 30f * Lvl("dragonfire")) * DmgMult, 0.8f);
+            if (state != "mount") Pos = at + new Vector3(0, 5f, 0);
         }
     }
 
     /// The Night Wyrm's Blood Rain: a pool of blood that damages and weakens ogres inside it.
     public class BloodRain : MonoBehaviour
     {
+        static readonly System.Collections.Generic.List<BloodRain> live = new System.Collections.Generic.List<BloodRain>();
+
         DragonPet pet;
         float radius = 8f, life = 4f, tickDamage = 10f, tick;
+
+        /// True when a point stands inside any Blood Rain (Crimson Tide heals you there).
+        public static bool Covers(Vector3 p)
+        {
+            foreach (var r in live)
+                if (r && M.Flat(r.transform.position - p).magnitude < r.radius) return true;
+            return false;
+        }
+
+        void OnEnable() => live.Add(this);
+        void OnDisable() => live.Remove(this);
 
         public static void Spawn(DragonPet pet, Vector3 ground, float radius, float life, float tickDamage)
         {
@@ -627,165 +689,10 @@ namespace Skyfall
                 tick = 0.3f;
                 foreach (var e in g.EnemiesInRadius(transform.position, radius, 8f))
                 {
-                    g.DamageEnemy(e, tickDamage, Vector3.zero, 0f, false);
-                    e.Weaken(1f, 0.4f);
+                    pet.Hit(e, tickDamage, Vector3.zero, 0f, false);
+                    e.Weaken(1f, Mathf.Min(0.4f + pet.player.Mod("weaken"), 0.8f));
                 }
             }
-            if (life <= 0f) Destroy(gameObject);
-        }
-    }
-
-    /// The Venom Wyrm's Plague Cloud: a churning green miasma that drifts toward the thickest crowd, poisoning and
-    /// slowing every ogre inside it.
-    public class PlagueCloud : MonoBehaviour
-    {
-        DragonPet pet;
-        float radius = 8f, life = 6f, tickDamage = 10f, tick;
-        Transform puffs;
-
-        public static void Spawn(DragonPet pet, Vector3 ground, float radius, float life, float tickDamage)
-        {
-            var c = new GameObject("PlagueCloud").AddComponent<PlagueCloud>();
-            c.transform.SetParent(pet.game.spellbook.transform, false);
-            c.transform.position = ground;
-            c.pet = pet;
-            c.radius = radius;
-            c.life = life;
-            c.tickDamage = tickDamage;
-            var green = new Color(0.4f, 0.95f, 0.2f);
-            FX.NoShadow(FX.Part(c.transform, MeshGen.Disc(), FX.FadeMat(new Color(0.25f, 0.6f, 0.1f, 0.35f), false), new Vector3(0, 0.08f, 0), new Vector3(radius, 1, radius)));
-            FX.NoShadow(FX.Part(c.transform, MeshGen.Ring(), FX.Glow(new Color(0.45f, 1f, 0.2f, 0.6f), 1.4f), new Vector3(0, 0.12f, 0), new Vector3(radius, 0.3f, radius)));
-            c.puffs = FX.Node(c.transform, "Puffs");
-            var puffMat = FX.FadeMat(new Color(0.35f, 0.75f, 0.15f, 0.22f), false);
-            for (int i = 0; i < 9; i++)
-            {
-                float a = M.TAU * i / 9f;
-                float r = radius * (i % 3 == 0 ? 0.25f : 0.6f);
-                FX.NoShadow(FX.Part(c.puffs, MeshGen.Sphere(10), puffMat, new Vector3(Mathf.Cos(a) * r, 1.2f + (i % 2) * 0.8f, Mathf.Sin(a) * r), Vector3.one * radius * 0.55f));
-            }
-            var mist = FX.Node(c.transform, "Mist", new Vector3(0, 0.3f, 0), new Vector3(-M.PI * 0.5f, 0, 0));
-            FX.Particles(mist, new FX.ParticleSpec
-            {
-                amount = 90, lifetime = 1.6f, size = 1.6f, scaleMin = 0.8f, scaleMax = 2f, speedMin = 0.4f, speedMax = 1.4f, spread = 40f, additive = false,
-                boxExtents = new Vector3(radius * 0.7f, radius * 0.7f, 0.2f), startColor = new Color(0.45f, 0.85f, 0.2f, 0.55f), endColor = new Color(0.2f, 0.4f, 0.05f, 0f),
-            });
-            FX.Burst(ground + Vector3.up, green, 30, 8f, 0.5f);
-        }
-
-        void Update()
-        {
-            float delta = Time.deltaTime;
-            if (delta <= 0f) return;
-            var g = pet.game;
-            life -= delta;
-            tick -= delta;
-            puffs.Rotate(0f, delta * 25f, 0f, Space.Self);
-            // Drift toward the thickest crowd nearby.
-            var dense = g.DensestPoint(transform.position, radius * 2f);
-            if (!M.IsInf(dense))
-            {
-                var p = Vector3.MoveTowards(transform.position, dense, delta * 3f);
-                p.y = g.terrain.Height(p.x, p.z);
-                transform.position = p;
-            }
-            if (tick <= 0f)
-            {
-                tick = 0.35f;
-                foreach (var e in g.EnemiesInRadius(transform.position, radius, 8f))
-                {
-                    g.DamageEnemy(e, tickDamage, Vector3.zero, 0f, false);
-                    e.Poison(3f, tickDamage * 0.8f);
-                    e.Slow(0.6f, 0.6f);
-                }
-            }
-            if (life < 0.8f) transform.localScale = Vector3.one * Mathf.Max(0.01f, life / 0.8f);
-            if (life <= 0f) Destroy(gameObject);
-        }
-    }
-
-    /// The Tempest Drake's Eye of the Storm: a golden tornado that wanders through the crowd, pulling ogres toward its
-    /// core and calling lightning down on them.
-    public class StormTornado : MonoBehaviour
-    {
-        DragonPet pet;
-        float radius = 6f, life = 5f, boltDamage = 20f, tick, boltT;
-        Transform funnel;
-
-        public static void Spawn(DragonPet pet, Vector3 ground, float radius, float life, float boltDamage)
-        {
-            var t = new GameObject("StormTornado").AddComponent<StormTornado>();
-            t.transform.SetParent(pet.game.spellbook.transform, false);
-            t.transform.position = ground;
-            t.pet = pet;
-            t.radius = radius;
-            t.life = life;
-            t.boltDamage = boltDamage;
-            t.funnel = FX.Node(t.transform, "Funnel");
-            var mat = FX.FadeMat(new Color(0.95f, 0.85f, 0.55f, 0.25f), false);
-            var glow = FX.Glow(new Color(1f, 0.85f, 0.35f, 0.5f), 1.6f);
-            for (int i = 0; i < 7; i++)
-            {
-                float y = 0.6f + i * 1.5f;
-                float r = Mathf.Lerp(0.8f, radius * 0.9f, i / 6f);
-                FX.NoShadow(FX.Part(t.funnel, MeshGen.Torus(0.7f, 1f, 24, 5), i % 2 == 0 ? glow : mat, new Vector3(0, y, 0), new Vector3(r, 0.6f, r), new Vector3(0.12f * (i % 2 == 0 ? 1 : -1), 0, 0)));
-            }
-            var dust = FX.Node(t.transform, "Dust", new Vector3(0, 0.3f, 0), new Vector3(-M.PI * 0.5f, 0, 0));
-            FX.Particles(dust, new FX.ParticleSpec
-            {
-                amount = 80, lifetime = 1f, size = 0.8f, speedMin = 4f, speedMax = 9f, spread = 25f, sphereRadius = radius * 0.6f, radialSpeed = -3f,
-                startColor = new Color(0.9f, 0.8f, 0.55f, 0.6f), endColor = new Color(0.6f, 0.5f, 0.3f, 0f), additive = false,
-            });
-            var light = new GameObject("Light").AddComponent<Light>();
-            light.transform.SetParent(t.transform, false);
-            light.transform.localPosition = new Vector3(0, 5f, 0);
-            light.type = LightType.Point;
-            light.color = new Color(1f, 0.85f, 0.4f);
-            light.intensity = 2.2f;
-            light.range = radius * 3f;
-            light.shadows = LightShadows.None;
-        }
-
-        void Update()
-        {
-            float delta = Time.deltaTime;
-            if (delta <= 0f) return;
-            var g = pet.game;
-            life -= delta;
-            tick -= delta;
-            boltT -= delta;
-            funnel.Rotate(0f, delta * 420f, 0f, Space.Self);
-            var dense = g.DensestPoint(transform.position, radius * 2.5f);
-            if (!M.IsInf(dense))
-            {
-                var p = Vector3.MoveTowards(transform.position, dense, delta * 6f);
-                p.y = g.terrain.Height(p.x, p.z);
-                transform.position = p;
-            }
-            if (tick <= 0f)
-            {
-                tick = 0.2f;
-                foreach (var e in g.EnemiesInRadius(transform.position, radius * 1.4f, 8f))
-                {
-                    var to = M.Flat(transform.position - e.Pos);
-                    if (!e.isBoss) e.knock += to.normalized * 5f;
-                    g.DamageEnemy(e, boltDamage * 0.15f, Vector3.zero, 0f, false);
-                }
-            }
-            if (boltT <= 0f)
-            {
-                boltT = 0.25f;
-                var e = g.RandomEnemyNear(transform.position, radius * 1.4f);
-                if (e)
-                {
-                    var hitAt = e.Pos + new Vector3(0, e.size, 0);
-                    FX.Bolt(hitAt + new Vector3(M.RandRange(-2f, 2f), 20f, M.RandRange(-2f, 2f)), hitAt, new Color(1f, 0.92f, 0.6f), 0.3f, 0.2f);
-                    FX.Flash(hitAt, 1.6f, new Color(1f, 0.9f, 0.5f, 0.7f), 0.15f);
-                    g.DamageEnemy(e, boltDamage, Vector3.zero, 0f, true, new Color(1f, 0.92f, 0.6f));
-                    if (M.RandF() < 0.35f) e.Shock(1f);
-                    Sfx.Play("zap", e.Pos, -8f, 0.2f);
-                }
-            }
-            if (life < 0.6f) transform.localScale = Vector3.one * Mathf.Max(0.01f, life / 0.6f);
             if (life <= 0f) Destroy(gameObject);
         }
     }

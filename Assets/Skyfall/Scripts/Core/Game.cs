@@ -61,6 +61,13 @@ namespace Skyfall
         /// Dragons that hatched from eggs this run (for the end screen).
         public readonly List<string> hatched = new List<string>();
         public int kills;
+        /// Meta XP sources: kills by the hero and by the dragon, seconds ridden, dragon signatures and rescues.
+        public int heroKills, dragonKills, signatures, rescues;
+        public float rideTime;
+        /// Set by the dragon while it deals damage, so its kills count toward bond XP.
+        public bool dragonSource;
+        /// Hero and bond XP awarded when the run ended (for the end screen).
+        public int heroXpGained, bondXpGained;
         public float damageDealt;
         public float biggestHit;
         float shakeAmt;
@@ -255,9 +262,15 @@ namespace Skyfall
         public void ContinueRun()
         {
             var s = Save.run;
-            player.SetupLoadout(s.spell, s.passive, s.hero, Save.IsDragonUnlocked(s.dragon) ? s.dragon : "blue");
+            player.SetupLoadout(s.spell, Data.PASSIVES.ContainsKey(s.passive ?? "") ? s.passive : "lightning_storm", s.hero,
+                Save.IsDragonUnlocked(s.dragon) && Data.DRAGONS.ContainsKey(s.dragon ?? "") ? s.dragon : "blue");
             player.ApplyRunState(s);
             kills = s.kills;
+            heroKills = s.heroKills;
+            dragonKills = s.dragonKills;
+            signatures = s.signatures;
+            rescues = s.rescues;
+            rideTime = s.rideTime;
             bossesSlain = s.bossesSlain;
             totalTime = s.totalTime;
             damageDealt = s.damageDealt;
@@ -293,6 +306,11 @@ namespace Skyfall
             s.passive = player.passiveId;
             s.stage = stage;
             s.kills = kills;
+            s.heroKills = heroKills;
+            s.dragonKills = dragonKills;
+            s.signatures = signatures;
+            s.rescues = rescues;
+            s.rideTime = rideTime;
             s.bossesSlain = bossesSlain;
             s.totalTime = totalTime;
             s.damageDealt = damageDealt;
@@ -327,6 +345,7 @@ namespace Skyfall
             }
             timeElapsed += delta;
             totalTime += delta;
+            if (player.flying) rideTime += delta;
             Waves();
             Spawn(delta);
             TickEnemies(delta);
@@ -717,6 +736,8 @@ namespace Skyfall
         {
             e.dead = true;
             kills++;
+            if (dragonSource) { dragonKills++; pet.OnDragonKill(e); }
+            else heroKills++;
             var pos = e.Pos;
             FX.Burst(pos + new Vector3(0, e.size, 0), FX.EnemyRed, 10, 5f * e.size, 0.3f * e.size);
             Sfx.Play("death", pos, -4f + e.size * 2f, 0.15f);
@@ -756,28 +777,9 @@ namespace Skyfall
                 if (M.RandF() < orbChance) DropOrb(pos);
                 if (M.RandF() < player.PowerUpDropChance) DropPowerUp(Data.POWERUP_ORDER[Random.Range(0, Data.POWERUP_ORDER.Length)], pos);
             }
-            // Venom Wyrm: an ogre that dies poisoned bursts and poisons its neighbors.
-            if (e.Poisoned) PoisonBurst(pos);
             player.OnKill(e);
             FX.Vfx("dust_puff", pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.6f, null, 0.25f, FX.EnemyRed);
             e.gameObject.SetActive(false);
-        }
-
-        int poisonBursts;
-        float poisonBurstT;
-
-        void PoisonBurst(Vector3 pos)
-        {
-            // Throttle the visuals in big chain reactions.
-            if (Time.time - poisonBurstT > 0.1f) { poisonBursts = 0; poisonBurstT = Time.time; }
-            if (poisonBursts++ < 6)
-            {
-                FX.Burst(pos + Vector3.up, new Color(0.45f, 1f, 0.2f), 12, 5f, 0.35f);
-                FX.Shockwave(pos + new Vector3(0, 0.3f, 0), 4f, new Color(0.45f, 1f, 0.2f, 0.6f), 0.3f, false);
-            }
-            int lvl = player.spells.TryGetValue("dragonfire", out int v) ? v : 1;
-            float dps = (5f + 2.5f * lvl) * player.DamageMult * player.DragonDamageMult;
-            foreach (var o in EnemiesInRadius(pos, 4f, 3f)) o.Poison(4f, dps);
         }
 
         public void Shake(float amount)
@@ -904,8 +906,9 @@ namespace Skyfall
             public Save.ArmorPiece armor;
         }
 
-        /// Level-ups: talent rows open at Data.TALENT_LEVELS, armor is offered every Data.ARMOR_EVERY levels, and the rest
-        /// alternate between ability upgrades and stat buckets (with a random chance to swap).
+        /// Level-ups: in-run talent rows open at Data.TALENT_LEVELS, armor is offered every Data.ARMOR_EVERY levels, and
+        /// the rest alternate between ability upgrades and stat buckets (with a random chance to swap). Those always show
+        /// two cards plus a third for your dragon.
         void LevelUp()
         {
             leveling = true;
@@ -914,7 +917,7 @@ namespace Skyfall
             string kind;
             List<LevelOption> options;
             int row = System.Array.IndexOf(Data.TALENT_LEVELS, lvl);
-            if (row >= 0 && player.TalentInRow(row) == null && Data.TALENTS.ContainsKey(player.heroId))
+            if (row >= 0 && player.TalentInRow(row) == null && Data.RUN_TALENTS.ContainsKey(player.heroId))
             {
                 kind = "talent";
                 options = TalentOptions(row);
@@ -935,6 +938,13 @@ namespace Skyfall
                     kind = "stats";
                     options = BucketOptions();
                 }
+                // The third card is always your dragon's (unless every dragon upgrade is maxed).
+                var dragon = DragonCard();
+                if (dragon != null)
+                {
+                    if (options.Count >= 3) options.RemoveAt(options.Count - 1);
+                    options.Add(dragon);
+                }
             }
             SetPaused(true);
             GameInput.MouseCaptured = false;
@@ -949,7 +959,7 @@ namespace Skyfall
             return pool.GetRange(0, Mathf.Min(3, pool.Count));
         }
 
-        /// Ability upgrades: weapon, passive, spell, dragon breath and dragon signature.
+        /// Ability upgrades: weapon, passive and spell (the dragon's upgrades come on its own card).
         List<LevelOption> AbilityOptions()
         {
             var pool = new List<LevelOption>();
@@ -973,20 +983,35 @@ namespace Skyfall
                 pool.Add(new LevelOption { type = "spell", id = p.spellId, name = evolve ? sp.evolved : (sl + 1 > Data.EVOLVE_LEVEL ? sp.evolved : sp.name), level = sl + 1, desc = sp.ups[sl],
                     tag = evolve ? "SPELL · EVOLUTION" : "SPELL", color = sl + 1 >= Data.EVOLVE_LEVEL ? sp.evolvedColor : sp.color });
             }
-            var dd = Data.DRAGONS[p.dragonId];
-            int bl = p.spells.TryGetValue("dragonfire", out int v3) ? v3 : 1;
-            if (bl < Data.MAX_LEVEL)
-                pool.Add(new LevelOption { type = "spell", id = "dragonfire", name = dd.name + " Breath", level = bl + 1, desc = Data.DRAGONFIRE_UP,
-                    tag = "DRAGON · AUTO", color = M.Lighten(dd.body, 0.3f) });
-            int gl = p.spells.TryGetValue("ride", out int v4) ? v4 : 1;
-            if (gl < Data.MAX_LEVEL)
-                pool.Add(new LevelOption { type = "spell", id = "ride", name = dd.sig, level = gl + 1, desc = Data.SIGNATURE_UP,
-                    tag = "DRAGON · SIGNATURE", color = dd.breath });
-            // The spell's evolution is too important to be shuffled away.
+            // The spell's evolution is too important to be shuffled away (it stays among the first two cards).
             var evo = pool.Find(o => o.tag == "SPELL · EVOLUTION");
             var picked = Pick3(pool);
-            if (evo != null && !picked.Contains(evo)) picked[picked.Count - 1] = evo;
+            if (evo != null && picked.IndexOf(evo) != 0 && picked.IndexOf(evo) != 1)
+            {
+                picked.Remove(evo);
+                picked.Insert(0, evo);
+            }
             return picked;
+        }
+
+        /// Feed your dragon: one random upgrade for the dragon you ride (breath, signature, size, cone, haste, the
+        /// guardian instincts that look after you, and its own flavor), or null when they are all maxed.
+        LevelOption DragonCard()
+        {
+            var p = player;
+            var dd = Data.DRAGONS[p.dragonId];
+            var pool = new List<LevelOption>();
+            foreach (var c in Data.DRAGON_CARDS)
+            {
+                if (c.only != "" && c.only != p.dragonId) continue;
+                int lv = p.spells.TryGetValue(c.id, out int v) ? v : c.start;
+                if (lv >= c.max) continue;
+                string name = c.id == "dragonfire" ? dd.name + " Breath" : c.id == "ride" ? dd.sig : c.name;
+                string tag = c.guardian ? "DRAGON · GUARDIAN" : c.id == "ride" ? "DRAGON · SIGNATURE" : "DRAGON";
+                pool.Add(new LevelOption { type = "dragon", id = c.id, name = name, level = lv + 1, desc = c.desc, tag = tag,
+                    color = c.guardian ? M.Lighten(dd.breath, 0.35f) : c.id == "ride" ? dd.breath : M.Lighten(dd.body, 0.3f) });
+            }
+            return pool.Count == 0 ? null : pool[Random.Range(0, pool.Count)];
         }
 
         /// Stat buckets: pick one, gain all of its stats.
@@ -1009,7 +1034,7 @@ namespace Skyfall
         {
             var list = new List<LevelOption>();
             var hero = Data.HEROES[player.heroId];
-            foreach (var t in Data.TALENTS[player.heroId][row])
+            foreach (var t in Data.RUN_TALENTS[player.heroId][row])
                 list.Add(new LevelOption { type = "talent", id = t.id, name = t.name, desc = t.desc, level = row + 1, tag = $"TALENT · ROW {row + 1}",
                     color = row == Data.TALENT_LEVELS.Length - 1 ? new Color(1f, 0.75f, 0.3f) : hero.color });
             return list;
@@ -1077,6 +1102,7 @@ namespace Skyfall
             switch (o.type)
             {
                 case "spell": player.spells[o.id] = o.level; break;
+                case "dragon": player.spells[o.id] = o.level; break;
                 case "bucket": player.AddBucket(o.id); break;
                 case "talent": player.LearnTalent(o.id); break;
                 case "armor": player.EquipArmor(o.armor); break;
@@ -1092,6 +1118,15 @@ namespace Skyfall
 
         // ---------------------------------------------------------------- endings and stages
 
+        /// The run is over: hero XP to the hero you played, bond XP to the dragon you rode (both kept in the save slot).
+        void AwardMetaXp(bool won)
+        {
+            heroXpGained = Data.HeroXpFor(heroKills, totalTime, stage, won);
+            bondXpGained = Data.BondXpFor(dragonKills, rideTime, signatures, rescues, stage, won);
+            Save.GrantXp(Save.HeroTree(player.heroId), heroXpGained);
+            Save.GrantXp(Save.DragonTree(player.dragonId), bondXpGained);
+        }
+
         public void OnPlayerDied()
         {
             if (ended) return;
@@ -1099,6 +1134,7 @@ namespace Skyfall
             running = false;
             Time.timeScale = 1f;
             GameInput.MouseCaptured = false;
+            AwardMetaXp(false);
             bool best = Save.RecordRun(totalTime, kills, player.level, stage, false);
             hud.ShowEnd(false, Save.last_score, best);
         }
@@ -1222,6 +1258,7 @@ namespace Skyfall
             running = false;
             Time.timeScale = 1f;
             GameInput.MouseCaptured = false;
+            AwardMetaXp(true);
             bool best = Save.RecordRun(totalTime, kills, player.level, stage, true);
             hud.ShowEnd(true, Save.last_score, best);
         }
