@@ -3,18 +3,33 @@ using UnityEngine;
 
 namespace Skyfall
 {
-    /// Hero talents (Data.TALENTS): five rows of three per hero, one pick per row as the hero levels up. Passive bonuses
-    /// are read where the stats are computed (Player.cs); the active effects, timers and the Knight's Dragon Form live here.
+    /// Talents: the in-run rows (Data.RUN_TALENTS, one pick per row as the hero levels up) plus the picks from the save
+    /// slot's permanent hero and dragon trees (Data.HERO_TREES, Data.DRAGON_TREES), all in one set. Stat talents are
+    /// summed into Mod(); the rest are read where the stats are computed (Player.cs) or act here (timers, the capstone
+    /// forms on F: the Knight's Dragon Form, the Huntress's Crimson Specter and the Ember Mage's Phoenix Form).
     public partial class Player
     {
         public readonly HashSet<string> talents = new HashSet<string>();
+        readonly Dictionary<string, float> mods = new Dictionary<string, float>();
 
         public bool Has(string id) => talents.Contains(id);
 
-        /// The talent picked in each row (null when the row is not chosen yet).
+        /// Sum of a stat mod over every talent you have (see Data.HERO_TREES for the keys).
+        public float Mod(string key) => mods.TryGetValue(key, out float v) ? v : 0f;
+        /// A percentage mod as a fraction (12 -> 0.12).
+        public float Pct(string key) => Mod(key) * 0.01f;
+
+        /// Adds the save slot's permanent tree picks for this hero and dragon.
+        void LearnPermanentTalents()
+        {
+            foreach (var id in Save.Picks(Save.HeroTree(heroId))) talents.Add(id);
+            foreach (var id in Save.Picks(Save.DragonTree(dragonId))) talents.Add(id);
+        }
+
+        /// The in-run talent picked in each row (null when the row is not chosen yet).
         public string TalentInRow(int row)
         {
-            if (!Data.TALENTS.TryGetValue(heroId, out var rows) || row < 0 || row >= rows.Length) return null;
+            if (!Data.RUN_TALENTS.TryGetValue(heroId, out var rows) || row < 0 || row >= rows.Length) return null;
             foreach (var t in rows[row]) if (talents.Contains(t.id)) return t.id;
             return null;
         }
@@ -46,6 +61,10 @@ namespace Skyfall
 
         float rallyT, aegisCd, chargeCd = 3f, chargeT, sanguineCd, shadowCd, moonT, moonCd = 30f, walkFireT, blinkCd, novaT, pillarT, orbTick;
         public float dragonFormT, dragonFormCd;
+        /// Which capstone form is active: "dragon", "specter" or "phoenix".
+        string formKind = "";
+        float rescueCd, bulwarkCd, tideTick, phoenixRainT, guardianWingsCd;
+        bool guardianReviveUsed;
         Vector3 chargeDir;
         readonly HashSet<Enemy> chargeHit = new HashSet<Enemy>();
         bool vowUsed;
@@ -59,6 +78,7 @@ namespace Skyfall
         {
             rallyT = 0f; aegisCd = 0f; chargeCd = 3f; chargeT = 0f; sanguineCd = 0f; shadowCd = 0f; moonT = 0f; moonCd = 30f;
             walkFireT = 0f; blinkCd = 0f; novaT = 35f; pillarT = 12f; vowUsed = false; invulnT = 0f; swingCount = 0; throwCount = 0;
+            rescueCd = 0f; bulwarkCd = 0f; guardianReviveUsed = false; guardianWingsCd = 0f;
             EndDragonForm();
             dragonFormCd = 0f;
             OnTalentsChanged();
@@ -68,6 +88,7 @@ namespace Skyfall
         public void OnStageStart()
         {
             vowUsed = false;
+            guardianReviveUsed = false;
             barrier = 0f;
             hp = maxHp;
             mana = MaxMana;
@@ -76,6 +97,13 @@ namespace Skyfall
         /// Builds or removes talent visuals (Wings of Blood, Sunfire Orbs).
         void OnTalentsChanged()
         {
+            mods.Clear();
+            foreach (var id in talents)
+            {
+                var d = Data.FindTalent(id);
+                if (d == null) continue;
+                foreach (var kv in d.mods) mods[kv.Key] = Mod(kv.Key) + kv.Value;
+            }
             if (Has("h_wings") && wings == null) BuildWings();
             if (!Has("h_wings") && wings != null) { Destroy(wings.gameObject); wings = null; }
             if (Has("p_sunorbs") && orbs == null) BuildOrbs();
@@ -136,6 +164,10 @@ namespace Skyfall
             aegisCd = Mathf.Max(0f, aegisCd - delta);
             sanguineCd = Mathf.Max(0f, sanguineCd - delta);
             dragonFormCd = Mathf.Max(0f, dragonFormCd - delta);
+            rescueCd = Mathf.Max(0f, rescueCd - delta);
+            bulwarkCd = Mathf.Max(0f, bulwarkCd - delta);
+            guardianWingsCd = Mathf.Max(0f, guardianWingsCd - delta);
+            TickGuardian(delta);
             if (talents.Count == 0 && !DragonFormActive) return;
 
             if (Has("k_rally"))
@@ -254,14 +286,29 @@ namespace Skyfall
                 float m = 1f;
                 if (flying && Has("k_sky")) m *= 0.7f;
                 if (flying && Has("h_phantom")) m *= 0.75f;
-                if (DragonFormActive) m *= 0.5f;
-                return m;
+                if (flying) m *= 1f - Mathf.Min(Pct("mountdr%"), 0.6f);
+                if (DragonFormActive) m *= formKind == "specter" ? 0.4f : 0.5f;
+                return m * (1f - Mathf.Min(Pct("dmgtaken%"), 0.5f));
             }
         }
 
-        /// After taking damage: Aegis of Scales.
+        /// After taking damage: Guardian Wings (adult dragon), Aegis of Scales, Living Bulwark, Guardian's Talons.
         void AfterHurt()
         {
+            if (game.stage >= Data.GUARDIAN_WINGS_STAGE && guardianWingsCd <= 0f && hp < maxHp * Data.GUARDIAN_WINGS_HP)
+            {
+                guardianWingsCd = Data.GUARDIAN_WINGS_CD;
+                invulnT = Mathf.Max(invulnT, Data.GUARDIAN_WINGS_SHIELD);
+                Heal(maxHp * Data.GUARDIAN_WINGS_HEAL);
+                pet.GuardianWings(Pos);
+                return;
+            }
+            if (Has("dr_bulwark") && bulwarkCd <= 0f && hp < maxHp * 0.3f)
+            {
+                bulwarkCd = 45f;
+                pet.Eruption(Pos);
+            }
+            TryRescue();
             if (Has("k_aegis") && aegisCd <= 0f && hp < maxHp * 0.3f)
             {
                 aegisCd = 60f;
@@ -273,16 +320,17 @@ namespace Skyfall
             }
         }
 
-        /// Undying Vow / Phoenix Rebirth: once per stage, survive a killing blow.
+        /// Undying Vow / Ember Rebirth: once per stage, survive a killing blow. Failing that, the dragon tree's
+        /// Rekindle / Pact of Wings: your dragon saves you at 40% health, also once per stage.
         bool CheatDeath()
         {
             bool vow = Has("k_vow"), phoenix = Has("p_phoenix");
-            if ((!vow && !phoenix) || vowUsed) return false;
+            if ((!vow && !phoenix) || vowUsed) return GuardianRevive();
             vowUsed = true;
             hp = maxHp * (phoenix ? 1f : 0.5f);
             invulnT = 2f;
             var col = phoenix ? new Color(1f, 0.55f, 0.1f) : new Color(1f, 0.9f, 0.55f);
-            FX.Text(Center + Vector3.up * 2f, phoenix ? "Phoenix Rebirth!" : "Undying Vow!", col);
+            FX.Text(Center + Vector3.up * 2f, phoenix ? "Ember Rebirth!" : "Undying Vow!", col);
             FX.Flash(Center, 8f, M.WithA(col, 0.8f), 0.6f);
             FX.Shockwave(Pos + new Vector3(0, 0.4f, 0), 10f, M.WithA(col, 0.9f), 0.6f);
             if (!FX.Vfx("red_explosion", Pos, 2f, 2.5f, null, 0f, col)) FX.Burst(Center, col, 40, 14f, 0.5f);
@@ -293,8 +341,73 @@ namespace Skyfall
                 game.DamageEnemy(e, (200f + 30f * level) * DamageMult, M.Flat(e.Pos - Pos).normalized, 16f, true, col);
                 e.Ignite(5f, 20f * BurnMult);
             }
-            game.hud.Banner(phoenix ? "Phoenix Rebirth" : "Undying Vow", "Death is refused, once.");
+            game.hud.Banner(phoenix ? "Ember Rebirth" : "Undying Vow", "Death is refused, once.");
             return true;
+        }
+
+        bool GuardianRevive()
+        {
+            if ((!Has("db_rekindle") && !Has("dk_pact")) || guardianReviveUsed) return false;
+            guardianReviveUsed = true;
+            hp = maxHp * 0.4f;
+            invulnT = 2.5f;
+            var col = Data.DRAGONS[dragonId].breath;
+            FX.Text(Center + Vector3.up * 2f, Has("db_rekindle") ? "Rekindled!" : "Pact of Wings!", col);
+            FX.Flash(Center, 7f, M.WithA(col, 0.7f), 0.6f);
+            FX.Shockwave(Pos + new Vector3(0, 0.4f, 0), 9f, M.WithA(col, 0.9f), 0.6f, Data.DRAGONS[dragonId].glowBreath);
+            Sfx.Play("roar", 2f, 0f);
+            pet.GuardianSwoop(Pos);
+            game.hud.Banner("Your dragon will not let you fall", "Once per stage");
+            return true;
+        }
+
+        // ---- the dragon looks after you (dragon cards and dragon tree)
+
+        int RescueRank => SpellLv("d_rescue", 0) + Mathf.RoundToInt(Mod("rescue"));
+
+        /// Guardian's Talons: low on health and on foot, your dragon swoops in and carries you off.
+        void TryRescue()
+        {
+            int r = RescueRank;
+            if (r <= 0 || rescueCd > 0f || flying || leaping || DragonFormActive || hp > maxHp * 0.35f || hp <= 0f) return;
+            rescueCd = Mathf.Max(30f, 100f - 10f * r);
+            if (!CanFly)
+            {
+                // A hatchling can't carry you: it crashes down beside you and scatters what's close instead.
+                invulnT = Mathf.Max(invulnT, 1.5f);
+                pet.GuardianSwoop(Pos);
+                game.rescues++;
+                game.hud.Toast("Your hatchling leaps to your defense!");
+                return;
+            }
+            SummonDragon();
+            remountWait = 0f;
+            velocity.y = 14f;
+            onGround = false;
+            invulnT = Mathf.Max(invulnT, 1.5f);
+            flightStamina = Mathf.Max(flightStamina, MaxFlight * 0.6f);
+            game.rescues++;
+            FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 7f, M.WithA(Data.DRAGONS[dragonId].breath, 0.8f), 0.4f);
+            Sfx.Play("roar", 0f, 0.05f);
+            game.hud.Toast("Your dragon snatches you out of danger!");
+        }
+
+        /// Crimson Tide: standing in Blood Rain heals you.
+        void TickGuardian(float delta)
+        {
+            if (!Has("dk_tide") || !BloodRain.Covers(Pos)) return;
+            tideTick -= delta;
+            if (tideTick > 0f) return;
+            tideTick = 0.5f;
+            Heal(maxHp * 0.01f);
+        }
+
+        /// Wrathful Guardian: a chance that your dragon scorches whatever just hurt you.
+        void DragonWrath(Enemy attacker)
+        {
+            int r = SpellLv("d_wrath", 0) + Mathf.RoundToInt(Mod("wrath"));
+            if (r <= 0 || attacker == null || attacker.dead || M.RandF() > 0.2f * r) return;
+            pet.Scorch(attacker);
         }
 
         // ---- Huntress
@@ -518,38 +631,71 @@ namespace Skyfall
             }
         }
 
-        // ---------------------------------------------------------------- Dragon Form (Knight capstone)
+        // ---------------------------------------------------------------- capstone forms (F)
 
+        // Knight: Dragon Form (fly, breathe fire). Huntress: Crimson Specter (a blood wraith on foot). Ember Mage: Phoenix
+        // Form (fly, rain fire). All three share the timer, cooldown and DragonFormActive.
         DragonModel formModel;
         ParticleSystem formBreath;
         float formBreathTick;
         Vector3 formBreathDir = Vector3.forward;
+        Transform specterAura;
 
-        public const float DRAGON_FORM_TIME = 12f, DRAGON_FORM_CD = 45f;
+        public const float DRAGON_FORM_TIME = 12f, SPECTER_TIME = 10f, DRAGON_FORM_CD = 45f;
+
+        /// The capstone form this hero has picked ("" for none).
+        string CapstoneForm => Has("k_dragonform") ? "dragon" : Has("h_specter") ? "specter" : Has("p_phoenixform") ? "phoenix" : "";
+
+        /// A flying form (Dragon Form, Phoenix Form): the hero soars instead of walking.
+        public bool SoaringForm => DragonFormActive && formKind != "specter";
+        public bool SpecterActive => DragonFormActive && formKind == "specter";
+
+        static string FormName(string kind) => kind == "specter" ? "Crimson Specter" : kind == "phoenix" ? "Phoenix Form" : "Dragon Form";
 
         void TryDragonForm()
         {
-            if (!Has("k_dragonform")) return;
-            if (DragonFormActive) return;
+            string kind = CapstoneForm;
+            if (kind == "" || DragonFormActive) return;
             if (dragonFormCd > 0f)
             {
-                game.hud.Toast($"Dragon Form ready in {Mathf.CeilToInt(dragonFormCd)} s");
+                game.hud.Toast($"{FormName(kind)} ready in {Mathf.CeilToInt(dragonFormCd)} s");
                 return;
             }
             if (leaping) return;
-            ReleaseDragon();
-            dragonFormT = DRAGON_FORM_TIME;
+            formKind = kind;
+            dragonFormT = kind == "specter" ? SPECTER_TIME : DRAGON_FORM_TIME;
             dragonFormCd = DRAGON_FORM_CD;
-            var def = new Data.DragonDef
+            if (kind == "specter")
             {
-                body = new Color(0.25f, 0.45f, 0.85f), edge = new Color(0.05f, 0.08f, 0.25f), belly = new Color(0.95f, 0.82f, 0.45f),
-                membrane = new Color(0.12f, 0.2f, 0.55f), horn = new Color(0.95f, 0.8f, 0.35f), eye = new Color(1f, 0.9f, 0.4f),
-            };
-            var go = new GameObject("DragonForm");
+                StartSpecter();
+                return;
+            }
+            ReleaseDragon();
+            remountWait = 0f;
+            bool phoenix = kind == "phoenix";
+            var def = phoenix
+                ? new Data.DragonDef
+                {
+                    body = new Color(1f, 0.45f, 0.1f), edge = new Color(0.55f, 0.08f, 0.02f), belly = new Color(1f, 0.85f, 0.35f),
+                    membrane = new Color(1f, 0.6f, 0.15f), horn = new Color(1f, 0.9f, 0.5f), eye = new Color(1f, 1f, 0.7f),
+                }
+                : new Data.DragonDef
+                {
+                    body = new Color(0.25f, 0.45f, 0.85f), edge = new Color(0.05f, 0.08f, 0.25f), belly = new Color(0.95f, 0.82f, 0.45f),
+                    membrane = new Color(0.12f, 0.2f, 0.55f), horn = new Color(0.95f, 0.8f, 0.35f), eye = new Color(1f, 0.9f, 0.4f),
+                };
+            var go = new GameObject(phoenix ? "PhoenixForm" : "DragonForm");
             go.transform.SetParent(transform, false);
-            go.transform.localScale = Vector3.one * 0.55f;
+            go.transform.localScale = Vector3.one * (phoenix ? 0.45f : 0.55f);
             formModel = go.AddComponent<DragonModel>().Setup(def);
             formModel.fold = 0f;
+            if (phoenix)
+            {
+                // A body of living flame: every part glows, alternating the phoenix's body and wing colors.
+                var flame = new[] { FX.Glow(def.body, 1.6f), FX.Glow(def.membrane, 1.8f), FX.Glow(def.belly, 1.4f) };
+                int i = 0;
+                foreach (var r in go.GetComponentsInChildren<MeshRenderer>(true)) r.sharedMaterial = flame[i++ % flame.Length];
+            }
             formBreath = FX.Particles(transform, new FX.ParticleSpec
             {
                 amount = 160, lifetime = 0.5f, size = 0.9f, scaleMin = 0.8f, scaleMax = 2.4f, speedMin = 22f, speedMax = 30f, spread = 13f, emitting = false,
@@ -562,7 +708,30 @@ namespace Skyfall
             FX.Flash(Center, 6f, new Color(1f, 0.8f, 0.4f, 0.8f), 0.5f);
             FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 8f, new Color(1f, 0.75f, 0.3f, 0.9f), 0.5f);
             Sfx.Play("roar", 2f, 0f);
-            game.hud.Banner("DRAGON FORM", "Fly freely and burn them all");
+            if (phoenix) game.hud.Banner("PHOENIX FORM", "Rise and rain fire on them all");
+            else game.hud.Banner("DRAGON FORM", "Fly freely and burn them all");
+        }
+
+        void StartSpecter()
+        {
+            var col = new Color(0.85f, 0.05f, 0.12f);
+            specterAura = FX.Node(transform, "CrimsonSpecter", new Vector3(0, 1f, 0));
+            FX.Particles(specterAura, new FX.ParticleSpec
+            {
+                amount = 60, lifetime = 0.6f, size = 0.5f, speedMin = 0.5f, speedMax = 2f, spread = 180f, worldSpace = true,
+                boxExtents = new Vector3(0.5f, 0.9f, 0.5f), gravity = new Vector3(0, 1.5f, 0),
+                startColor = new Color(1f, 0.15f, 0.2f, 0.9f), endColor = new Color(0.3f, 0f, 0.02f, 0f),
+            });
+            var l = specterAura.gameObject.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.color = col;
+            l.range = 8f;
+            l.intensity = 2f;
+            l.shadows = LightShadows.None;
+            FX.Flash(Center, 5f, M.WithA(col, 0.7f), 0.5f);
+            FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 7f, M.WithA(col, 0.9f), 0.5f, false);
+            Sfx.Play("roar", 0f, 0.1f);
+            game.hud.Banner("CRIMSON SPECTER", "Through them, and drink deep");
         }
 
         void TickDragonForm(float delta)
@@ -573,6 +742,8 @@ namespace Skyfall
                 EndDragonForm();
                 return;
             }
+            if (formKind == "specter") return;
+            if (formKind == "phoenix") PhoenixRain(delta);
             formBreathTick -= delta;
             var mouth = formModel ? formModel.mouth.position : Center;
             var target = game.NearestEnemy(Pos, 18f, 26f);
@@ -600,6 +771,19 @@ namespace Skyfall
             }
         }
 
+        /// Phoenix Form: burning feathers rain on the ground below, leaving fire behind.
+        void PhoenixRain(float delta)
+        {
+            phoenixRainT -= delta;
+            if (phoenixRainT > 0f) return;
+            phoenixRainT = 0.35f;
+            var at = Pos + new Vector3(M.RandRange(-6f, 6f), 0f, M.RandRange(-6f, 6f));
+            at.y = game.terrain.SurfaceHeight(at.x, at.z, Pos.y);
+            FX.Bolt(Center, at, new Color(1f, 0.6f, 0.2f), 0.25f, 0.2f, 3);
+            Explosion(at, 3.5f, (40f + 8f * level) * SpellDamageMult, new Color(1f, 0.55f, 0.15f));
+            FirePatch.Spawn(game, at, 2.2f, 3f, (10f + 2f * level) * BurnMult * DamageMult);
+        }
+
         void AnimateDragonForm(float delta, float hspeed)
         {
             if (formModel == null) return;
@@ -610,12 +794,14 @@ namespace Skyfall
 
         void EndDragonForm()
         {
-            if (formModel == null && dragonFormT <= 0f) return;
+            if (formModel == null && specterAura == null && dragonFormT <= 0f) return;
             dragonFormT = 0f;
             if (formModel) Destroy(formModel.gameObject);
             formModel = null;
             if (formBreath) Destroy(formBreath.gameObject);
             formBreath = null;
+            if (specterAura) Destroy(specterAura.gameObject);
+            specterAura = null;
             if (knight) SetHeroVisible(true);
             if (staffGem) staffGem.gameObject.SetActive(true);
             if (game != null && game.running) FX.Flash(Center, 3f, new Color(1f, 0.8f, 0.4f, 0.6f), 0.3f);

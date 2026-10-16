@@ -193,6 +193,9 @@ namespace Skyfall
             public float sphereRadius;                // > 0 makes a sphere emitter
             public float radialSpeed;                 // pulls (negative) or pushes particles from the emitter
             public bool stretch;                      // stretched billboards (rain)
+            public float stretchScale = 0.04f;        // how long stretched particles get per unit of speed
+            public float drag;                        // > 0: particles burst out fast and brake (the "punch" of an impact)
+            public bool shrink;                       // particles shrink to nothing over their lifetime
         }
 
         /// Creates a particle system emitting along the transform's local +Z.
@@ -265,6 +268,22 @@ namespace Skyfall
                 v.radial = new ParticleSystem.MinMaxCurve(s.radialSpeed);
             }
 
+            if (s.drag > 0f)
+            {
+                var lim = ps.limitVelocityOverLifetime;
+                lim.enabled = true;
+                lim.drag = s.drag;
+                lim.multiplyDragByParticleSize = false;
+                lim.multiplyDragByParticleVelocity = true;
+            }
+
+            if (s.shrink)
+            {
+                var sol = ps.sizeOverLifetime;
+                sol.enabled = true;
+                sol.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.6f, 0.75f), new Keyframe(1f, 0f)));
+            }
+
             var col = ps.colorOverLifetime;
             col.enabled = true;
             col.color = new ParticleSystem.MinMaxGradient(MakeGradient(s));
@@ -276,7 +295,7 @@ namespace Skyfall
             if (s.stretch)
             {
                 r.renderMode = ParticleSystemRenderMode.Stretch;
-                r.velocityScale = 0.04f;
+                r.velocityScale = s.stretchScale;
                 r.lengthScale = 2f;
             }
             else r.renderMode = ParticleSystemRenderMode.Billboard;
@@ -333,10 +352,11 @@ namespace Skyfall
             float a0 = color.a;
             var t = r.transform;
             Tw.Run(Tw.Seq(
+                // Snaps open (most of the growth in the first fifth) and fades fast, so it reads as a hard flash.
                 Tw.Lerp(dur, k =>
                 {
-                    t.localScale = Vector3.one * Mathf.Lerp(radius * 0.5f, radius * 2f, Tw.Apply(Ease.OutCubic, k));
-                    SetAlpha(m, a0 * (1f - k));
+                    t.localScale = Vector3.one * Mathf.Lerp(radius * 0.8f, radius * 2.2f, Tw.Apply(Ease.OutQuint, k));
+                    SetAlpha(m, Mathf.Min(1f, a0 * 1.25f) * (1f - k) * (1f - k));
                 }, t),
                 Tw.Call(() => { if (t) Object.Destroy(t.gameObject); Object.Destroy(m); })));
         }
@@ -351,11 +371,12 @@ namespace Skyfall
             float a0 = color.a;
             var t = r.transform;
             Tw.Run(Tw.Seq(
-                Tw.Lerp(dur, k =>
+                // Rips outward (out-quint) to a little past its radius, thinning as it goes.
+                Tw.Lerp(dur * 0.85f, k =>
                 {
-                    float e = Tw.Apply(Ease.OutQuart, k);
-                    t.localScale = Vector3.Lerp(new Vector3(0.3f, 2f, 0.3f), new Vector3(radius, 3f, radius), e);
-                    SetAlpha(m, a0 * (1f - k));
+                    float e = Tw.Apply(Ease.OutQuint, k);
+                    t.localScale = Vector3.Lerp(new Vector3(0.3f, 3.2f, 0.3f), new Vector3(radius * 1.1f, 1.6f, radius * 1.1f), e);
+                    SetAlpha(m, Mathf.Min(1f, a0 * 1.2f) * (1f - k * k));
                 }, t),
                 Tw.Call(() => { if (t) Object.Destroy(t.gameObject); Object.Destroy(m); })));
         }
@@ -385,16 +406,25 @@ namespace Skyfall
                 Tw.Call(() => { if (holder) Object.Destroy(holder.gameObject); Object.Destroy(m); })));
         }
 
+        /// An impact burst in two layers: hot streaking sparks that shoot out fast and brake hard (white-hot at the
+        /// start, cooling to the color), and chunkier blobs of the color that pop out, fall and shrink away.
         public static void Burst(Vector3 pos, Color color, int amount = 14, float speed = 6f, float size = 0.25f)
         {
             if (root == null || liveBursts > 40) return;
             liveBursts++;
             var holder = FxNode("Burst", pos);
-            var ps = Particles(holder, new ParticleSpec
+            Particles(holder, new ParticleSpec
             {
-                amount = amount, lifetime = 0.55f, size = size, scaleMin = 0.6f, scaleMax = 1.4f,
-                speedMin = speed * 0.4f, speedMax = speed, spread = 180f, gravity = new Vector3(0, -9, 0),
-                startColor = color, endColor = M.WithA(color, 0f), boost = 1.6f, oneShot = true,
+                amount = Mathf.Max(4, amount * 2 / 3), lifetime = 0.32f, size = size * 0.55f, scaleMin = 0.7f, scaleMax = 1.2f,
+                speedMin = speed * 1.6f, speedMax = speed * 3.2f, spread = 180f, drag = 7f, stretch = true, stretchScale = 0.06f,
+                startColor = Color.Lerp(color, Color.white, 0.7f), midColor = color, midAt = 0.3f, endColor = M.WithA(color, 0f),
+                boost = 2.4f, oneShot = true, shrink = true,
+            });
+            Particles(holder, new ParticleSpec
+            {
+                amount = amount, lifetime = 0.5f, size = size * 1.15f, scaleMin = 0.6f, scaleMax = 1.5f,
+                speedMin = speed * 0.6f, speedMax = speed * 1.5f, spread = 180f, gravity = new Vector3(0, -12, 0), drag = 3f,
+                startColor = Color.Lerp(color, Color.white, 0.25f), endColor = M.WithA(color, 0f), boost = 1.8f, oneShot = true, shrink = true,
             });
             Tw.After(0.8f, () =>
             {

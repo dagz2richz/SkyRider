@@ -31,8 +31,12 @@ namespace Skyfall
         public bool lanceMarked;
         float bleedT, bleedDps;
         public float buffT;          // empowered by a shaman: faster and hits harder (no glow: the buff is stats only)
-        string role = "";            // "", "archer", "shaman"
+        string role = "";            // "", "archer", "shaman", "harpooner"
         float shootCd = 2f, buffCd = 1f;
+        float harpoonWind;           // harpooner: seconds left in the telegraphed wind-up before a throw
+        Vector3 harpoonAim;
+        /// When any harpooner last started a wind-up (they take turns, Data.HARPOON_STAGGER apart).
+        static float lastHarpoonWindup = -99f;
         float burnT, burnDps;
         float poisonT, poisonDps;
         public Vector3 knock;
@@ -82,9 +86,17 @@ namespace Skyfall
                     e.maxHp *= 0.8f;
                     e.hp = e.maxHp;
                     e.xpValue = 2;
-                    e.shootCd = M.RandRange(1f, 2.5f);
+                    e.shootCd = M.RandRange(2.5f, Data.POTION_COOLDOWN_MAX);
                     e.BuildOgre(new Color(0.45f, 0.42f, 0.3f), false, false);
                     e.AddBow();
+                    break;
+                case "harpooner":
+                    e.maxHp *= 1.3f;
+                    e.hp = e.maxHp;
+                    e.xpValue = 4;
+                    e.shootCd = M.RandRange(2f, 4f);
+                    e.BuildOgre(new Color(0.4f, 0.38f, 0.42f), false, false);
+                    e.AddHarpoon(e.armR.t, 1f);
                     break;
                 case "shaman":
                     e.maxHp *= 1.2f;
@@ -127,6 +139,9 @@ namespace Skyfall
 
         CharacterRig rig;
 
+        /// "skeleton", "human" or "" (ogre) for regular foes.
+        string ModelKind => !isBoss && Data.OGRES.TryGetValue(kind, out var d) ? d.model : "";
+
         /// Uses an Asset Store model when the skin library has one for this ogre. Returns false to fall back
         /// to the procedural model.
         bool TrySkin(bool boss, int bossIdx)
@@ -144,17 +159,27 @@ namespace Skyfall
             }
             else if (role == "archer") prefab = lib.archer;
             else if (role == "shaman") prefab = lib.shaman;
+            else if (ModelKind == "skeleton" && lib.skeleton) { prefab = lib.skeleton; ctrl = lib.skeletonController; }
+            else if (ModelKind == "human" && lib.humanSoldier) { prefab = lib.humanSoldier; ctrl = lib.humanController; }
             else { prefab = Skins.Pick(lib.ogres); isOgreModel = true; }
             if (prefab == null) return false;
             if (isOgreModel) ctrl = lib.ogreController;
 
             model = FX.Node(transform, "Model");
-            rig = Skins.SpawnCharacter(prefab, model, 2.0f * size, ctrl);
+            // Skeletons and knights stand at human height (scaled with their size roll); ogres tower at 2 m per size.
+            float headHeight = !boss && ModelKind != "" && !isOgreModel ? 1.75f * size / Data.OGRES[kind].size : 2.0f * size;
+            rig = Skins.SpawnCharacter(prefab, model, headHeight, ctrl);
             var hand = rig.Bone(HumanBodyBones.RightHand);
             var leftHand = rig.Bone(HumanBodyBones.LeftHand);
             var headBone = rig.Bone(HumanBodyBones.Head);
             float boneScale = rig.transform.localScale.x;
-            if (isOgreModel && lib.ogreWeapon && hand)
+            if (isOgreModel && role == "harpooner" && hand)
+            {
+                var h = AddHarpoon(hand, size / Mathf.Max(0.0001f, hand.lossyScale.x));
+                h.localPosition = Vector3.zero;
+                h.rotation = Quaternion.LookRotation(new Vector3(0f, 0.3f, -1f));
+            }
+            else if (isOgreModel && lib.ogreWeapon && hand)
             {
                 // The pack's demo scene places the club loose in the world, so it is attached here by hand:
                 // held in the right hand, pointing forward and a little down in the bind pose.
@@ -328,6 +353,20 @@ namespace Skyfall
             FX.NoShadow(quiver);
         }
 
+        /// A barbed iron harpoon, held in the given hand (bone).
+        Transform AddHarpoon(Transform hand, float scale)
+        {
+            var iron = FX.Lit(new Color(0.3f, 0.3f, 0.33f), 0.4f, 0.8f);
+            var hp = FX.Node(hand, "Harpoon", new Vector3(0.1f, -1.0f, -0.1f));
+            hp.localScale = Vector3.one * scale;
+            FX.Part(hp, MeshGen.Box(), FX.Lit(Props.BARK), new Vector3(0, 0.4f, 0), new Vector3(0.09f, 2.6f, 0.09f));
+            FX.Part(hp, MeshGen.Cylinder(0f, 0.22f, 4), iron, new Vector3(0, 1.9f, 0), new Vector3(1f, 0.5f, 1f));
+            foreach (int k in new[] { -1, 1 })
+                FX.Part(hp, MeshGen.Box(), iron, new Vector3(k * 0.12f, 1.62f, 0), new Vector3(0.05f, 0.3f, 0.05f), new Vector3(0, 0, k * 0.6f));
+            FX.Part(hp, MeshGen.Cylinder(0.14f, 0.14f, 8), iron, new Vector3(0, -0.6f, 0), new Vector3(1f, 0.25f, 1f));
+            return hp;
+        }
+
         void AddStaff()
         {
             var st = FX.Node(armR.t, "Staff", new Vector3(0.1f, -1.0f, -0.1f));
@@ -370,10 +409,39 @@ namespace Skyfall
             slowF = frac;
         }
 
-        public void HitPop()
+        float flinchCd;
+
+        /// A hit landed: pop and flash; a heavy blow (a big chunk of health, or a knockback) also makes a pack model
+        /// flinch, at most every 1.5 s and never in the middle of its own attack.
+        public void HitPop(float amount = 0f, bool knocked = false)
         {
             pop = 1f;
             flash = 1f;
+            if (rig == null || isBoss || rig.InAction || Time.time < flinchCd) return;
+            if (!knocked && amount < maxHp * 0.08f) return;
+            if (rig.Action(0.4f, "GetHit")) flinchCd = Time.time + 1.5f;
+        }
+
+        /// On death, a pack model with a death animation is left behind to fall (it sinks into the ground and goes
+        /// away); everything else just vanishes in the death burst. Regular foes' corpses are capped so big waves stay
+        /// cheap. Returns true if a corpse was left.
+        public bool LeaveCorpse()
+        {
+            if (rig == null || model == null || !rig.Has("Die") || frozenT > 0f) return false;
+            if (!isBoss && EnemyCorpse.Active >= EnemyCorpse.MAX_REGULAR) return false;
+            var go = new GameObject("Corpse_" + displayName);
+            if (FX.root) go.transform.SetParent(FX.root, false);   // cleared with the stage
+            go.transform.SetPositionAndRotation(transform.position, transform.rotation);
+            model.SetParent(go.transform, true);
+            rig.SetEmission(Color.black);
+            rig.Speed = 1f;
+            rig.Action(10f, "Die");
+            var c = go.AddComponent<EnemyCorpse>();
+            c.Init(isBoss ? 4f : 1.4f, (isBoss ? 2.5f : 1.2f) * size, tintMats);
+            tintMats.Clear();   // the corpse owns the boss tint materials now
+            model = null;
+            rig = null;
+            return true;
         }
 
         /// Shock: a 1-second stun on everything but bosses, with crackling sparks.
@@ -483,14 +551,50 @@ namespace Skyfall
             else if (isBoss) move = BossAi(delta, player, dir, dist, spd);
             else if (role == "archer")
             {
-                // Keep at bow range and loose arrows.
+                // Keep at throwing range and lob potions.
                 if (dist > 18f) move = dir * spd;
                 else if (dist < 11f) move = -dir * spd * 0.7f;
                 shootCd -= delta;
                 if (shootCd <= 0f && dist < 30f)
                 {
-                    shootCd = M.RandRange(2.2f, 3f) / (buffT > 0f ? 1.3f : 1f);
-                    ShootArrow(player);
+                    shootCd = M.RandRange(Data.POTION_COOLDOWN_MIN, Data.POTION_COOLDOWN_MAX) / (buffT > 0f ? 1.3f : 1f);
+                    ThrowPotion(player);
+                }
+            }
+            else if (role == "harpooner")
+            {
+                // Hunts riders: while you are on your dragon it keeps its distance and, after a loud, glowing wind-up,
+                // throws a chained harpoon. On foot it just closes in like any other ogre.
+                shootCd -= delta;
+                if (harpoonWind > 0f)
+                {
+                    harpoonWind -= delta;
+                    // Aim where you'll be about halfway through its flight: steady flight gets hit, turning away dodges.
+                    float lead = Vector3.Distance(HarpoonHand, player.Center) / Data.HARPOON_SPEED * 0.5f;
+                    harpoonAim = player.Center + player.velocity * lead;
+                    if (M.RandF() < delta * 14f) FX.Bolt(HarpoonHand, harpoonAim, new Color(1f, 0.35f, 0.15f, 0.5f), 0.06f, 0.08f, 3);
+                    if (harpoonWind <= 0f) ThrowHarpoon();
+                }
+                else if (player.flying)
+                {
+                    if (dist > 30f) move = dir * spd;
+                    else if (dist < 14f) move = -dir * spd * 0.7f;
+                    if (shootCd <= 0f && dist < Data.HARPOON_RANGE && Mathf.Abs(Time.time - lastHarpoonWindup) > Data.HARPOON_STAGGER)
+                    {
+                        lastHarpoonWindup = Time.time;
+                        harpoonWind = Data.HARPOON_WINDUP;
+                        if (rig) rig.Action(Data.HARPOON_WINDUP, "Attack02", "Attack01");
+                        else armR.KeysX((-2.6f, Data.HARPOON_WINDUP * 0.8f));
+                        Sfx.Play("roar", Pos, -4f, 0.15f);
+                        FX.Text(Pos + new Vector3(0, 3f * size, 0), "Harpoon!", new Color(1f, 0.45f, 0.2f));
+                    }
+                }
+                else
+                {
+                    move = dir * spd;
+                    var climb = IslandClimb(player);
+                    if (climb != Vector3.zero) move = climb * spd;
+                    if (jumpCd <= 0f && frozenT <= 0f && !TryIslandLeap(player)) TryJump(player, dir, dist);
                 }
             }
             else if (role == "shaman")
@@ -509,7 +613,9 @@ namespace Skyfall
             else
             {
                 move = dir * spd;
-                if (role == "" && jumpCd <= 0f && frozenT <= 0f) TryJump(player, dir, dist);
+                var climb = IslandClimb(player);
+                if (climb != Vector3.zero) move = climb * spd;
+                if (role == "" && jumpCd <= 0f && frozenT <= 0f && !TryIslandLeap(player)) TryJump(player, dir, dist);
             }
 
             if (airborne) FlyStep(delta);
@@ -586,8 +692,10 @@ namespace Skyfall
             {
                 attackCd = 1f;
                 player.TakeDamage(damage * AtkMult * (buffT > 0f ? 1.3f : 1f), this);
+                // Thorns or a reflect can kill it mid-swing (its model then already lies as a corpse).
+                if (dead) return;
                 if (rig) rig.Action(0.7f, "Attack01", "Attack02");
-                else armR.KeysX((-2f, 0.1f), (0.4f, 0.15f));
+                else if (armR != null) armR.KeysX((-2f, 0.1f), (0.4f, 0.15f));
             }
         }
 
@@ -614,10 +722,61 @@ namespace Skyfall
         float jumpCd = 1.5f, jumpWind, takeoffY, jumpLife, fallV, squash;
         bool airborne, perched;
         Vector3 jumpVel;
+        /// Top of the island this ogre is leaping onto (so the landing counts it as ground), or -infinity.
+        float leapTopY = float.NegativeInfinity;
+
+        /// The floating island the player is standing on (not flying over), or null.
+        WorldTerrain.Island PlayerIsland(Player player)
+        {
+            if (player.flying) return null;
+            var isl = game.terrain.IslandAt(player.Pos.x, player.Pos.z, player.Pos.y);
+            return isl != null && player.Pos.y - isl.topY < 1.5f ? isl : null;
+        }
+
+        /// While the player stands on a floating island, ogres caught underneath it walk out from under the rock toward
+        /// the rim (where they can leap up). Zero when not needed.
+        Vector3 IslandClimb(Player player)
+        {
+            if (isBoss || islandBound) return Vector3.zero;
+            var isl = PlayerIsland(player);
+            if (isl == null || Pos.y >= isl.topY - 0.5f) return Vector3.zero;
+            var flat = new Vector3(Pos.x - isl.center.x, 0f, Pos.z - isl.center.z);
+            float d = flat.magnitude;
+            float edge = isl.EdgeRadius(Mathf.Atan2(flat.z, flat.x));
+            if (d > edge * 1.05f) return Vector3.zero;
+            return d > 0.01f ? flat / d : Vector3.forward;
+        }
+
+        /// The player is up on a floating island: an ogre near its rim crouches, then makes a huge leap up onto it.
+        bool TryIslandLeap(Player player)
+        {
+            if (isBoss || islandBound || airborne || jumpWind > 0f) return false;
+            var isl = PlayerIsland(player);
+            if (isl == null || Pos.y >= isl.topY - 0.5f) return false;
+            var flat = new Vector3(Pos.x - isl.center.x, 0f, Pos.z - isl.center.z);
+            float d = flat.magnitude;
+            if (d < 0.01f) return false;
+            float edge = isl.EdgeRadius(Mathf.Atan2(flat.z, flat.x));
+            if (d < edge * 1.05f || d > edge + 14f) return false;   // still under the rock, or too far out
+            if (M.RandF() > 0.5f) { jumpCd = 0.6f; return true; }   // stagger the crowd a little
+            var land = isl.center + flat / d * (edge * 0.82f);
+            float rise = isl.topY - Pos.y;
+            float vy0 = Mathf.Sqrt(2f * JUMP_G * (rise + 2.5f));
+            float flight = (vy0 + Mathf.Sqrt(Mathf.Max(0f, vy0 * vy0 - 2f * JUMP_G * rise))) / JUMP_G;
+            var hd = new Vector3(land.x - Pos.x, 0f, land.z - Pos.z);
+            jumpVel = new Vector3(hd.x / flight, vy0, hd.z / flight);
+            jumpWind = 0.6f;
+            jumpLife = flight + 0.8f;
+            leapTopY = isl.topY;
+            jumpCd = 2f;
+            if (rig) rig.Loop("Idle", "Idle01");
+            else armR.KeysX((-0.6f, 0.2f), (0.2f, 0.3f));
+            return true;
+        }
 
         /// Leaps at a player who is above this ogre (on a ruin, a ledge or hovering low on the dragon). The landing spot is
-        /// always the terrain or a ruin top within about 4.6 m of the take-off height, never an island, so ground ogres can
-        /// not reach the floating islands.
+        /// always the terrain or a ruin top within about 4.6 m of the take-off height; floating islands are reached with
+        /// the bigger TryIslandLeap instead.
         void TryJump(Player player, Vector3 dir, float dist)
         {
             jumpCd = 0.3f;
@@ -681,13 +840,14 @@ namespace Skyfall
             var p = Pos + (jumpVel + new Vector3(knock.x, 0f, knock.z)) * delta;
             knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
             highestJump = Mathf.Max(highestJump, p.y - takeoffY);
-            float surface = terrain.SurfaceHeight(p.x, p.z, takeoffY);
+            float surface = terrain.SurfaceHeight(p.x, p.z, Mathf.Max(takeoffY, leapTopY));
             float og = terrain.ObstacleTop(p.x, p.z, Pos.y);
             float g = Mathf.Max(surface, og);
             if ((jumpVel.y < 0f && p.y <= g) || jumpLife <= 0f)
             {
                 p.y = g;
                 airborne = false;
+                leapTopY = float.NegativeInfinity;
                 perched = og > surface + 0.05f;
                 squash = -0.3f;
                 fallV = 0f;
@@ -698,14 +858,28 @@ namespace Skyfall
             Pos = p;
         }
 
-        void ShootArrow(Player player)
+        Vector3 HarpoonHand => Pos + new Vector3(0, 2.2f * size, 0);
+
+        void ThrowHarpoon()
         {
-            var from = Pos + new Vector3(0, 1.6f * size, 0);
-            var target = player.Center + player.velocity * 0.25f;
-            OgreArrow.Spawn(game, from, (target - from).normalized * 34f, damage * AtkMult * (buffT > 0f ? 1.3f : 1f));
+            shootCd = Data.HARPOON_COOLDOWN * M.RandRange(0.85f, 1.15f);
+            var from = HarpoonHand;
+            Harpoon.Spawn(game, this, from, (harpoonAim - from).normalized * Data.HARPOON_SPEED, damage * AtkMult * 1.5f);
+            Sfx.Play("whoosh", Pos, -2f, 0.1f);
+        }
+
+        /// Lobs a potion in a slow arc at where the player is heading; it shatters in a splash (telegraphed on the ground).
+        void ThrowPotion(Player player)
+        {
+            var from = Pos + new Vector3(0, 1.8f * size, 0);
+            float dist = M.Flat(player.Pos - Pos).magnitude;
+            float flightTime = Mathf.Lerp(Data.POTION_FLIGHT_MIN, Data.POTION_FLIGHT_MAX, Mathf.InverseLerp(6f, 30f, dist));
+            // Lead the target by half its movement over the flight: running in a straight line gets you hit.
+            var target = (player.flying ? player.Center : player.Pos) + M.Flat(player.velocity) * flightTime * 0.5f;
+            ThrownPotion.Spawn(game, from, target, flightTime, damage * AtkMult * (buffT > 0f ? 1.3f : 1f), !player.flying);
             if (rig) rig.Action(0.6f, "Attack02", "Attack01");
-            else armL.KeysX((-1.5f, 0.15f), (0f, 0.3f));
-            Sfx.Play("bow", Pos, -8f, 0.2f);
+            else armR.KeysX((-2.2f, 0.18f), (0f, 0.3f));
+            Sfx.Play("whoosh", Pos, -10f, 0.2f);
         }
 
         // ---------------------------------------------------------------- bosses
@@ -859,6 +1033,37 @@ namespace Skyfall
         }
     }
 
+    /// A fallen foe playing its death animation: it lies there a moment, then sinks into the ground and is removed.
+    public class EnemyCorpse : MonoBehaviour
+    {
+        public const int MAX_REGULAR = 24;
+        public static int Active;
+        float hold, depth, t;
+        const float SINK_TIME = 0.8f;
+        System.Collections.Generic.List<Material> mats;
+
+        public void Init(float holdTime, float sinkDepth, System.Collections.Generic.List<Material> ownedMats)
+        {
+            hold = holdTime;
+            depth = sinkDepth;
+            mats = new System.Collections.Generic.List<Material>(ownedMats);
+            Active++;
+        }
+
+        void Update()
+        {
+            t += Time.deltaTime;
+            if (t > hold) transform.position += Vector3.down * (depth / SINK_TIME) * Time.deltaTime;
+            if (t > hold + SINK_TIME) Destroy(gameObject);
+        }
+
+        void OnDestroy()
+        {
+            Active--;
+            if (mats != null) foreach (var m in mats) if (m) Destroy(m);
+        }
+    }
+
     /// A boulder hurled by an ogre boss: flies in an arc and bursts on the ground or the player.
     public class Boulder : MonoBehaviour
     {
@@ -899,29 +1104,45 @@ namespace Skyfall
                 FX.Shockwave(pos + new Vector3(0, 0.2f, 0), 2.6f, M.WithA(FX.EnemyRed, 0.7f), 0.3f, false);
                 Sfx.Play("arrow_hit", pos, 2f);
                 FX.Vfx("stones_hit", pos, 1f, 2f, null, 0.04f, FX.EnemyRed);
-                if (p != null && Vector3.Distance(p.Center, pos) < 2.6f) p.TakeDamage(damage);
+                if (p != null && Vector3.Distance(p.Center, pos) < 2.6f && !p.pet.TryWingGuard(p.Center)) p.TakeDamage(damage);
                 Destroy(gameObject);
             }
         }
     }
 
-    /// An ogre archer's arrow.
-    public class OgreArrow : MonoBehaviour
+    /// An Ogre Harpooner's chained harpoon. It only matters to a rider in the air (Player.HarpoonHit); the chain back
+    /// to the thrower makes it easy to see where it came from.
+    public class Harpoon : MonoBehaviour
     {
         Game game;
+        Enemy thrower;
         Vector3 velocity;
-        float damage = 6f;
-        float life = 2f;
+        float damage;
+        float life = 3.5f;
+        LineRenderer chain;
 
-        public static void Spawn(Game g, Vector3 from, Vector3 velocity, float damage)
+        public static void Spawn(Game g, Enemy thrower, Vector3 from, Vector3 velocity, float damage)
         {
-            var a = new GameObject("Arrow").AddComponent<OgreArrow>();
-            a.game = g;
-            a.velocity = velocity;
-            a.damage = damage;
-            FX.Part(a.transform, MeshGen.Box(), FX.Lit(new Color(0.4f, 0.28f, 0.15f)), Vector3.zero, new Vector3(0.06f, 0.06f, 1.1f));
-            FX.Part(a.transform, MeshGen.Box(), FX.Glow(new Color(1f, 0.4f, 0.3f), 1.5f), new Vector3(0, 0, -0.6f), new Vector3(0.1f, 0.1f, 0.2f));
-            a.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
+            var h = new GameObject("Harpoon").AddComponent<Harpoon>();
+            h.game = g;
+            h.thrower = thrower;
+            h.velocity = velocity;
+            h.damage = damage;
+            var iron = FX.Lit(new Color(0.3f, 0.3f, 0.33f), 0.4f, 0.8f);
+            FX.Part(h.transform, MeshGen.Box(), FX.Lit(Props.BARK), Vector3.zero, new Vector3(0.1f, 0.1f, 2.2f));
+            FX.Part(h.transform, MeshGen.Box(), FX.Glow(new Color(1f, 0.4f, 0.15f), 2.5f), new Vector3(0, 0, -1.2f), new Vector3(0.22f, 0.22f, 0.45f));
+            FX.Part(h.transform, MeshGen.Box(), iron, new Vector3(0, 0, -0.95f), new Vector3(0.5f, 0.06f, 0.12f));
+            h.chain = h.gameObject.AddComponent<LineRenderer>();
+            h.chain.material = FX.Glow(new Color(0.55f, 0.5f, 0.45f), 0.6f);
+            h.chain.startWidth = h.chain.endWidth = 0.07f;
+            h.chain.positionCount = 2;
+            // A burning trail so it's easy to track in the air.
+            FX.Particles(h.transform, new FX.ParticleSpec
+            {
+                amount = 40, lifetime = 0.45f, size = 0.45f, speedMin = 0.2f, speedMax = 0.8f, spread = 25f, worldSpace = true,
+                startColor = new Color(1f, 0.55f, 0.2f, 0.9f), endColor = new Color(0.4f, 0.1f, 0f, 0f),
+            });
+            h.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
         }
 
         void Update()
@@ -929,18 +1150,89 @@ namespace Skyfall
             float delta = Time.deltaTime;
             if (delta <= 0f) return;
             life -= delta;
-            velocity.y -= 3f * delta;
             transform.position += velocity * delta;
-            transform.rotation = M.FaceNegZ(velocity);
-            var p = game.player;
             var pos = transform.position;
-            if (p != null && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.3f)
+            chain.SetPosition(0, thrower && !thrower.dead ? thrower.Pos + new Vector3(0, 2f * thrower.size, 0) : pos);
+            chain.SetPosition(1, pos);
+            var p = game.player;
+            if (p != null && p.flying && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.6f)
             {
-                p.TakeDamage(damage);
+                p.HarpoonHit(damage, thrower);
                 Destroy(gameObject);
                 return;
             }
             if (life <= 0f || pos.y < game.terrain.Height(pos.x, pos.z)) Destroy(gameObject);
+        }
+    }
+
+    /// An alchemist's potion: a glowing flask lobbed in a slow, high arc that shatters in a splash where it lands
+    /// (or on the player, if it hits them in flight). Its landing spot is marked on the ground so it can be dodged.
+    public class ThrownPotion : MonoBehaviour
+    {
+        static readonly Color BREW = new Color(0.45f, 1f, 0.3f);
+        const float G = 18f;
+        Game game;
+        Vector3 velocity;
+        float damage;
+        float life;
+        Vector3 spin;
+
+        public static void Spawn(Game g, Vector3 from, Vector3 to, float flightTime, float damage, bool telegraph)
+        {
+            var b = new GameObject("Potion").AddComponent<ThrownPotion>();
+            b.game = g;
+            b.damage = damage;
+            b.life = flightTime + 2f;
+            b.spin = new Vector3(M.RandRange(4f, 8f), M.RandRange(-3f, 3f), M.RandRange(2f, 5f));
+            var d = to - from;
+            b.velocity = new Vector3(d.x / flightTime, (d.y + 0.5f * G * flightTime * flightTime) / flightTime, d.z / flightTime);
+            if (telegraph)
+                FX.Telegraph(new Vector3(to.x, g.terrain.SurfaceHeight(to.x, to.z, to.y + 1f), to.z), Data.POTION_SPLASH, flightTime,
+                    new Color(BREW.r, BREW.g, BREW.b, 0.3f));
+            // Round glass flask with a cork, full of glowing brew.
+            FX.Part(b.transform, MeshGen.Sphere(10), FX.Glow(BREW, 2.2f), Vector3.zero, Vector3.one * 0.42f);
+            FX.Part(b.transform, MeshGen.Sphere(10), FX.Lit(new Color(0.8f, 0.95f, 1f, 0.35f), 0.05f, 0f, 0.35f), Vector3.zero, Vector3.one * 0.5f);
+            FX.Part(b.transform, MeshGen.Cylinder(0.5f, 0.5f, 8), FX.Lit(new Color(0.8f, 0.95f, 1f, 0.5f), 0.05f), new Vector3(0, 0.3f, 0), new Vector3(0.14f, 0.2f, 0.14f));
+            FX.Part(b.transform, MeshGen.Cylinder(0.5f, 0.5f, 8), FX.Lit(Props.BARK), new Vector3(0, 0.43f, 0), new Vector3(0.16f, 0.1f, 0.16f));
+            FX.Particles(b.transform, new FX.ParticleSpec
+            {
+                amount = 30, lifetime = 0.5f, size = 0.25f, speedMin = 0.1f, speedMax = 0.5f, spread = 40f, worldSpace = true,
+                startColor = new Color(BREW.r, BREW.g, BREW.b, 0.8f), endColor = new Color(0.1f, 0.4f, 0.05f, 0f),
+            });
+            b.transform.position = from;
+        }
+
+        void Update()
+        {
+            float delta = Time.deltaTime;
+            if (delta <= 0f) return;
+            life -= delta;
+            velocity.y -= G * delta;
+            transform.position += velocity * delta;
+            transform.Rotate(spin * delta * Mathf.Rad2Deg, Space.Self);
+            var p = game.player;
+            var pos = transform.position;
+            bool hitPlayer = p != null && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.5f;
+            float gh = game.terrain.SurfaceHeight(pos.x, pos.z, pos.y - velocity.y * delta);
+            if (hitPlayer || pos.y < gh || life <= 0f) Shatter(hitPlayer ? p.Center : new Vector3(pos.x, Mathf.Max(pos.y, gh), pos.z));
+        }
+
+        void Shatter(Vector3 at)
+        {
+            FX.Burst(at, BREW, 18, 6f, 0.45f);
+            FX.Burst(at, new Color(0.85f, 0.95f, 1f), 8, 5f, 0.25f);
+            FX.Shockwave(at + new Vector3(0, 0.15f, 0), Data.POTION_SPLASH, M.WithA(BREW, 0.7f), 0.35f, true);
+            FX.Vfx("hit_magic", at, 1f, 1.5f, null, 0.02f, BREW);
+            Sfx.Play("arrow_hit", at, 0f);
+            Sfx.Play("frost", at, -12f, 0.3f);
+            var p = game.player;
+            if (p != null)
+            {
+                var v = p.Center - at;
+                bool inSplash = new Vector2(v.x, v.z).magnitude < Data.POTION_SPLASH + p.HitRadius && Mathf.Abs(v.y) < 2.6f;
+                if (inSplash && !p.pet.TryWingGuard(p.Center)) p.TakeDamage(damage);
+            }
+            Destroy(gameObject);
         }
     }
 }

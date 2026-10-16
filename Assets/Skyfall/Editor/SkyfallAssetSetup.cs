@@ -23,7 +23,7 @@ namespace Skyfall.EditorTools
         static readonly string[] CharacterFolders =
         {
             "Assets/FourEvilDragonsPBR", "Assets/RPGHero", "Assets/WizardPolyArt", "Assets/Mini Legion Grunt PBR HP Polyart",
-            "Assets/Mini Legion Rock Golem PBR HP Polyart", "Assets/Ogre",
+            "Assets/Mini Legion Rock Golem PBR HP Polyart", "Assets/Ogre", "Assets/Toon_RTS", "Assets/Toon_RTS_demo",
         };
 
         static readonly string[] EffectFolders = { "Assets/Hovl Studio", "Assets/Matthew Guz", "Assets/Polygonal Particles" };
@@ -33,6 +33,9 @@ namespace Skyfall.EditorTools
 
         const string KI = "Assets/Kevin Iglesias/Human Animations/";
         const string HuntressControllerPath = "Assets/Skyfall/Resources/Skyfall/Huntress.controller";
+        const string SkeletonControllerPath = "Assets/Skyfall/Resources/Skyfall/Skeleton.controller";
+        const string HumanControllerPath = "Assets/Skyfall/Resources/Skyfall/RenegadeKnight.controller";
+        const string KnightControllerPath = "Assets/Skyfall/Resources/Skyfall/Dragonguard.controller";
         const string Icons = "Assets/Basic_RPG_Icons/";
         const string Slavic = "Assets/EmaceArt/Slavic World Free/Prefabs/";
         const string Trees = "Assets/BrokenVector/LowPolyTreePack/Prefabs/";
@@ -263,6 +266,7 @@ namespace Skyfall.EditorTools
             lib.pyromancer = Load<GameObject>("Assets/WizardPolyArt/Prefabs/PolyArtWizardStandardMat.prefab");
             lib.huntress = Load<GameObject>(KI + "Unity Demo Scenes/Human Melee Animations/Prefabs/Characters/HumanF_Dummy_Red - Polearm.prefab");
             lib.huntressController = BuildHuntressController();
+            lib.knightController = BuildKnightController(lib.knight);
 
             // Dragons: every dragon is the Usurper; the game tints the variants per dragon (albino is the base for the new ones).
             lib.dragonBlue = Load<GameObject>(Dragons + "DragonUsurper/Blue.prefab");
@@ -304,6 +308,41 @@ namespace Skyfall.EditorTools
             lib.shaman = Load<GameObject>("Assets/Mini Legion Grunt PBR HP Polyart/Prefab/GruntPolyart.prefab");
             lib.golem = Load<GameObject>("Assets/Mini Legion Rock Golem PBR HP Polyart/Prefabs/PBR_Golem.prefab");
             lib.golemKing = Load<GameObject>("Assets/Mini Legion Rock Golem PBR HP Polyart/Prefabs/Polyart_Golem.prefab");
+
+            // The swarm: Toon RTS skeletons (humanoid rig, so they share the Grunt's clips and their own) and Toon RTS
+            // knights (generic rig, driven by the knight's own clips).
+            // Both FBX models come with an untextured embedded material; use the textured one shipped beside them.
+            RemapMaterials("Assets/Toon_RTS/unded_Demo/model/UD_demo_character.FBX", "Assets/Toon_RTS/unded_Demo/model/Materials/Undead_RTS_units_demo.mat");
+            RemapMaterials("Assets/Toon_RTS_demo/models/ToonRTS_demo_Knight.FBX", "Assets/Toon_RTS_demo/models/Materials/DemoMat.mat");
+            // The Toon RTS packs only ship idle, walk and one or two attacks, so both swarm foes borrow the Kevin
+            // Iglesias male clips for running, a second attack, flinching and dying. The knight's rig is imported as
+            // humanoid (its own clips copy its avatar) so those clips retarget onto it.
+            const string UD = "Assets/Toon_RTS/unded_Demo/animation/", WK = "Assets/Toon_RTS_demo/animations/", KnightFbx = "Assets/Toon_RTS_demo/models/ToonRTS_demo_Knight.FBX";
+            string m = KI + "Animations/Male/";
+            MakeHumanoid(KnightFbx, WK + "WK_heavy_infantry_04_charge.FBX", WK + "WK_heavy_infantry_05_combat_idle.FBX",
+                WK + "WK_heavy_infantry_06_combat_walk.FBX", WK + "WK_heavy_infantry_08_attack_B.FBX");
+            lib.skeleton = Load<GameObject>("Assets/Toon_RTS/unded_Demo/prefab/UD_demo_character.prefab");
+            lib.skeletonController = BuildController(SkeletonControllerPath, new (string, string)[]
+            {
+                ("Idle", UD + "UD_infantry_05_combat_idle.FBX"),
+                ("Walk", UD + "UD_infantry_06_combat_walk.FBX"),
+                ("Run", m + "Movement/Run/HumanM@Run01_Forward.fbx"),
+                ("Attack01", UD + "UD_infantry_07_attack_A.FBX"),
+                ("Attack02", m + "Combat/1H/HumanM@Attack1H01_R.fbx"),
+                ("GetHit", m + "Combat/HumanM@CombatDamage01.fbx"),
+                ("Die", m + "Combat/HumanM@Death01.fbx"),
+            });
+            lib.humanSoldier = Load<GameObject>(KnightFbx);
+            lib.humanController = BuildController(HumanControllerPath, new (string, string)[]
+            {
+                ("Idle", WK + "WK_heavy_infantry_05_combat_idle.FBX"),
+                ("Walk", WK + "WK_heavy_infantry_06_combat_walk.FBX"),
+                ("Run", WK + "WK_heavy_infantry_04_charge.FBX"),
+                ("Attack01", WK + "WK_heavy_infantry_08_attack_B.FBX"),
+                ("Attack02", m + "Combat/Shield/HumanM@AttackShield01.fbx"),
+                ("GetHit", m + "Combat/HumanM@CombatDamage01.fbx"),
+                ("Die", m + "Combat/HumanM@Death01.fbx"),
+            });
 
             // Scenery.
             lib.deadTrees = Prefabs(Nature + "Trees/PT_Pine_Tree_03_dead.prefab", Nature + "Trees/PT_Pine_Tree_03_dead_cut.prefab",
@@ -394,22 +433,87 @@ namespace Skyfall.EditorTools
         }
 
         /// A controller whose state names match what the game asks for (Idle, Walk, Run, JumpAir, Attack01, GetHit),
-        /// built from the Kevin Iglesias female clips.
+        /// built from the Kevin Iglesias female clips. Her attack is an overhand right-hand throw (the javelin).
         static RuntimeAnimatorController BuildHuntressController()
         {
             string f = KI + "Animations/Female/";
-            var states = new (string name, string fbx)[]
+            return BuildController(HuntressControllerPath, new (string, string)[]
             {
                 ("Idle", f + "Combat/Polearm/HumanF@CombatIdlePolearm01.fbx"),
                 ("Walk", f + "Movement/Walk/HumanF@Walk01_Forward.fbx"),
                 ("Run", f + "Movement/Run/HumanF@Run01_Forward.fbx"),
                 ("JumpAir", f + "Movement/Jump/HumanF@Fall01.fbx"),
-                ("Attack01", f + "Combat/Polearm/HumanF@AttackPolearm01.fbx"),
+                ("Attack01", f + "Combat/Spellcasting/MagicAttacks/Directional/HumanF@MagicAttackDirect1H01_R - Cast.fbx"),
+                ("Attack02", f + "Combat/Polearm/HumanF@AttackPolearm01.fbx"),
+                ("JumpUpAttack", f + "Combat/Polearm/HumanF@AttackPolearm01.fbx"),
                 ("GetHit", f + "Combat/HumanF@CombatDamage01.fbx"),
-            };
+                ("Die", f + "Combat/HumanF@Death01.fbx"),
+            });
+        }
+
+        /// The Dragonguard: the RPG Hero pack's own sword-and-shield states, plus what that pack lacks (a fall for
+        /// jumps, and an overhead two-handed strike for the leap slam), from the Kevin Iglesias male clips.
+        static RuntimeAnimatorController BuildKnightController(GameObject hero)
+        {
+            var an = hero ? hero.GetComponentInChildren<Animator>() : null;
+            var src = an ? an.runtimeAnimatorController as UnityEditor.Animations.AnimatorController : null;
+            if (src == null) return null;
+            string m = KI + "Animations/Male/";
+            SetLoop(m + "Movement/Jump/HumanM@Fall01.fbx");
+            AssetDatabase.DeleteAsset(KnightControllerPath);
+            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(KnightControllerPath);
+            var sm = ctrl.layers[0].stateMachine;
+            foreach (var cs in src.layers[0].stateMachine.states)
+            {
+                if (cs.state.motion == null) continue;
+                var st = sm.AddState(cs.state.name);
+                st.motion = cs.state.motion;
+                st.speed = cs.state.speed;
+                if (cs.state == src.layers[0].stateMachine.defaultState) sm.defaultState = st;
+            }
+            foreach (var (name, fbx) in new[] { ("JumpAir", m + "Movement/Jump/HumanM@Fall01.fbx"), ("JumpUpAttack", m + "Combat/2H/HumanM@Attack2H01.fbx") })
+            {
+                var clip = Clip(fbx);
+                if (clip == null) continue;
+                sm.AddState(name).motion = clip;
+            }
+            EditorUtility.SetDirty(ctrl);
+            return ctrl;
+        }
+
+        /// Imports a model as humanoid (making its own avatar) and its separate animation files as humanoid clips
+        /// copying that avatar, so its clips and other packs' humanoid clips both drive it.
+        static void MakeHumanoid(string model, params string[] anims)
+        {
+            if (!(AssetImporter.GetAtPath(model) is ModelImporter imp)) return;
+            if (imp.animationType != ModelImporterAnimationType.Human)
+            {
+                imp.animationType = ModelImporterAnimationType.Human;
+                imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                imp.SaveAndReimport();
+            }
+            var avatar = AssetDatabase.LoadAllAssetsAtPath(model).OfType<Avatar>().FirstOrDefault();
+            if (avatar == null || !avatar.isHuman) { Debug.LogWarning("Skyfall: no humanoid avatar for " + model); return; }
+            foreach (var a in anims)
+            {
+                if (!(AssetImporter.GetAtPath(a) is ModelImporter ai)) continue;
+                if (ai.animationType == ModelImporterAnimationType.Human && ai.sourceAvatar == avatar) continue;
+                ai.animationType = ModelImporterAnimationType.Human;
+                ai.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
+                ai.sourceAvatar = avatar;
+                ai.SaveAndReimport();
+            }
+        }
+
+        /// Builds (or rebuilds) an animator controller with one state per clip, named as the game asks for them;
+        /// the first state is the default. Locomotion and idle clips are set to loop. Null if the first clip is missing.
+        static RuntimeAnimatorController BuildController(string path, (string name, string fbx)[] states)
+        {
             if (!File.Exists(states[0].fbx)) return null;
-            AssetDatabase.DeleteAsset(HuntressControllerPath);
-            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(HuntressControllerPath);
+            foreach (var (name, fbx) in states)
+                if (name == "Idle" || name == "Walk" || name == "Run" || name == "JumpAir") SetLoop(fbx);
+            AssetDatabase.DeleteAsset(path);
+            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(path);
             var sm = ctrl.layers[0].stateMachine;
             foreach (var (name, fbx) in states)
             {
@@ -417,10 +521,44 @@ namespace Skyfall.EditorTools
                 if (clip == null) continue;
                 var st = sm.AddState(name);
                 st.motion = clip;
-                if (name == "Idle") sm.defaultState = st;
+                if (sm.defaultState == null || name == "Idle") sm.defaultState = st;
             }
             EditorUtility.SetDirty(ctrl);
             return ctrl;
+        }
+
+        /// Points every material embedded in a model at one external material (and fixes prefabs that copied the
+        /// embedded one).
+        static void RemapMaterials(string fbx, string matPath)
+        {
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+            if (mat == null || !(AssetImporter.GetAtPath(fbx) is ModelImporter imp)) return;
+            bool changed = false;
+            foreach (var emb in AssetDatabase.LoadAllAssetsAtPath(fbx).OfType<Material>().ToList())
+            {
+                var id = new AssetImporter.SourceAssetIdentifier(typeof(Material), emb.name);
+                if (imp.GetExternalObjectMap().TryGetValue(id, out var cur) && cur == mat) continue;
+                imp.AddRemap(id, mat);
+                changed = true;
+            }
+            if (changed) imp.SaveAndReimport();
+        }
+
+        /// Makes an FBX's clips loop (the Toon RTS packs ship their combat idle and walk as one-shots).
+        static void SetLoop(string fbx)
+        {
+            if (!(AssetImporter.GetAtPath(fbx) is ModelImporter imp)) return;
+            var clips = imp.clipAnimations.Length > 0 ? imp.clipAnimations : imp.defaultClipAnimations;
+            bool changed = false;
+            foreach (var c in clips)
+            {
+                if (c.loopTime) continue;
+                c.loopTime = true;
+                changed = true;
+            }
+            if (!changed) return;
+            imp.clipAnimations = clips;
+            imp.SaveAndReimport();
         }
 
         // ---------------------------------------------------------------- UI icons
@@ -446,7 +584,7 @@ namespace Skyfall.EditorTools
             // recolored electric blue-violet (written to a gitignored folder, since it is derived from the pack's art).
             string chain = TintedIcon(strike, "chain_lightning", new Color(0.55f, 0.65f, 1f));
             I("gravity_well", summon); I("frost_bolt", shards); I("chain_lightning", chain ?? strike); I("meteor", fireRain);
-            I("blood_aura", drain); I("lightning_storm", strike); I("bloodthirst", curse); I("spellblade", slash); I("windwalker", blink);
+            I("blood_aura", drain); I("lightning_storm", strike); I("bloodthirst", curse); I("spellblade", slash);
             I("sword", Wp + "09_Longsword.png"); I("blood_lance", TintedIcon(cone, "blood_lance", new Color(0.95f, 0.08f, 0.15f)) ?? cone); I("staff", Wp + "08_Mage_Staff.png");
             I("def_shield", Wp + "05_Shield.png"); I("def_evasion", blink); I("def_ward", fire);
             I("dragonfire", fireball); I("ride", aoe);
@@ -482,7 +620,75 @@ namespace Skyfall.EditorTools
                 ["p_inferno"] = fireball, ["p_molten"] = Ar + "Epic/01_cloth_chest_E.png", ["p_weaver"] = Wp + "07_Priest_Staff.png",
                 ["p_supernova"] = nova, ["p_sunorbs"] = fire, ["p_pillars"] = fireRain,
             };
+            // The pack has ~40 usable pictures for ~160 ids, so the rest are recolors by theme: each hero's tree in its
+            // hero color, each dragon's tree in its dragon's color, shared dragon talents in gold. Talents with the same
+            // effect as a dragon card share that card's art.
+            string T(string src, string name, Color c) => TintedIcon(src, name, c) ?? src;
+            Color gold = new Color(1f, 0.78f, 0.25f), sky = new Color(0.45f, 0.75f, 1f), steel = new Color(0.45f, 0.65f, 1f),
+                crimson = new Color(0.95f, 0.12f, 0.22f), ember = new Color(1f, 0.55f, 0.12f), azure = new Color(0.2f, 0.5f, 1f),
+                scarlet = new Color(1f, 0.18f, 0.08f), blood = new Color(0.7f, 0.04f, 0.14f), violet = new Color(0.55f, 0.15f, 0.75f),
+                arcane = new Color(0.6f, 0.4f, 1f);
+            string beast = Rs + "11_Beast_Hide.png", goodBeast = Rs + "14_Good_Beast_Hide.png", shield = Wp + "05_Shield.png";
+            // Capstone forms (the F ability by the health bar).
+            talentArt["h_specter"] = T(blink, "crimson_specter", crimson);
+            talentArt["p_phoenixform"] = T(fireRain, "phoenix_form", ember);
+            // Dragon cards (and the tree talents that grant the same thing).
+            string cardWing = T(shield, "d_wing", sky), cardRescue = T(summon, "d_rescue", gold), cardWrath = T(fire, "d_wrath", scarlet);
+            var dragonArt = new Dictionary<string, string>
+            {
+                ["d_size"] = goodBeast, ["d_cone"] = T(cone, "d_cone", ember), ["d_haste"] = T(blink, "d_haste", gold),
+                ["d_rescue"] = cardRescue, ["d_wing"] = cardWing, ["d_wrath"] = cardWrath,
+                ["d_blue"] = T(fire, "d_blue", azure), ["d_red"] = T(fireRain, "d_red", scarlet), ["d_black"] = T(drain, "d_black", blood),
+                // Shared dragon rows.
+                ["dt_fury"] = T(fireball, "dt_fury", gold), ["dt_swift"] = T(blink, "dt_swift", sky), ["dt_vast"] = beast,
+                ["dt_shelter"] = cardWing, ["dt_talons"] = cardRescue, ["dt_wrath"] = cardWrath,
+                ["dt_skyrider"] = T(Ar + "Epic/02_plate_cloak_E.png", "dt_skyrider", sky), ["dt_unbound"] = T(aoe, "dt_unbound", gold),
+                ["dt_ancient"] = T(goodBeast, "dt_ancient", gold),
+                // Azure Wyrm.
+                ["db_kindle"] = T(fire, "db_kindle", azure), ["db_maw"] = T(cone, "db_maw", azure), ["db_ash"] = T(fireRain, "db_ash", new Color(0.55f, 0.6f, 0.75f)),
+                ["db_inferno"] = T(fireRain, "db_inferno", azure), ["db_kiln"] = T(fireball, "db_kiln", azure), ["db_cinder"] = T(shield, "db_cinder", azure),
+                ["db_azure"] = T(nova, "db_azure", azure), ["db_rekindle"] = T(heal, "db_rekindle", azure), ["db_sunburst"] = T(aoe, "db_sunburst", azure),
+                // Crimson Drake.
+                ["dr_volatile"] = T(fireball, "dr_volatile", scarlet), ["dr_crater"] = T(aoe, "dr_crater", scarlet),
+                ["dr_hide"] = T(Ar + "Epic/01_plate_chest_E.png", "dr_hide", scarlet), ["dr_aftershock"] = T(strike, "dr_aftershock", scarlet),
+                ["dr_quake"] = T(shards, "dr_quake", scarlet), ["dr_fuse"] = T(blink, "dr_fuse", scarlet), ["dr_meteor"] = T(fireRain, "dr_meteor", new Color(1f, 0.4f, 0.05f)),
+                ["dr_bulwark"] = T(shield, "dr_bulwark", scarlet), ["dr_chain"] = T(nova, "dr_chain", scarlet),
+                // Night Wyrm.
+                ["dk_leech"] = T(drain, "dk_leech", blood), ["dk_dread"] = T(curse, "dk_dread", violet),
+                ["dk_veil"] = T(Ar + "Epic/02_leather_cloak_E.png", "dk_veil", violet), ["dk_monsoon"] = T(fireRain, "dk_monsoon", blood),
+                ["dk_hunger"] = T(heal2, "dk_hunger", blood), ["dk_night"] = T(blink, "dk_night", violet), ["dk_tide"] = T(heal, "dk_tide", blood),
+                ["dk_pact"] = T(shield, "dk_pact", violet), ["dk_vampire"] = T(drain, "dk_vampire", violet),
+            };
+            foreach (var kv in dragonArt) talentArt[kv.Key] = kv.Value;
+            // Permanent hero trees.
+            var heroArt = new Dictionary<string, string>
+            {
+                ["k_iron"] = Ar + "Common/01_plate_chest.png", ["k_temper"] = T(Wp + "02_Sword.png", "k_temper", steel), ["k_squire"] = T(goodBeast, "k_squire", steel),
+                ["k_guard"] = T(shield, "k_guard", steel), ["k_cleave"] = T(slash, "k_cleave", steel), ["k_rider"] = T(cone, "k_rider", gold),
+                ["k_bastion"] = Ar + "Common/02_plate_cloak.png", ["k_fervor"] = T(heal2, "k_fervor", gold), ["k_wyrmcall"] = T(aoe, "k_wyrmcall", steel),
+                ["h_keen"] = T(Wp + "01_Bow.png", "h_keen", crimson), ["h_lithe"] = T(Ar + "Common/05_leather_boots.png", "h_lithe", crimson),
+                ["h_bondblood"] = T(beast, "h_bondblood", crimson), ["h_quiver"] = Wp + "01_Bow.png", ["h_hunter"] = T(cone, "h_hunter", crimson),
+                ["h_vital"] = T(Rs + "15_Heal_potion.png", "h_vital", crimson), ["h_predator"] = T(slash, "h_predator", crimson), ["h_skyblood"] = T(aoe, "h_skyblood", crimson),
+                ["p_focus"] = T(Wp + "08_Mage_Staff.png", "p_focus", arcane), ["p_ember"] = T(Ar + "Common/01_cloth_chest.png", "p_ember", ember),
+                ["p_kinship"] = T(beast, "p_kinship", ember), ["p_haste"] = T(blink, "p_haste", ember), ["p_skyfire"] = T(fireball, "p_skyfire", gold),
+                ["p_ascend"] = T(heal, "p_ascend", ember), ["p_warding"] = T(shield, "p_warding", ember), ["p_flamecaller"] = T(aoe, "p_flamecaller", ember),
+            };
+            foreach (var kv in heroArt) talentArt[kv.Key] = kv.Value;
             foreach (var kv in talentArt) I(kv.Key, kv.Value);
+            // Power-ups no longer share a picture with an ability.
+            lib.icons.RemoveAll(i => i.name.StartsWith("pu_"));
+            I("pu_speed", T(blink, "pu_speed", new Color(0.25f, 0.9f, 1f)));
+            I("pu_damage", T(slash, "pu_damage", new Color(1f, 0.2f, 0.18f)));
+            I("pu_magnet", T(summon, "pu_magnet", new Color(0.78f, 0.45f, 1f)));
+            // Dragon portraits (the dragon picker and egg screens), rendered from each dragon's own model.
+            foreach (var (id, prefab) in new[] { ("blue", lib.dragonBlue), ("red", lib.dragonRed), ("black", lib.dragonBlack) })
+            {
+                var def = Data.DRAGONS[id];
+                // The black hide reads pale under the portrait lights; darken it to match the game.
+                var tint = id == "black" ? new Color(0.4f, 0.36f, 0.38f) : def.skinTint;
+                var path = DragonPortrait(prefab, "dragon_" + id, tint, def.breath);
+                if (path != null) I("dragon_" + id, path);
+            }
         }
 
         const string GeneratedIcons = "Assets/Skyfall/Generated/Icons";
@@ -524,6 +730,83 @@ namespace Skyfall.EditorTools
                 ti.SaveAndReimport();
             }
             return path;
+        }
+
+        /// Renders an icon portrait of a dragon model: three-quarter view of its head and shoulders over a dark
+        /// background, lit warm from the front with a rim light in its breath color. Returns the PNG's path, or null.
+        static string DragonPortrait(GameObject prefab, string name, Color skinTint, Color breath)
+        {
+            if (prefab == null) return null;
+            const int Size = 256;
+            var pru = new PreviewRenderUtility();
+            var tintMats = new List<Material>();
+            try
+            {
+                var go = pru.InstantiatePrefabInScene(prefab);
+                if (skinTint != Color.white)
+                    foreach (var r in go.GetComponentsInChildren<Renderer>())
+                    {
+                        var mats = r.sharedMaterials.Select(m => m ? new Material(m) : m).ToArray();
+                        foreach (var m in mats)
+                        {
+                            if (m == null) continue;
+                            tintMats.Add(m);
+                            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.GetColor("_BaseColor") * skinTint);
+                        }
+                        r.sharedMaterials = mats;
+                    }
+                // Framed for the Usurper (every dragon uses it): it faces +Z in its bind pose, crouched, with the head
+                // low and forward. Front three-quarter view from its right, then nudged onto the head and neck.
+                var root = go.transform;
+                var focus = root.TransformPoint(new Vector3(0f, 3.2f, 3.2f));
+                var camDir = (Quaternion.Euler(0, -35f, 0) * root.forward + Vector3.up * 0.3f).normalized;
+                var cam = pru.camera;
+                cam.fieldOfView = 30f;
+                cam.nearClipPlane = 0.05f;
+                cam.farClipPlane = 1000f;
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = Color.Lerp(new Color(0.06f, 0.05f, 0.08f), breath, 0.18f);
+                cam.transform.position = focus + camDir * 13f * root.lossyScale.x;
+                cam.transform.LookAt(focus);
+                cam.transform.position += (-cam.transform.right * 1.1f - cam.transform.up * 1.7f) * root.lossyScale.x;
+                pru.lights[0].intensity = 1.3f;
+                pru.lights[0].color = new Color(1f, 0.95f, 0.88f);
+                pru.lights[0].transform.rotation = Quaternion.LookRotation(-camDir + Vector3.down * 0.6f);
+                // Rim light in the breath color from behind and to the side.
+                pru.lights[1].intensity = 1.2f;
+                pru.lights[1].color = breath;
+                pru.lights[1].transform.rotation = Quaternion.LookRotation(Quaternion.Euler(0, 140f, 0) * camDir + Vector3.down * 0.3f);
+                pru.ambientColor = new Color(0.3f, 0.3f, 0.35f);
+                pru.BeginStaticPreview(new Rect(0, 0, Size, Size));
+                pru.Render(true);
+                var shot = pru.EndStaticPreview();
+                // Copy into a readable texture.
+                var rt = RenderTexture.GetTemporary(Size, Size, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                Graphics.Blit(shot, rt);
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                var tex = new Texture2D(Size, Size, TextureFormat.RGBA32, false);
+                tex.ReadPixels(new Rect(0, 0, Size, Size), 0, 0);
+                tex.Apply();
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+                Directory.CreateDirectory(GeneratedIcons);
+                string path = GeneratedIcons + "/" + name + ".png";
+                File.WriteAllBytes(path, tex.EncodeToPNG());
+                UnityEngine.Object.DestroyImmediate(tex);
+                AssetDatabase.ImportAsset(path);
+                return path;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Skyfall: could not render the portrait " + name + ": " + e.Message);
+                return null;
+            }
+            finally
+            {
+                pru.Cleanup();
+                foreach (var m in tintMats) if (m) UnityEngine.Object.DestroyImmediate(m);
+            }
         }
 
         /// The skybox used by the game. Override with -skyfallSky "Assets/.../Some.mat".

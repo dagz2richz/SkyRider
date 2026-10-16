@@ -61,7 +61,8 @@ namespace Skyfall
 
         public static bool JumpPressed => Pressed(Key.Space) || (Pad != null && Pad.buttonSouth.wasPressedThisFrame && PadUiFrame != Time.frameCount);
         public static bool JumpHeld => TestJumpHeld || Held(Key.Space) || (Pad != null && Pad.buttonSouth.isPressed);
-        public static bool DescendHeld => Held(Key.LeftShift, Key.RightShift, Key.LeftCtrl, Key.RightCtrl)
+        /// Not Ctrl: in the editor Ctrl+S / Ctrl+D while diving would save the scene or duplicate objects.
+        public static bool DescendHeld => Held(Key.LeftShift, Key.RightShift, Key.C)
             || (Pad != null && (Pad.buttonEast.isPressed || Pad.leftTrigger.ReadValue() > 0.4f));
         public static bool PausePressed => Pressed(Key.Escape, Key.P) || (Pad != null && Pad.startButton.wasPressedThisFrame);
         /// One-shot key presses injected by the automated tests (consumed when read).
@@ -97,6 +98,9 @@ namespace Skyfall
         }
 
         public static bool StatsPressed =>Pressed(Key.Tab) || (Pad != null && Pad.selectButton.wasPressedThisFrame);
+
+        /// R (gamepad Y) on the level-up screen: reroll the cards.
+        public static bool RerollPressed => Pressed(Key.R) || (Pad != null && Pad.buttonNorth.wasPressedThisFrame);
 
         /// 0, 1 or 2 when a level-up card key (1/2/3) was pressed this frame, else -1.
         public static int CardPressed
