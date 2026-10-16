@@ -133,7 +133,7 @@ namespace Skyfall
         }
     }
 
-    public enum Ease { Linear, OutCubic, OutQuart, OutSine }
+    public enum Ease { Linear, OutCubic, OutQuart, OutQuint, OutSine }
 
     /// A tiny coroutine-based tween system (stand-in for Godot's create_tween).
     public static class Tw
@@ -166,6 +166,7 @@ namespace Skyfall
             {
                 case Ease.OutCubic: return 1f - Mathf.Pow(1f - t, 3f);
                 case Ease.OutQuart: return 1f - Mathf.Pow(1f - t, 4f);
+                case Ease.OutQuint: return 1f - Mathf.Pow(1f - t, 5f);
                 case Ease.OutSine: return Mathf.Sin(t * Mathf.PI * 0.5f);
                 default: return t;
             }

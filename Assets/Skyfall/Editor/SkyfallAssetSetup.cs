@@ -620,7 +620,75 @@ namespace Skyfall.EditorTools
                 ["p_inferno"] = fireball, ["p_molten"] = Ar + "Epic/01_cloth_chest_E.png", ["p_weaver"] = Wp + "07_Priest_Staff.png",
                 ["p_supernova"] = nova, ["p_sunorbs"] = fire, ["p_pillars"] = fireRain,
             };
+            // The pack has ~40 usable pictures for ~160 ids, so the rest are recolors by theme: each hero's tree in its
+            // hero color, each dragon's tree in its dragon's color, shared dragon talents in gold. Talents with the same
+            // effect as a dragon card share that card's art.
+            string T(string src, string name, Color c) => TintedIcon(src, name, c) ?? src;
+            Color gold = new Color(1f, 0.78f, 0.25f), sky = new Color(0.45f, 0.75f, 1f), steel = new Color(0.45f, 0.65f, 1f),
+                crimson = new Color(0.95f, 0.12f, 0.22f), ember = new Color(1f, 0.55f, 0.12f), azure = new Color(0.2f, 0.5f, 1f),
+                scarlet = new Color(1f, 0.18f, 0.08f), blood = new Color(0.7f, 0.04f, 0.14f), violet = new Color(0.55f, 0.15f, 0.75f),
+                arcane = new Color(0.6f, 0.4f, 1f);
+            string beast = Rs + "11_Beast_Hide.png", goodBeast = Rs + "14_Good_Beast_Hide.png", shield = Wp + "05_Shield.png";
+            // Capstone forms (the F ability by the health bar).
+            talentArt["h_specter"] = T(blink, "crimson_specter", crimson);
+            talentArt["p_phoenixform"] = T(fireRain, "phoenix_form", ember);
+            // Dragon cards (and the tree talents that grant the same thing).
+            string cardWing = T(shield, "d_wing", sky), cardRescue = T(summon, "d_rescue", gold), cardWrath = T(fire, "d_wrath", scarlet);
+            var dragonArt = new Dictionary<string, string>
+            {
+                ["d_size"] = goodBeast, ["d_cone"] = T(cone, "d_cone", ember), ["d_haste"] = T(blink, "d_haste", gold),
+                ["d_rescue"] = cardRescue, ["d_wing"] = cardWing, ["d_wrath"] = cardWrath,
+                ["d_blue"] = T(fire, "d_blue", azure), ["d_red"] = T(fireRain, "d_red", scarlet), ["d_black"] = T(drain, "d_black", blood),
+                // Shared dragon rows.
+                ["dt_fury"] = T(fireball, "dt_fury", gold), ["dt_swift"] = T(blink, "dt_swift", sky), ["dt_vast"] = beast,
+                ["dt_shelter"] = cardWing, ["dt_talons"] = cardRescue, ["dt_wrath"] = cardWrath,
+                ["dt_skyrider"] = T(Ar + "Epic/02_plate_cloak_E.png", "dt_skyrider", sky), ["dt_unbound"] = T(aoe, "dt_unbound", gold),
+                ["dt_ancient"] = T(goodBeast, "dt_ancient", gold),
+                // Azure Wyrm.
+                ["db_kindle"] = T(fire, "db_kindle", azure), ["db_maw"] = T(cone, "db_maw", azure), ["db_ash"] = T(fireRain, "db_ash", new Color(0.55f, 0.6f, 0.75f)),
+                ["db_inferno"] = T(fireRain, "db_inferno", azure), ["db_kiln"] = T(fireball, "db_kiln", azure), ["db_cinder"] = T(shield, "db_cinder", azure),
+                ["db_azure"] = T(nova, "db_azure", azure), ["db_rekindle"] = T(heal, "db_rekindle", azure), ["db_sunburst"] = T(aoe, "db_sunburst", azure),
+                // Crimson Drake.
+                ["dr_volatile"] = T(fireball, "dr_volatile", scarlet), ["dr_crater"] = T(aoe, "dr_crater", scarlet),
+                ["dr_hide"] = T(Ar + "Epic/01_plate_chest_E.png", "dr_hide", scarlet), ["dr_aftershock"] = T(strike, "dr_aftershock", scarlet),
+                ["dr_quake"] = T(shards, "dr_quake", scarlet), ["dr_fuse"] = T(blink, "dr_fuse", scarlet), ["dr_meteor"] = T(fireRain, "dr_meteor", new Color(1f, 0.4f, 0.05f)),
+                ["dr_bulwark"] = T(shield, "dr_bulwark", scarlet), ["dr_chain"] = T(nova, "dr_chain", scarlet),
+                // Night Wyrm.
+                ["dk_leech"] = T(drain, "dk_leech", blood), ["dk_dread"] = T(curse, "dk_dread", violet),
+                ["dk_veil"] = T(Ar + "Epic/02_leather_cloak_E.png", "dk_veil", violet), ["dk_monsoon"] = T(fireRain, "dk_monsoon", blood),
+                ["dk_hunger"] = T(heal2, "dk_hunger", blood), ["dk_night"] = T(blink, "dk_night", violet), ["dk_tide"] = T(heal, "dk_tide", blood),
+                ["dk_pact"] = T(shield, "dk_pact", violet), ["dk_vampire"] = T(drain, "dk_vampire", violet),
+            };
+            foreach (var kv in dragonArt) talentArt[kv.Key] = kv.Value;
+            // Permanent hero trees.
+            var heroArt = new Dictionary<string, string>
+            {
+                ["k_iron"] = Ar + "Common/01_plate_chest.png", ["k_temper"] = T(Wp + "02_Sword.png", "k_temper", steel), ["k_squire"] = T(goodBeast, "k_squire", steel),
+                ["k_guard"] = T(shield, "k_guard", steel), ["k_cleave"] = T(slash, "k_cleave", steel), ["k_rider"] = T(cone, "k_rider", gold),
+                ["k_bastion"] = Ar + "Common/02_plate_cloak.png", ["k_fervor"] = T(heal2, "k_fervor", gold), ["k_wyrmcall"] = T(aoe, "k_wyrmcall", steel),
+                ["h_keen"] = T(Wp + "01_Bow.png", "h_keen", crimson), ["h_lithe"] = T(Ar + "Common/05_leather_boots.png", "h_lithe", crimson),
+                ["h_bondblood"] = T(beast, "h_bondblood", crimson), ["h_quiver"] = Wp + "01_Bow.png", ["h_hunter"] = T(cone, "h_hunter", crimson),
+                ["h_vital"] = T(Rs + "15_Heal_potion.png", "h_vital", crimson), ["h_predator"] = T(slash, "h_predator", crimson), ["h_skyblood"] = T(aoe, "h_skyblood", crimson),
+                ["p_focus"] = T(Wp + "08_Mage_Staff.png", "p_focus", arcane), ["p_ember"] = T(Ar + "Common/01_cloth_chest.png", "p_ember", ember),
+                ["p_kinship"] = T(beast, "p_kinship", ember), ["p_haste"] = T(blink, "p_haste", ember), ["p_skyfire"] = T(fireball, "p_skyfire", gold),
+                ["p_ascend"] = T(heal, "p_ascend", ember), ["p_warding"] = T(shield, "p_warding", ember), ["p_flamecaller"] = T(aoe, "p_flamecaller", ember),
+            };
+            foreach (var kv in heroArt) talentArt[kv.Key] = kv.Value;
             foreach (var kv in talentArt) I(kv.Key, kv.Value);
+            // Power-ups no longer share a picture with an ability.
+            lib.icons.RemoveAll(i => i.name.StartsWith("pu_"));
+            I("pu_speed", T(blink, "pu_speed", new Color(0.25f, 0.9f, 1f)));
+            I("pu_damage", T(slash, "pu_damage", new Color(1f, 0.2f, 0.18f)));
+            I("pu_magnet", T(summon, "pu_magnet", new Color(0.78f, 0.45f, 1f)));
+            // Dragon portraits (the dragon picker and egg screens), rendered from each dragon's own model.
+            foreach (var (id, prefab) in new[] { ("blue", lib.dragonBlue), ("red", lib.dragonRed), ("black", lib.dragonBlack) })
+            {
+                var def = Data.DRAGONS[id];
+                // The black hide reads pale under the portrait lights; darken it to match the game.
+                var tint = id == "black" ? new Color(0.4f, 0.36f, 0.38f) : def.skinTint;
+                var path = DragonPortrait(prefab, "dragon_" + id, tint, def.breath);
+                if (path != null) I("dragon_" + id, path);
+            }
         }
 
         const string GeneratedIcons = "Assets/Skyfall/Generated/Icons";
@@ -662,6 +730,83 @@ namespace Skyfall.EditorTools
                 ti.SaveAndReimport();
             }
             return path;
+        }
+
+        /// Renders an icon portrait of a dragon model: three-quarter view of its head and shoulders over a dark
+        /// background, lit warm from the front with a rim light in its breath color. Returns the PNG's path, or null.
+        static string DragonPortrait(GameObject prefab, string name, Color skinTint, Color breath)
+        {
+            if (prefab == null) return null;
+            const int Size = 256;
+            var pru = new PreviewRenderUtility();
+            var tintMats = new List<Material>();
+            try
+            {
+                var go = pru.InstantiatePrefabInScene(prefab);
+                if (skinTint != Color.white)
+                    foreach (var r in go.GetComponentsInChildren<Renderer>())
+                    {
+                        var mats = r.sharedMaterials.Select(m => m ? new Material(m) : m).ToArray();
+                        foreach (var m in mats)
+                        {
+                            if (m == null) continue;
+                            tintMats.Add(m);
+                            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.GetColor("_BaseColor") * skinTint);
+                        }
+                        r.sharedMaterials = mats;
+                    }
+                // Framed for the Usurper (every dragon uses it): it faces +Z in its bind pose, crouched, with the head
+                // low and forward. Front three-quarter view from its right, then nudged onto the head and neck.
+                var root = go.transform;
+                var focus = root.TransformPoint(new Vector3(0f, 3.2f, 3.2f));
+                var camDir = (Quaternion.Euler(0, -35f, 0) * root.forward + Vector3.up * 0.3f).normalized;
+                var cam = pru.camera;
+                cam.fieldOfView = 30f;
+                cam.nearClipPlane = 0.05f;
+                cam.farClipPlane = 1000f;
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = Color.Lerp(new Color(0.06f, 0.05f, 0.08f), breath, 0.18f);
+                cam.transform.position = focus + camDir * 13f * root.lossyScale.x;
+                cam.transform.LookAt(focus);
+                cam.transform.position += (-cam.transform.right * 1.1f - cam.transform.up * 1.7f) * root.lossyScale.x;
+                pru.lights[0].intensity = 1.3f;
+                pru.lights[0].color = new Color(1f, 0.95f, 0.88f);
+                pru.lights[0].transform.rotation = Quaternion.LookRotation(-camDir + Vector3.down * 0.6f);
+                // Rim light in the breath color from behind and to the side.
+                pru.lights[1].intensity = 1.2f;
+                pru.lights[1].color = breath;
+                pru.lights[1].transform.rotation = Quaternion.LookRotation(Quaternion.Euler(0, 140f, 0) * camDir + Vector3.down * 0.3f);
+                pru.ambientColor = new Color(0.3f, 0.3f, 0.35f);
+                pru.BeginStaticPreview(new Rect(0, 0, Size, Size));
+                pru.Render(true);
+                var shot = pru.EndStaticPreview();
+                // Copy into a readable texture.
+                var rt = RenderTexture.GetTemporary(Size, Size, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                Graphics.Blit(shot, rt);
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                var tex = new Texture2D(Size, Size, TextureFormat.RGBA32, false);
+                tex.ReadPixels(new Rect(0, 0, Size, Size), 0, 0);
+                tex.Apply();
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+                Directory.CreateDirectory(GeneratedIcons);
+                string path = GeneratedIcons + "/" + name + ".png";
+                File.WriteAllBytes(path, tex.EncodeToPNG());
+                UnityEngine.Object.DestroyImmediate(tex);
+                AssetDatabase.ImportAsset(path);
+                return path;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Skyfall: could not render the portrait " + name + ": " + e.Message);
+                return null;
+            }
+            finally
+            {
+                pru.Cleanup();
+                foreach (var m in tintMats) if (m) UnityEngine.Object.DestroyImmediate(m);
+            }
         }
 
         /// The skybox used by the game. Override with -skyfallSky "Assets/.../Some.mat".

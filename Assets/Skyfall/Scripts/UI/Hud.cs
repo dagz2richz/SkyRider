@@ -163,6 +163,7 @@ namespace Skyfall
                 pendingTab = -1;
             }
             toastT += udt;
+            splashT += udt;
             hurtA = Mathf.MoveTowards(hurtA, 0f, Time.deltaTime * 1.5f);
             GameInput.TickRumble();
             if (game == null) return;
@@ -260,6 +261,30 @@ namespace Skyfall
             bannerTitle = title;
             bannerSub = sub;
             bannerT = 0f;
+        }
+
+        string splashTitle = "", splashSub = "";
+        Color splashColor = Color.white;
+        float splashT = 999f;
+
+        /// A big warning in the middle of the screen (harpoon hits): pops in, holds 1.5 s, fades out.
+        public void Splash(string title, string sub, Color color)
+        {
+            splashTitle = title;
+            splashSub = sub;
+            splashColor = color;
+            splashT = 0f;
+        }
+
+        void DrawSplash()
+        {
+            float a = splashT < 0.12f ? splashT / 0.12f : (splashT < 1.6f ? 1f : 1f - (splashT - 1.6f) / 0.5f);
+            if (a <= 0f || splashTitle == "") return;
+            // A quick pop: starts 30% bigger and settles.
+            int size = Mathf.RoundToInt(64f * (1f + 0.3f * Mathf.Clamp01(1f - splashT / 0.15f)));
+            float y = H / 2f - 90f;
+            DrawText(new Rect(W / 2 - 500, y, 1000, 80), splashTitle, Text(size, TextAnchor.MiddleCenter, false, true), splashColor, 10, a);
+            DrawText(new Rect(W / 2 - 500, y + 78, 1000, 34), splashSub, Text(26, TextAnchor.UpperCenter), PARCHMENT, 6, a);
         }
 
         public void Toast(string text)
@@ -364,6 +389,7 @@ namespace Skyfall
             if (hudVisible) DrawHud();
             DrawFloatingTexts();
             DrawBannerAndToast();
+            if (hudVisible && levelOptions == null && !pauseOpen) DrawSplash();
             if (levelOptions != null) { UiNav.Layer = "level"; DrawLevelUp(); }
             if (pauseOpen) { UiNav.Layer = "pause"; DrawPause(); }
             if (statsOpen) { UiNav.Layer = "stats"; DrawStats(); }
@@ -451,19 +477,39 @@ namespace Skyfall
             by -= 5 + 16; Bar(new Rect(bx, by, bw, 16), p.mana / p.MaxMana, new Color(0.45f, 0.35f, 1f));
             by -= 5 + 20; DrawText(new Rect(bx, by, bw, 20), $"Mana {(int)p.mana} / {(int)p.MaxMana}", Text(16), new Color(0.75f, 0.7f, 1f));
             by -= 5 + 22; Bar(new Rect(bx, by, bw, 22), p.hp / p.maxHp, new Color(0.8f, 0.12f, 0.1f));
+            DrawFormTile(p, bx + bw + 18, by - 4);
             // Talent barriers show as a pale band over the health bar.
             if (p.barrier > 0.5f) UiKit.Rect(new Rect(bx + 2, by + 2, (bw - 4) * Mathf.Clamp01(p.barrier / p.maxHp), 6), new Color(0.75f, 0.88f, 1f, 0.9f));
             by -= 5 + 22; DrawText(new Rect(bx, by, bw, 22), $"{Mathf.CeilToInt(p.hp)} / {(int)p.maxHp}" + (p.barrier > 0.5f ? $"   +{Mathf.CeilToInt(p.barrier)} barrier" : ""), Text(18), PARCHMENT);
-            string form = p.Has("k_dragonform") ? "Dragon Form" : p.Has("h_specter") ? "Crimson Specter" : p.Has("p_phoenixform") ? "Phoenix Form" : null;
-            if (form != null)
-            {
-                string df = p.DragonFormActive ? $"{form.ToUpper()}  {Mathf.CeilToInt(p.dragonFormT)}s" : (p.dragonFormCd > 0f ? $"{form} (F) in {Mathf.CeilToInt(p.dragonFormCd)}s" : $"{form} ready — press F (LB)");
-                by -= 5 + 22; DrawText(new Rect(bx, by, bw, 22), df, Text(17, TextAnchor.UpperLeft, false, true), p.DragonFormActive || p.dragonFormCd <= 0f ? new Color(1f, 0.8f, 0.35f) : M.Darken(PARCHMENT, 0.3f), 5);
-            }
 
             DrawPowerUps(p);
             DrawSlots();
             DrawIslandMarker();
+        }
+
+        /// The capstone form (F) as an icon tile beside the health bar, once its talent is learned: a cooldown sweep
+        /// while it recharges, a glowing frame and the seconds left while it is active.
+        void DrawFormTile(Player p, float x, float healthY)
+        {
+            string id = p.Has("k_dragonform") ? "k_dragonform" : p.Has("h_specter") ? "h_specter" : p.Has("p_phoenixform") ? "p_phoenixform" : null;
+            if (id == null || Event.current.type != EventType.Repaint) return;
+            string name = id == "k_dragonform" ? "Dragon Form" : id == "h_specter" ? "Crimson Specter" : "Phoenix Form";
+            var color = id == "k_dragonform" ? new Color(0.45f, 0.7f, 1f) : id == "h_specter" ? new Color(0.95f, 0.2f, 0.25f) : new Color(1f, 0.6f, 0.2f);
+            const float sz = 62;
+            var r = new Rect(x, healthY + 26 - sz, sz, sz);
+            bool active = p.DragonFormActive;
+            bool ready = !active && p.dragonFormCd <= 0f;
+            if (active || ready) UiKit.Rect(new Rect(r.x - 3, r.y - 3, sz + 6, sz + 6), M.WithA(color, active ? 0.55f + 0.25f * Mathf.Sin(Time.unscaledTime * 8f) : 0.35f));
+            DrawIcon(r, id, Color.Lerp(color, GOLD, 0.35f), 1f, false);
+            if (!active && p.dragonFormCd > 0f)
+            {
+                float frac = Mathf.Clamp01(p.dragonFormCd / Player.DRAGON_FORM_CD);
+                UiKit.Rect(new Rect(r.x + 3, r.y + 3 + (sz - 6) * (1f - frac), sz - 6, (sz - 6) * frac), new Color(0, 0, 0, 0.62f));
+                DrawText(r, Mathf.CeilToInt(p.dragonFormCd).ToString(), Text(22, TextAnchor.MiddleCenter, false, true), PARCHMENT, 6);
+            }
+            if (active) DrawText(r, Mathf.CeilToInt(p.dragonFormT) + "s", Text(22, TextAnchor.MiddleCenter, false, true), Color.white, 6);
+            DrawText(new Rect(r.x, r.y - 16, sz, 14), GameInput.PadConnected ? "F / LB" : "F", Text(11, TextAnchor.UpperCenter, false, true), M.WithA(GOLD, 0.9f), 3);
+            DrawText(new Rect(r.x - 20, r.yMax + 4, sz + 40, 16), name, Text(12, TextAnchor.UpperCenter), ready || active ? new Color(1f, 0.85f, 0.45f) : M.Darken(PARCHMENT, 0.1f), 3);
         }
 
         /// The flight bar: dimmed until Q can call the dragon again (1 s after first touching solid ground).
@@ -624,8 +670,8 @@ namespace Skyfall
                 DrawIcon(r, SlotIcon(i), Color.Lerp(color, GOLD, 0.35f), 1f, dim);
                 if (cdFrac > 0f) UiKit.Rect(new Rect(r.x + 3, r.y + 3 + (sz - 6) * (1f - cdFrac), sz - 6, (sz - 6) * cdFrac), new Color(0, 0, 0, 0.62f));
                 // Level pips along the bottom edge.
-                for (int k = 0; k < lvl && k < 8; k++)
-                    UiKit.Rect(new Rect(r.x + 6 + k * 7, r.yMax - 8, 5, 3), Color.Lerp(color, Color.white, 0.4f));
+                for (int k = 0; k < lvl && k < Data.SPELL_MAX_LEVEL; k++)
+                    UiKit.Rect(new Rect(r.x + 6 + k * 5f, r.yMax - 8, 4, 3), Color.Lerp(color, Color.white, 0.4f));
                 string shortTitle = title.Length > 12 ? title.Substring(0, 11).TrimEnd() + "…" : title;
                 DrawText(new Rect(r.x - 6, r.yMax + 4, sz + 12, 16), shortTitle, Text(12, TextAnchor.UpperCenter), M.Darken(PARCHMENT, 0.1f), 3, dim ? 0.6f : 1f);
                 DrawText(new Rect(r.x - 6, r.yMax + 19, sz + 12, 14), extra, Text(11, TextAnchor.UpperCenter), M.Darken(PARCHMENT, 0.35f), 3);
@@ -917,13 +963,13 @@ namespace Skyfall
                             // Locked: dimmed, with the hint, and not selectable.
                             var prev = GUI.color;
                             GUI.color = new Color(1f, 1f, 1f, 0.45f);
-                            SelectCard(d.name, "LOCKED — stage warlords may drop its egg", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW);
+                            SelectCard(d.name, "LOCKED — stage warlords may drop its egg", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW, null, "dragon_" + id);
                             GUI.color = prev;
                         }
                         else
                         {
                             string did = id;
-                            SelectCard(d.name, d.desc, lines, M.Lighten(d.body, 0.25f), id == pickDragon, dragonW, () => { pickDragon = did; ShowHeroSelect(); });
+                            SelectCard(d.name, d.desc, lines, M.Lighten(d.body, 0.25f), id == pickDragon, dragonW, () => { pickDragon = did; ShowHeroSelect(); }, "dragon_" + id);
                         }
                         Space(16);
                     }

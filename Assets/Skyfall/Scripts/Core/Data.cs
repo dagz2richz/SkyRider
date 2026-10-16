@@ -647,6 +647,9 @@ namespace Skyfall
         public const float POTION_FLIGHT_MIN = 1.1f;
         public const float POTION_FLIGHT_MAX = 1.7f;
         public const float POTION_SPLASH = 2.4f;
+        /// Seconds between one alchemist's throws (a shaman's buff shortens it by 30%).
+        public const float POTION_COOLDOWN_MIN = 5f;
+        public const float POTION_COOLDOWN_MAX = 6.5f;
 
         /// Ogre Harpooner: wind-up (telegraphed) before each throw, seconds between throws, and what a hit does.
         /// One hit drains flight and slows the dragon; only a second hit while still hooked drags the rider down.

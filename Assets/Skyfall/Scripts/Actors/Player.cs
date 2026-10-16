@@ -1450,7 +1450,8 @@ namespace Skyfall
             }
             hookedT = Data.HARPOON_HOOK_TIME;
             flightStamina = Mathf.Max(0.5f, flightStamina - Data.HARPOON_FLIGHT_DRAIN);
-            game.hud.Toast("Harpooned! Your dragon is slowed; another hit will drag you down");
+            game.hud.Splash("Harpooned!", "(One more and you're grounded!)", new Color(1f, 0.45f, 0.2f));
+            game.hud.Toast("Your dragon is slowed: shake off the harpoon before another one hits");
         }
 
         public void TakeDamage(float amount, Enemy attacker = null)

@@ -86,7 +86,7 @@ namespace Skyfall
                     e.maxHp *= 0.8f;
                     e.hp = e.maxHp;
                     e.xpValue = 2;
-                    e.shootCd = M.RandRange(1f, 2.5f);
+                    e.shootCd = M.RandRange(2.5f, Data.POTION_COOLDOWN_MAX);
                     e.BuildOgre(new Color(0.45f, 0.42f, 0.3f), false, false);
                     e.AddBow();
                     break;
@@ -557,7 +557,7 @@ namespace Skyfall
                 shootCd -= delta;
                 if (shootCd <= 0f && dist < 30f)
                 {
-                    shootCd = M.RandRange(2.6f, 3.4f) / (buffT > 0f ? 1.3f : 1f);
+                    shootCd = M.RandRange(Data.POTION_COOLDOWN_MIN, Data.POTION_COOLDOWN_MAX) / (buffT > 0f ? 1.3f : 1f);
                     ThrowPotion(player);
                 }
             }
@@ -692,8 +692,10 @@ namespace Skyfall
             {
                 attackCd = 1f;
                 player.TakeDamage(damage * AtkMult * (buffT > 0f ? 1.3f : 1f), this);
+                // Thorns or a reflect can kill it mid-swing (its model then already lies as a corpse).
+                if (dead) return;
                 if (rig) rig.Action(0.7f, "Attack01", "Attack02");
-                else armR.KeysX((-2f, 0.1f), (0.4f, 0.15f));
+                else if (armR != null) armR.KeysX((-2f, 0.1f), (0.4f, 0.15f));
             }
         }
 

@@ -300,12 +300,6 @@ MonoBehaviour:
     icon: {fileID: 2800000, guid: cd7b401a96a069e45a2313a33309ef26, type: 3}
   - name: armor_boots_epic
     icon: {fileID: 2800000, guid: 1b932e329d2e122489394506ac8a777b, type: 3}
-  - name: pu_speed
-    icon: {fileID: 2800000, guid: 62ce59ce09148c847b198159a3abc9f6, type: 3}
-  - name: pu_damage
-    icon: {fileID: 2800000, guid: 3a88d46ed00b9214a8cc55ba6e67ab09, type: 3}
-  - name: pu_magnet
-    icon: {fileID: 2800000, guid: 1d6d7bf04d2101c4ea04650b6d6b911b, type: 3}
   - name: hero_knight
     icon: {fileID: 2800000, guid: 4b5c3887b0bad8548a4414947f05a7ba, type: 3}
   - name: hero_huntress
@@ -402,3 +396,159 @@ MonoBehaviour:
     icon: {fileID: 2800000, guid: 9725fb87facc42a4984598500f76e0fb, type: 3}
   - name: p_pillars
     icon: {fileID: 2800000, guid: 0d852f5493cecf94a90183f3f83ce947, type: 3}
+  - name: h_specter
+    icon: {fileID: 2800000, guid: 8f9c1000357867240b901c41f1e9fa08, type: 3}
+  - name: p_phoenixform
+    icon: {fileID: 2800000, guid: 706c72ec5b05c5c4895a2b16d3fa3607, type: 3}
+  - name: d_size
+    icon: {fileID: 2800000, guid: 09567225435258a4ea231465d28978cb, type: 3}
+  - name: d_cone
+    icon: {fileID: 2800000, guid: 42ee886b9eb46e7479682e1db6d04ee9, type: 3}
+  - name: d_haste
+    icon: {fileID: 2800000, guid: 22dbcd2748719ad43bd59bde1796a657, type: 3}
+  - name: d_rescue
+    icon: {fileID: 2800000, guid: 0499ab1d9a4c89e46bd7937578b433bf, type: 3}
+  - name: d_wing
+    icon: {fileID: 2800000, guid: 9aacced86bc04b145b76dbfb56a073a7, type: 3}
+  - name: d_wrath
+    icon: {fileID: 2800000, guid: 5e8e69b5deb43794c9c7af543fd3dabd, type: 3}
+  - name: d_blue
+    icon: {fileID: 2800000, guid: 058b5f1fc74ff9246a0bbf545843a713, type: 3}
+  - name: d_red
+    icon: {fileID: 2800000, guid: cf3fcd9aacd70ea4787eedd518d6cc4e, type: 3}
+  - name: d_black
+    icon: {fileID: 2800000, guid: 28ae62dd02159a5408557259db2cfa12, type: 3}
+  - name: dt_fury
+    icon: {fileID: 2800000, guid: 056b1b13bb58d20429d3ddd7aec75c1c, type: 3}
+  - name: dt_swift
+    icon: {fileID: 2800000, guid: 8b22883c78f30f1408caa3f71cdb9c7d, type: 3}
+  - name: dt_vast
+    icon: {fileID: 2800000, guid: 4dfcd6afbd5d195479600ca5d9a0e4bf, type: 3}
+  - name: dt_shelter
+    icon: {fileID: 2800000, guid: 9aacced86bc04b145b76dbfb56a073a7, type: 3}
+  - name: dt_talons
+    icon: {fileID: 2800000, guid: 0499ab1d9a4c89e46bd7937578b433bf, type: 3}
+  - name: dt_wrath
+    icon: {fileID: 2800000, guid: 5e8e69b5deb43794c9c7af543fd3dabd, type: 3}
+  - name: dt_skyrider
+    icon: {fileID: 2800000, guid: 0ae4ea46fbdfd724f8b4f3f7d3841a21, type: 3}
+  - name: dt_unbound
+    icon: {fileID: 2800000, guid: 87efbc1066f04f3458cfbdf7af991c91, type: 3}
+  - name: dt_ancient
+    icon: {fileID: 2800000, guid: f403fd3fd9907c34fb34499a360cbaba, type: 3}
+  - name: db_kindle
+    icon: {fileID: 2800000, guid: 5d1bfb51f1a70fd4886b05fe13c504d3, type: 3}
+  - name: db_maw
+    icon: {fileID: 2800000, guid: 831fa011bf929784f891b0e9df07ea81, type: 3}
+  - name: db_ash
+    icon: {fileID: 2800000, guid: aa267c9fa0817ee4992fca5384b1b098, type: 3}
+  - name: db_inferno
+    icon: {fileID: 2800000, guid: 8dcfc086290e23f42a6fb9e4500e5acb, type: 3}
+  - name: db_kiln
+    icon: {fileID: 2800000, guid: a6bfe0a2e04d0fc4aaf188dca347852f, type: 3}
+  - name: db_cinder
+    icon: {fileID: 2800000, guid: e17e186c482fda54b93bc6d59cb087cc, type: 3}
+  - name: db_azure
+    icon: {fileID: 2800000, guid: 1acd3d2d6663ee146a0cb81d30b5c562, type: 3}
+  - name: db_rekindle
+    icon: {fileID: 2800000, guid: 76cf25f79adc28a4d89c1c8c326ddcba, type: 3}
+  - name: db_sunburst
+    icon: {fileID: 2800000, guid: 2653b06f1cf2c354985eff791146ed3d, type: 3}
+  - name: dr_volatile
+    icon: {fileID: 2800000, guid: 26192e92ba57ab14aad54d12e5bfaeac, type: 3}
+  - name: dr_crater
+    icon: {fileID: 2800000, guid: 7fffb7cc4c383b04aa54294da264ceed, type: 3}
+  - name: dr_hide
+    icon: {fileID: 2800000, guid: 3c885ada20a094b40b9f996948efffcf, type: 3}
+  - name: dr_aftershock
+    icon: {fileID: 2800000, guid: 64cdab0fd26769749830bb1db4ebbc1e, type: 3}
+  - name: dr_quake
+    icon: {fileID: 2800000, guid: a63add0ce9aec074486b6cde90828b28, type: 3}
+  - name: dr_fuse
+    icon: {fileID: 2800000, guid: 7c3bf33b98d3bf44fa5cac77a2b78199, type: 3}
+  - name: dr_meteor
+    icon: {fileID: 2800000, guid: f19e66a5d8991244481c51bfe6caf8c5, type: 3}
+  - name: dr_bulwark
+    icon: {fileID: 2800000, guid: a9c77dbb93d38d443bfca03c562f64cc, type: 3}
+  - name: dr_chain
+    icon: {fileID: 2800000, guid: f17743899e77451409b4b69b866329d3, type: 3}
+  - name: dk_leech
+    icon: {fileID: 2800000, guid: 4b5edc0d5dc6f594a9c856af9613a8c5, type: 3}
+  - name: dk_dread
+    icon: {fileID: 2800000, guid: 7cb658358291aaa40924763722809c0c, type: 3}
+  - name: dk_veil
+    icon: {fileID: 2800000, guid: 849471d166e60b04689eb1ca69dc8538, type: 3}
+  - name: dk_monsoon
+    icon: {fileID: 2800000, guid: 8986ac5211809a2439d35a925942444d, type: 3}
+  - name: dk_hunger
+    icon: {fileID: 2800000, guid: 8c9ad7a941804a14fb037650bbd77e22, type: 3}
+  - name: dk_night
+    icon: {fileID: 2800000, guid: 945d0130aa0790d4ea47352f84cd3f43, type: 3}
+  - name: dk_tide
+    icon: {fileID: 2800000, guid: d78bdf0a2439c2f46900630752d51a66, type: 3}
+  - name: dk_pact
+    icon: {fileID: 2800000, guid: 9e7b561b7d44b36418422ba22782c6a2, type: 3}
+  - name: dk_vampire
+    icon: {fileID: 2800000, guid: e7992d54a416fef4592199d54ad8649a, type: 3}
+  - name: k_iron
+    icon: {fileID: 2800000, guid: 40f2d97515d2434418f9dcdd11d438a2, type: 3}
+  - name: k_temper
+    icon: {fileID: 2800000, guid: fa1ef134167605449bfa05ad736ac5e5, type: 3}
+  - name: k_squire
+    icon: {fileID: 2800000, guid: fbfd4f668aa147047b2e2def340daf55, type: 3}
+  - name: k_guard
+    icon: {fileID: 2800000, guid: 250e3a97993417144b54f215217a51f9, type: 3}
+  - name: k_cleave
+    icon: {fileID: 2800000, guid: 5dffd90266d3ab140b12d5f6c90d21b5, type: 3}
+  - name: k_rider
+    icon: {fileID: 2800000, guid: 7adccee5d4c17ea4e8825815691faa66, type: 3}
+  - name: k_bastion
+    icon: {fileID: 2800000, guid: ea64ce7e823847243b3bc069ec8e4647, type: 3}
+  - name: k_fervor
+    icon: {fileID: 2800000, guid: a0bd799a44bed1e428af3fec661074c2, type: 3}
+  - name: k_wyrmcall
+    icon: {fileID: 2800000, guid: df58bb7f111c45448ab3e43d3d56a8b0, type: 3}
+  - name: h_keen
+    icon: {fileID: 2800000, guid: 9d918a501ea74f1488189172c2955abe, type: 3}
+  - name: h_lithe
+    icon: {fileID: 2800000, guid: 0ce5b8e140910ed4cba2318022cf4b1a, type: 3}
+  - name: h_bondblood
+    icon: {fileID: 2800000, guid: 14c591d64bd453143938766d183c5a23, type: 3}
+  - name: h_quiver
+    icon: {fileID: 2800000, guid: fb1e48043961d8f44948225f539a83bb, type: 3}
+  - name: h_hunter
+    icon: {fileID: 2800000, guid: 46597b5f4dac2054abcebd376c811539, type: 3}
+  - name: h_vital
+    icon: {fileID: 2800000, guid: e5f13a9c4d8c69d41ad5ea231a5fdcff, type: 3}
+  - name: h_predator
+    icon: {fileID: 2800000, guid: a64ac43a7922df944942d53851422b58, type: 3}
+  - name: h_skyblood
+    icon: {fileID: 2800000, guid: 7747e30ff9c5dac43a2157f75e1a277a, type: 3}
+  - name: p_focus
+    icon: {fileID: 2800000, guid: 251362ba85ae74e43b94cca3d38c335f, type: 3}
+  - name: p_ember
+    icon: {fileID: 2800000, guid: 43c4d7b456869f949a90b2b6adeef3be, type: 3}
+  - name: p_kinship
+    icon: {fileID: 2800000, guid: 34af536307beba444940a98892c9153b, type: 3}
+  - name: p_haste
+    icon: {fileID: 2800000, guid: a492eb022d7c3da438e6577a3a2a5110, type: 3}
+  - name: p_skyfire
+    icon: {fileID: 2800000, guid: af67007af666bfb46baa0ec9c6a6abfd, type: 3}
+  - name: p_ascend
+    icon: {fileID: 2800000, guid: e869a3e8ef89c1247a7af83953e66a17, type: 3}
+  - name: p_warding
+    icon: {fileID: 2800000, guid: 3d153d18a783c4947a672395c171e6a2, type: 3}
+  - name: p_flamecaller
+    icon: {fileID: 2800000, guid: d0a0c52e0a17eaf498c88f6db46d20f2, type: 3}
+  - name: pu_speed
+    icon: {fileID: 2800000, guid: 6e9350128577a0e489756a03996233cf, type: 3}
+  - name: pu_damage
+    icon: {fileID: 2800000, guid: b983f985c4a8efc4c8bdcff44987e4b6, type: 3}
+  - name: pu_magnet
+    icon: {fileID: 2800000, guid: 03a80260a3ac359418f954f94eb6fed8, type: 3}
+  - name: dragon_blue
+    icon: {fileID: 2800000, guid: 5693ca65529e72c428aa4fbc36e7e412, type: 3}
+  - name: dragon_red
+    icon: {fileID: 2800000, guid: 1817e357e6661454bbc56b4b43ab315c, type: 3}
+  - name: dragon_black
+    icon: {fileID: 2800000, guid: 8eb8d6b379d486c4b9d3a4ebbd162f14, type: 3}
