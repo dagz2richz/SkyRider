@@ -225,12 +225,17 @@ namespace Skyfall
 
         // ---- dragon flight rules
 
-        /// After leaving the dragon any way at all, the hero must stand on solid ground this long before Q works again
-        /// (time in the air resets it). Stamina refills the moment you touch the ground.
+        /// After leaving the dragon any way at all, Q works again this long after the hero first touches solid ground.
+        /// Stamina refills while on the ground.
         public const float REMOUNT_GROUND_TIME = 1f;
+        /// How far below the feet the ground can drop in a frame and still count as standing on it (slopes).
+        const float GROUND_SNAP = 0.35f;
         public const float FLIGHT_REGEN_RATE = 1.2f;
         float remountWait;
+        /// True once the hero has touched the ground since leaving the dragon (the remount timer is running).
+        bool remountLanded = true;
         public float RemountWait => remountWait;
+        public bool RemountLanded => remountLanded;
         /// Dragon flight time: a flat 10 s (no upgrades lengthen it).
         public float MaxFlight => 10f;
         public float Armor => 1.5f * S("defense", 1) + (Has("p_molten") ? 6f : 0f) + Mod("armor");
@@ -740,6 +745,7 @@ namespace Skyfall
             if (!flying) return;
             flying = false;
             remountWait = REMOUNT_GROUND_TIME;
+            remountLanded = false;
             if (msg != "") game.hud.Toast(msg);
             pet.Dismount();
         }
@@ -802,7 +808,7 @@ namespace Skyfall
             if (GameInput.FlyPressed && !leaping && !SoaringForm)
             {
                 if (flying) ReleaseDragon();
-                else if (remountWait > 0f) game.hud.Toast(onGround ? "Your dragon is circling back..." : "Land first: your dragon can only pick you up from solid ground");
+                else if (remountWait > 0f) game.hud.Toast(remountLanded ? "Your dragon is circling back..." : "Land first: your dragon can only pick you up from solid ground");
                 else if (flightStamina > 0.3f)
                 {
                     SummonDragon();
@@ -884,6 +890,13 @@ namespace Skyfall
                 velocity.z = Mathf.Lerp(velocity.z, (pos.z - Pos.z) / delta, 0.8f);
             }
             float g = terrain.GroundHeight(pos.x, pos.z, Pos.y);
+            // Walking down a slope the ground falls away faster than gravity pulls: stay stuck to it (unless jumping,
+            // flying or leaping) instead of floating a few centimeters up and flickering into the air animation.
+            if (onGround && !soaring && !leaping && velocity.y <= 0f && pos.y > g)
+            {
+                float hstep = new Vector2(pos.x - Pos.x, pos.z - Pos.z).magnitude;
+                if (pos.y - g <= GROUND_SNAP + hstep * 1.2f) pos.y = g;
+            }
             if (pos.y <= g)
             {
                 pos.y = g;
@@ -895,13 +908,14 @@ namespace Skyfall
             }
             else onGround = false;
             Pos = pos;
-            // Flight stamina refills the moment you touch the ground. Remounting needs REMOUNT_GROUND_TIME on solid ground in one go.
+            // Flight stamina refills while you're on the ground. The remount timer starts the moment you first touch
+            // solid ground after leaving the dragon, and keeps running from then on (jumping doesn't reset it).
             if (onGround)
             {
                 flightStamina = Mathf.Min(MaxFlight, flightStamina + delta * FLIGHT_REGEN_RATE);
-                remountWait = Mathf.Max(0f, remountWait - delta);
+                remountLanded = true;
             }
-            else if (!flying && remountWait > 0f) remountWait = REMOUNT_GROUND_TIME;
+            if (remountLanded) remountWait = Mathf.Max(0f, remountWait - delta);
 
             float hspeed = new Vector2(velocity.x, velocity.z).magnitude;
             if (hspeed > 0.6f)

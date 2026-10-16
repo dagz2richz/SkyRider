@@ -456,14 +456,14 @@ namespace Skyfall
             DrawIslandMarker();
         }
 
-        /// The flight bar: dimmed while the hero still has to stand on solid ground before Q can call the dragon again.
+        /// The flight bar: dimmed until Q can call the dragon again (1 s after first touching solid ground).
         void DrawFlightBar(Player p, float bx, float by, float bw)
         {
             var blue = new Color(0.35f, 0.7f, 1f);
             bool landing = !p.flying && p.RemountWait > 0f;
             var fill = landing ? new Color(0.22f, 0.4f, 0.6f) : blue;
             Bar(new Rect(bx + 80, by, bw - 80, 10), p.flightStamina / p.MaxFlight, fill);
-            string label = landing ? (p.onGround ? "Landing" : "Land!") : "Flight (Q)";
+            string label = landing ? (p.RemountLanded ? "Landing" : "Land!") : "Flight (Q)";
             var labelCol = landing ? new Color(1f, 0.7f, 0.4f) : new Color(0.6f, 0.85f, 1f);
             DrawText(new Rect(bx, by - 6, 80, 20), label, Text(15), labelCol, 5);
         }
@@ -931,7 +931,7 @@ namespace Skyfall
                 Space(18);
                 Label($"{Data.HEROES[pickHero].name} with the {Data.DRAGONS[pickDragon].name}.  Everything fights on its own; your spell casts whenever you have the mana.\n" +
                       "Q (gamepad Y) takes flight on your dragon for up to 10 s. E (RB / X) unleashes your dragon's signature, on the ground or in the air (from the air you leap down and slam).\n" +
-                      "After leaving your dragon you must stand on solid ground for 1 s before it can carry you again.\n" +
+                      "After leaving your dragon, it can carry you again 1 s after you first touch solid ground.\n" +
                       "Every level-up offers a card for your dragon. Talents open at levels 3 and 7; armor every 5 levels. Permanent talent trees grow between runs.",
                     16, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperCenter);
                 Space(18);
@@ -1249,7 +1249,7 @@ namespace Skyfall
             { "Mouse", "Look around; orbits all the way, stopping at the ground" },
             { "Scroll wheel", "Zoom in and out" },
             { "Space", "Jump; press again in the air to double jump; hold to climb while flying" },
-            { "Q", "Call your dragon and take flight (again to drop off); after landing, stand on solid ground 1 s to ride again" },
+            { "Q", "Call your dragon and take flight (again to drop off); after you leave it, Q is ready 1 s after you touch the ground" },
             { "E", "Dragon signature ability (from the air you leap down and slam; Q is locked for 3 s after)" },
             { "F", "Capstone form (Dragon Form / Crimson Specter / Phoenix Form)" },
             { "Shift / Ctrl", "Dive while flying" },
