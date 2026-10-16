@@ -242,7 +242,8 @@ namespace Skyfall
         public bool CanFly => game == null || game.stage >= Data.FLIGHT_STAGE;
         public float Armor => 1.5f * S("defense", 1) + (Has("p_molten") ? 6f : 0f) + Mod("armor");
         public float Regen => 0.5f * S("health", 1) + Mod("regen");
-        public float XpMult => 1f
+        /// Experience multiplier: the Utility stat's +8% per rank (and the dev menu's 10x).
+        public float XpMult => (1f + 0.08f * S("utility", 4))
             * (DevMenu.FastLevels ? 10f : 1f)   // DEV
             ;
         public float MaxMana => 100f + 15f * S("mana", 0) + (Has("p_font") ? 40f : 0f);

@@ -266,7 +266,8 @@ namespace Skyfall
             ["dragon"] = new BucketDef { name = "Dragon", color = C(0.35f, 0.65f, 1.0f),
                 stats = new[] { St(12f, "+{0}% dragon damage"), St(8f, "+{0}% breath reach"), St(6f, "-{0}% dragon cooldowns") } },
             ["utility"] = new BucketDef { name = "Utility", color = C(0.6f, 1.0f, 0.6f),
-                stats = new[] { St(10f, "+{0}% jump height"), St(6f, "+{0}% movement speed"), St(25f, "+{0}% orb attract range"), St(0.1f, "+{0}% power-up drop chance") } },
+                stats = new[] { St(10f, "+{0}% jump height"), St(6f, "+{0}% movement speed"), St(25f, "+{0}% orb attract range"), St(0.1f, "+{0}% power-up drop chance"),
+                    St(8f, "+{0}% experience gained") } },
         };
 
         /// Stat key used by armor and the player's stat table: "bucket:index".
