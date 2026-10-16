@@ -364,6 +364,7 @@ namespace Skyfall
         public static bool BuyRow(string key)
         {
             var t = Tree(key);
+            if (DevMenu.FreeTalents && t.rows < Data.TREE_ROWS) { t.rows++; Write(); return true; }   // DEV
             if (t.rows >= Data.TREE_ROWS || t.xp < Data.TREE_ROW_COST[t.rows]) return false;
             t.xp -= Data.TREE_ROW_COST[t.rows];
             t.rows++;

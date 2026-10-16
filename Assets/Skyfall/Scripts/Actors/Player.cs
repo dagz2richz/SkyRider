@@ -240,7 +240,9 @@ namespace Skyfall
         public float MaxFlight => 10f;
         public float Armor => 1.5f * S("defense", 1) + (Has("p_molten") ? 6f : 0f) + Mod("armor");
         public float Regen => 0.5f * S("health", 1) + Mod("regen");
-        public float XpMult => 1f;
+        public float XpMult => 1f
+            * (DevMenu.FastLevels ? 10f : 1f)   // DEV
+            ;
         public float MaxMana => 100f + 15f * S("mana", 0) + (Has("p_font") ? 40f : 0f);
 
         /// No base mana regen: it only comes from the Mana bucket (and Mana Font).

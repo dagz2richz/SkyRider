@@ -6,11 +6,15 @@ namespace Skyfall
 {
     /// All 2D UI: main menu, save slots, high scores, hero/dragon select, loadout, the permanent talent trees, settings,
     /// quit screen, in-run HUD, level-up cards (abilities, stats, dragon, talents, armor), pause, stats and end screen.
-    public class Hud : MonoBehaviour
+    public partial class Hud : MonoBehaviour
     {
         public Game game;
 
-        enum Menu { None, Main, HeroSelect, Loadout, Settings, Quit, Farewell, Talents, Slots }
+        enum Menu
+        {
+            None, Main, HeroSelect, Loadout, Settings, Quit, Farewell, Talents, Slots,
+            Dev,   // DEV
+        }
         Menu menu = Menu.None;
         bool hudVisible;
         bool controlsOpen, pauseOpen, statsOpen, endOpen;
@@ -75,6 +79,7 @@ namespace Skyfall
                 case Menu.Settings: return "settings";
                 case Menu.Talents: return "talents";
                 case Menu.Slots: return "slots";
+                case Menu.Dev: return "dev";   // DEV
                 case Menu.Quit: return "quit";
                 case Menu.Farewell: return null;
             }
@@ -96,6 +101,7 @@ namespace Skyfall
                 case "settings": return "Volume#0";
                 case "talents": return "Back#0";
                 case "slots": return "Back#0";
+                case "dev": return "Back#0";   // DEV
                 case "quit": return "Stay#0";
                 case "controls": return "Back#0";
                 case "pause": return "Resume#0";
@@ -121,6 +127,7 @@ namespace Skyfall
                 case "loadout": ShowHeroSelect(); break;
                 case "talents": LeaveTalents(); break;
                 case "slots": ShowMainMenu(); break;
+                case "dev": ShowMainMenu(); break;   // DEV
                 case "settings": Save.Write(); ShowMainMenu(); break;
                 case "quit": StayFromQuit(); break;
                 case "pause": TogglePause(); break;
@@ -211,6 +218,7 @@ namespace Skyfall
 
         void LeaveTalents()
         {
+            if (talentReturn == Menu.Dev) { menu = Menu.Dev; return; }   // DEV
             if (talentReturn == Menu.HeroSelect) ShowHeroSelect();
             else ShowMainMenu();
         }
@@ -367,6 +375,7 @@ namespace Skyfall
                 case Menu.Settings: UiNav.Layer = "settings"; DrawSettings(); break;
                 case Menu.Talents: UiNav.Layer = "talents"; DrawTalents(); break;
                 case Menu.Slots: UiNav.Layer = "slots"; DrawSlotsMenu(); break;
+                case Menu.Dev: UiNav.Layer = "dev"; DrawDevMenu(); break;   // DEV
                 case Menu.Quit: UiNav.Layer = "quit"; DrawQuit(); break;
                 case Menu.Farewell: DrawFarewell(); break;
             }
@@ -771,6 +780,8 @@ namespace Skyfall
                     Space(8);
                     Button("Controls", 20, colW, true, () => controlsOpen = true);
                     Space(8);
+                    Button("Dev Menu", 18, colW, true, () => menu = Menu.Dev);   // DEV
+                    Space(8);   // DEV
                     Button("Quit", 20, colW, true, ShowQuit);
                     GUILayout.EndVertical();
                     Space(36);
@@ -1048,8 +1059,10 @@ namespace Skyfall
                     GUILayout.FlexibleSpace();
                     GUILayout.BeginVertical(GUILayout.Width(150));
                     Label($"Row {row + 1}" + (row == rows.Length - 1 ? "  ·  Capstone" : ""), 16, GOLD, 4, TextAnchor.UpperLeft, 150, false, true);
+                    bool canBuy = state.xp >= cost;
+                    canBuy |= DevMenu.FreeTalents;   // DEV
                     if (open) Label("Open", 13, new Color(0.6f, 0.9f, 0.6f), 3, TextAnchor.UpperLeft, 150);
-                    else if (next) Button($"Open · {cost} XP", 14, 150, state.xp >= cost, () => Save.BuyRow(key));
+                    else if (next) Button($"Open · {cost} XP", 14, 150, canBuy, () => Save.BuyRow(key));
                     else Label($"{cost} XP", 13, M.Darken(PARCHMENT, 0.35f), 3, TextAnchor.UpperLeft, 150);
                     GUILayout.EndVertical();
                     foreach (var t in rows[row])
