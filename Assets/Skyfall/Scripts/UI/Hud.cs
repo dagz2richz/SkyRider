@@ -469,6 +469,13 @@ namespace Skyfall
         void DrawFlightBar(Player p, float bx, float by, float bw)
         {
             var blue = new Color(0.35f, 0.7f, 1f);
+            if (!p.CanFly)
+            {
+                // The hatchling (world 1) can't carry you yet.
+                Bar(new Rect(bx + 80, by, bw - 80, 10), 0f, blue);
+                DrawText(new Rect(bx, by - 6, 80, 20), "No flight", Text(15), M.Darken(PARCHMENT, 0.35f), 5);
+                return;
+            }
             bool landing = !p.flying && p.RemountWait > 0f;
             var fill = landing ? new Color(0.22f, 0.4f, 0.6f) : blue;
             Bar(new Rect(bx + 80, by, bw - 80, 10), p.flightStamina / p.MaxFlight, fill);
@@ -701,6 +708,7 @@ namespace Skyfall
                     var dd = Data.DRAGONS[p.dragonId];
                     title = dd.sig; color = dd.breath; lvl = Lv("ride"); extra = "ground/air";
                     cdFrac = game.pet.RideFrac;
+                    if (game.pet.Grounded) { extra = "world 2"; cdFrac = 1f; }   // the hatchling has no signature yet
                     return;
                 }
             }

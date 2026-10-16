@@ -1002,6 +1002,7 @@ namespace Skyfall
             foreach (var c in Data.DRAGON_CARDS)
             {
                 if (c.only != "" && c.only != p.dragonId) continue;
+                if (c.id == "ride" && pet.Grounded) continue;   // the hatchling has no signature yet
                 int lv = p.spells.TryGetValue(c.id, out int v) ? v : c.start;
                 if (lv >= c.max) continue;
                 string name = c.id == "dragonfire" ? dd.name + " Breath" : c.id == "ride" ? dd.sig : c.name;
@@ -1216,7 +1217,7 @@ namespace Skyfall
         {
             if (this == null || ended || !running) return;
             string age = Data.DRAGON_AGE[Mathf.Clamp(stage - 1, 0, Data.DRAGON_AGE.Length - 1)];
-            if (stage < Data.FLIGHT_STAGE) hud.Banner($"Your dragon is a {age}", "Too small to carry you yet: it grows with every world");
+            if (stage < Data.FLIGHT_STAGE) hud.Banner($"Your dragon is a {age}", "It walks at your side and breathes fire; its wings come with the next world");
             else if (stage < Data.GUARDIAN_WINGS_STAGE) hud.Banner($"Your dragon has grown: {age}", "It can carry you now (Q)");
             else hud.Banner($"Your dragon is grown: {age}", "Guardian Wings: at 30% health it shields you and heals you");
         }

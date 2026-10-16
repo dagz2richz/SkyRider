@@ -182,6 +182,21 @@ namespace Skyfall
         static readonly string[] SK_GLIDE = { "Fly Glide", "Fly Forward" };
         static readonly string[] SK_BREATH = { "Fly Fireball Shoot", "Fly Flame Attack", "Fly Forward" };
         static readonly string[] SK_ROAR = { "Fly Fireball Shoot", "Fly Flame Attack", "Scream" };
+        static readonly string[] SK_WALK = { "Walk", "walk", "Idle" };
+        static readonly string[] SK_RUN = { "Run", "run", "Walk" };
+        static readonly string[] SK_GROUND_BREATH = { "Flame Attack", "Fireball Shoot", "Basic Attack", "Idle" };
+
+        /// The hatchling (world 1) can't fly yet: it walks beside you and only breathes fire (no dives, no signature).
+        public bool Grounded => game != null && game.stage < Data.FLIGHT_STAGE;
+
+        void AnimateGroundSkin(float speed)
+        {
+            if (skin == null) return;
+            if (breathActive > 0f) skin.Loop(SK_GROUND_BREATH);
+            else if (speed > 7f) skin.Loop(SK_RUN);
+            else if (speed > 0.8f) skin.Loop(SK_WALK);
+            else skin.Loop(SK_IDLE);
+        }
 
         void AnimateSkin(float speed, bool perched)
         {
@@ -297,7 +312,7 @@ namespace Skyfall
         {
             commandCd = Mathf.Max(0f, commandCd - delta);
             rideCd = Mathf.Max(0f, rideCd - delta);
-            if (running && state == "pet" && commandCd <= 0f) AutoDive();
+            if (running && state == "pet" && commandCd <= 0f && !Grounded) AutoDive();
             switch (state)
             {
                 case "mount":
@@ -312,7 +327,8 @@ namespace Skyfall
                     Dive(delta);
                     break;
                 default:
-                    Follow(delta, game.terrain);
+                    if (Grounded && game.running) WalkBeside(delta, game.terrain);
+                    else Follow(delta, game.terrain);
                     break;
             }
             if (running) Breath(delta);
@@ -345,6 +361,39 @@ namespace Skyfall
             transform.rotation = Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0);
             model.Animate(delta, new Vector2(vel.x, vel.z).magnitude, true, vel.y);
             AnimateSkin(new Vector2(vel.x, vel.z).magnitude, !game.running);
+        }
+
+        /// The hatchling trots on the ground just beside you (to the camera's right), turning to breathe on whatever is
+        /// close. If it falls far behind (a teleport), it catches up at once.
+        void WalkBeside(float delta, WorldTerrain terrain)
+        {
+            orbit += delta * 0.5f;
+            var want = player.Pos + player.CamRight * (2.6f + Mathf.Sin(orbit) * 0.4f) - player.CamFwd * 0.6f;
+            float gh = terrain.GroundHeight(want.x, want.z, player.Pos.y + 1.5f);
+            var flatTo = new Vector3(want.x - Pos.x, 0f, want.z - Pos.z);
+            if (flatTo.magnitude > 25f)
+            {
+                Pos = new Vector3(want.x, gh, want.z);
+                vel = Vector3.zero;
+            }
+            else
+            {
+                vel = Vector3.Lerp(vel, flatTo * 4f, Mathf.Clamp01(delta * 6f));
+                if (vel.magnitude > 34f) vel = vel.normalized * 34f;   // fast enough to keep up with dashes
+                var p = Pos + vel * delta;
+                p.y = Mathf.Lerp(Pos.y, terrain.GroundHeight(p.x, p.z, player.Pos.y + 1.5f), Mathf.Clamp01(delta * 15f));
+                Pos = p;
+            }
+            transform.localScale = Vector3.Lerp(transform.localScale, Vector3.one * PetScale, Mathf.Clamp01(delta * 6f));
+            float speed = new Vector2(vel.x, vel.z).magnitude;
+            var look = breathActive > 0f ? breathDir : (speed > 0.8f ? vel : player.CamFwd);
+            look.y = 0f;
+            if (look.magnitude > 0.1f) faceDir = Vector3.Lerp(faceDir, look.normalized, Mathf.Clamp01(delta * 6f));
+            if (new Vector2(faceDir.x, faceDir.z).magnitude > 0.1f) yaw = Mathf.Atan2(-faceDir.x, -faceDir.z);
+            transform.rotation = Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0);
+            model.fold = 1f;
+            model.Animate(delta, speed, false, 0f);
+            AnimateGroundSkin(speed);
         }
 
         // ---------------------------------------------------------------- passive: breath
@@ -513,6 +562,11 @@ namespace Skyfall
         /// Usable on the ground or in the air. From the air your hero also leaps off and slams the target.
         public bool RideCommand()
         {
+            if (Grounded)
+            {
+                game.hud.Toast($"Your {Data.DRAGON_AGE[0].ToLower()} can only breathe fire for now: its signature awakens in the next world");
+                return false;
+            }
             if (rideCd > 0f || state == "dive") return false;
             var at = game.DensestPoint(player.Pos, 34f);
             if (M.IsInf(at)) at = player.AimPoint();
