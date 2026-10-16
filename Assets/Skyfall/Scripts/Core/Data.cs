@@ -586,6 +586,9 @@ namespace Skyfall
         public const float GEM_DROP_CHANCE = 0.5f;
         public const float GEM_VALUE_MULT = 2f;
 
+        /// Level-up rerolls the player gets at the start of every world (unused ones don't carry over).
+        public const int REROLLS_PER_WORLD = 5;
+
         /// Chance that a level-up swaps its usual type (ability <-> stats).
         public const float LEVEL_SWAP_CHANCE = 0.25f;
 

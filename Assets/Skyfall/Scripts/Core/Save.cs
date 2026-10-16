@@ -55,6 +55,8 @@ namespace Skyfall
             public float totalTime, damageDealt, biggestHit;
             /// Meta XP sources so far this run (hero kills, dragon kills, seconds ridden, signatures, rescues).
             public int heroKills, dragonKills, signatures, rescues;
+            /// Level-up rerolls left in the current world.
+            public int rerolls = Data.REROLLS_PER_WORLD;
             public float rideTime;
             public List<IntEntry> spells = new List<IntEntry>();
             public List<IntEntry> buckets = new List<IntEntry>();
@@ -282,10 +284,34 @@ namespace Skyfall
             s.trees = trees;
         }
 
+        /// The product name the game shipped under before it was renamed to DragonRider Survivors. Unity keeps saves in
+        /// a folder named after the product, so an old save is copied over once.
+        const string OLD_PRODUCT_NAME = "DragonFall SkyRiders";
+
+        static void CarryOverOldSave()
+        {
+            try
+            {
+                if (File.Exists(PathName)) return;
+                var parent = Directory.GetParent(Application.persistentDataPath);
+                if (parent == null) return;
+                var old = System.IO.Path.Combine(parent.FullName, OLD_PRODUCT_NAME, System.IO.Path.GetFileName(PathName));
+                if (!File.Exists(old)) return;
+                Directory.CreateDirectory(Application.persistentDataPath);
+                File.Copy(old, PathName);
+                Debug.Log("Skyfall: carried the save over from " + old);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Skyfall: could not carry over the old save: " + e.Message);
+            }
+        }
+
         public static void LoadAll()
         {
             if (loaded) return;
             loaded = true;
+            CarryOverOldSave();
             slots = NewSlots();
             slot = 0;
             try

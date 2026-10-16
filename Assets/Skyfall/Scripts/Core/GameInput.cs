@@ -98,6 +98,9 @@ namespace Skyfall
 
         public static bool StatsPressed =>Pressed(Key.Tab) || (Pad != null && Pad.selectButton.wasPressedThisFrame);
 
+        /// R (gamepad Y) on the level-up screen: reroll the cards.
+        public static bool RerollPressed => Pressed(Key.R) || (Pad != null && Pad.buttonNorth.wasPressedThisFrame);
+
         /// 0, 1 or 2 when a level-up card key (1/2/3) was pressed this frame, else -1.
         public static int CardPressed
         {

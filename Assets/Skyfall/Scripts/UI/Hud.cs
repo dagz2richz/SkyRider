@@ -183,6 +183,7 @@ namespace Skyfall
             {
                 int idx = GameInput.CardPressed;
                 if (idx >= 0 && idx < levelOptions.Count) Choose(levelOptions[idx]);
+                else if (GameInput.RerollPressed) game.Reroll(levelShown, levelKind);
             }
         }
 
@@ -753,8 +754,8 @@ namespace Skyfall
 
         void Title()
         {
-            Label("SKYFALL", 92, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
-            Label("D R A G O N    R I D E R S", 18, M.WithA(PARCHMENT, 0.85f), 4, TextAnchor.UpperCenter);
+            Label("DRAGONRIDER", 84, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
+            Label("S U R V I V O R S", 20, M.WithA(PARCHMENT, 0.85f), 4, TextAnchor.UpperCenter);
             Space(8);
         }
 
@@ -1403,6 +1404,15 @@ namespace Skyfall
                         if (pick) GUIUtility.ExitGUI();
                         if (i < options.Count - 1) Space(20);
                     }
+                });
+                // Rerolls: a fresh set of the same kind of cards, five per world.
+                Space(18);
+                bool canReroll = game.CanReroll(levelKind);
+                string rerollText = levelKind == "talent" ? "Talent rows can't be rerolled" : $"Reroll  [R / Y]   ·   {game.rerolls} left this world";
+                CenterRow(() =>
+                {
+                    bool rr = Button(rerollText, 18, 0, canReroll, () => { if (levelOptions == options) game.Reroll(levelShown, levelKind); });
+                    if (rr) GUIUtility.ExitGUI();
                 });
             });
         }

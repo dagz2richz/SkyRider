@@ -267,6 +267,7 @@ namespace Skyfall
                 Save.IsDragonUnlocked(s.dragon) && Data.DRAGONS.ContainsKey(s.dragon ?? "") ? s.dragon : "blue");
             player.ApplyRunState(s);
             kills = s.kills;
+            rerolls = s.rerolls;
             heroKills = s.heroKills;
             dragonKills = s.dragonKills;
             signatures = s.signatures;
@@ -307,6 +308,7 @@ namespace Skyfall
             s.passive = player.passiveId;
             s.stage = stage;
             s.kills = kills;
+            s.rerolls = rerolls;
             s.heroKills = heroKills;
             s.dragonKills = dragonKills;
             s.signatures = signatures;
@@ -920,35 +922,58 @@ namespace Skyfall
                 kind = "talent";
                 options = TalentOptions(row);
             }
-            else if (lvl % Data.ARMOR_EVERY == 0)
-            {
-                kind = "armor";
-                options = ArmorOptions(lvl);
-            }
             else
             {
-                kind = nextLevelKind;
-                if (M.RandF() < Data.LEVEL_SWAP_CHANCE) kind = kind == "ability" ? "stats" : "ability";
-                nextLevelKind = nextLevelKind == "ability" ? "stats" : "ability";
-                options = kind == "ability" ? AbilityOptions() : new List<LevelOption>();
-                if (options.Count == 0)
+                kind = lvl % Data.ARMOR_EVERY == 0 ? "armor" : nextLevelKind;
+                if (kind != "armor")
                 {
-                    kind = "stats";
-                    options = BucketOptions();
+                    if (M.RandF() < Data.LEVEL_SWAP_CHANCE) kind = kind == "ability" ? "stats" : "ability";
+                    nextLevelKind = nextLevelKind == "ability" ? "stats" : "ability";
                 }
-                // The third card is always your dragon's (unless every dragon upgrade is maxed).
-                var dragon = DragonCard();
-                if (dragon != null)
-                {
-                    if (options.Count >= 3) options.RemoveAt(options.Count - 1);
-                    options.Add(dragon);
-                }
+                options = RollOptions(ref kind, lvl);
             }
             SetPaused(true);
             GameInput.MouseCaptured = false;
             Sfx.Play("levelup", -3f, 0f);
             FX.Vfx("buff", player.Pos, 1f, 2f, null, 0f);
             hud.ShowLevelUp(lvl, options, kind);
+        }
+
+        /// Fresh cards for a level-up of this kind: armor pieces, or two ability / stat cards plus one for your dragon.
+        List<LevelOption> RollOptions(ref string kind, int lvl)
+        {
+            if (kind == "armor") return ArmorOptions(lvl);
+            var options = kind == "ability" ? AbilityOptions() : new List<LevelOption>();
+            if (options.Count == 0)
+            {
+                kind = "stats";
+                options = BucketOptions();
+            }
+            // The third card is always your dragon's (unless every dragon upgrade is maxed).
+            var dragon = DragonCard();
+            if (dragon != null)
+            {
+                if (options.Count >= 3) options.RemoveAt(options.Count - 1);
+                options.Add(dragon);
+            }
+            return options;
+        }
+
+        /// Rerolls left this world: Data.REROLLS_PER_WORLD at every world's start.
+        public int rerolls = Data.REROLLS_PER_WORLD;
+
+        /// Whether the level-up on screen can be rerolled (talent rows always offer the same three).
+        public bool CanReroll(string kind) => rerolls > 0 && kind != "talent";
+
+        /// Swaps the cards on screen for new ones of the same kind. Returns false when none are left.
+        public bool Reroll(int lvl, string kind)
+        {
+            if (!CanReroll(kind)) return false;
+            rerolls--;
+            var options = RollOptions(ref kind, lvl);
+            Sfx.Play("click", -2f, 0f);
+            hud.ShowLevelUp(lvl, options, kind);
+            return true;
         }
 
         static List<LevelOption> Pick3(List<LevelOption> pool)
@@ -1201,6 +1226,7 @@ namespace Skyfall
                 {
                     if (this == null || ended) return;
                     BuildStage(stage + 1);
+                    rerolls = Data.REROLLS_PER_WORLD;
                     player.OnStageStart();
                     WriteRunSave();
                     hud.FadeTo(0f, 0.8f);
