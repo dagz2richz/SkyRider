@@ -4,13 +4,14 @@ using UnityEngine.Rendering;
 
 namespace Skyfall
 {
-    /// Procedural heightmap world with water and medieval ruins/battlefields.
-    public class WorldTerrain : MonoBehaviour
+    /// Procedural heightmap world with water and stage scenery: ruins and battlefields (stage 1), forest villages
+    /// (stage 2) and crypt ruins (stage 3). Maps are 30% bigger than the original 400 m square.
+    public partial class WorldTerrain : MonoBehaviour
     {
-        public const float HALF = 200f;
-        public const int RES = 200;
+        public const float HALF = 260f;
+        public const int RES = 260;
         public const float WATER_LEVEL = -6.5f;
-        public const float PLAY_LIMIT = 165f;
+        public const float PLAY_LIMIT = 214.5f;
         public const int PROP_LAYER = 8;
 
         Noise noise, ridge, detail;
@@ -19,9 +20,13 @@ namespace Skyfall
         float[] heights;
         float cell;
         Transform propsRoot;
+        /// Stage this land belongs to (1..3): its palette and scenery.
+        public int stage = 1;
+        Data.StageDef Def => Data.STAGES[Mathf.Clamp(stage - 1, 0, Data.STAGES.Length - 1)];
 
-        public void Generate(int seed)
+        public void Generate(int seed, int stageNum = 1)
         {
+            stage = stageNum;
             rng = new Rng(seed);
             noise = new Noise(seed, 0.0065f, 4);
             ridge = new Noise(seed + 3, 0.004f, 5);
@@ -35,8 +40,14 @@ namespace Skyfall
             propsRoot.SetParent(transform, false);
             packRoot = new GameObject("PackProps").transform;
             packRoot.SetParent(transform, false);
-            ScatterProps();
-            ScatterGreenery();
+            if (stage == 2) ScatterForest();
+            else if (stage == 3) ScatterCrypts();
+            else
+            {
+                ScatterProps();
+                ScatterGreenery();
+            }
+            BuildIslands();
             // Merge the static scenery into big batches so thousands of small parts render cheaply.
             StaticBatchingUtility.Combine(propsRoot.gameObject);
         }
@@ -95,14 +106,16 @@ namespace Skyfall
             var verts = new Vector3[n * n];
             var norms = new Vector3[n * n];
             var cols = new Color[n * n];
-            var grass = new Color(0.27f, 0.34f, 0.15f);
-            var grass2 = new Color(0.36f, 0.38f, 0.17f);
-            var dry = new Color(0.47f, 0.41f, 0.25f);
-            var dirt = new Color(0.33f, 0.26f, 0.18f);
-            var rock = new Color(0.40f, 0.39f, 0.37f);
+            var pal = Def;
+            var grass = pal.grass;
+            var grass2 = pal.grass2;
+            var dry = pal.dry;
+            var dirt = pal.dirt;
+            var rock = pal.rock;
             var snow = new Color(0.86f, 0.88f, 0.92f);
-            var ash = new Color(0.10f, 0.09f, 0.08f);
-            var mud = new Color(0.22f, 0.19f, 0.14f);
+            var ash = pal.ash;
+            var mud = pal.mud;
+            float scorchAmt = pal.scorch;
             for (int iz = 0; iz < n; iz++)
                 for (int ix = 0; ix < n; ix++)
                 {
@@ -123,7 +136,7 @@ namespace Skyfall
                     c = Color.Lerp(c, snow, M.Smoothstep(40f, 52f, h) * M.Smoothstep(0.55f, 0.3f, slope));
                     c = Color.Lerp(c, mud, M.Smoothstep(WATER_LEVEL + 2.5f, WATER_LEVEL, h));
                     float s = scorch.Get(x, z);
-                    c = Color.Lerp(c, ash, M.Smoothstep(0.35f, 0.6f, s) * 0.85f);
+                    c = Color.Lerp(c, ash, M.Smoothstep(0.35f, 0.6f, s) * 0.85f * scorchAmt);
                     c = M.Mul(c, 0.92f + dn * 0.1f);
                     verts[iz * n + ix] = new Vector3(x, h, z);
                     norms[iz * n + ix] = nrm;
@@ -150,7 +163,8 @@ namespace Skyfall
 
         void BuildWater()
         {
-            var mat = FX.NewLit(new Color(0.12f, 0.22f, 0.26f, 0.82f), 0.08f, 0.3f);
+            var wc = stage == 2 ? new Color(0.1f, 0.24f, 0.24f, 0.82f) : stage == 3 ? new Color(0.08f, 0.1f, 0.16f, 0.85f) : new Color(0.12f, 0.22f, 0.26f, 0.82f);
+            var mat = FX.NewLit(wc, 0.08f, 0.3f);
             var r = FX.Part(transform, MeshGen.Box(), mat, new Vector3(0, WATER_LEVEL, 0), new Vector3(HALF * 2f, 0.01f, HALF * 2f));
             r.gameObject.name = "Water";
             r.shadowCastingMode = ShadowCastingMode.Off;
@@ -203,10 +217,13 @@ namespace Skyfall
         Transform packRoot;
 
         /// Places a pack prop scaled so its largest dimension is targetSize (0 keeps the prefab's size).
-        bool PlacePack(GameObject[] options, Vector3 p, float targetSize, bool align = false)
+        bool PlacePack(GameObject[] options, Vector3 p, float targetSize, bool align = false) => PlacePackT(options, p, targetSize, align) != null;
+
+        /// Like PlacePack, returning the placed prop (or null).
+        Transform PlacePackT(GameObject[] options, Vector3 p, float targetSize, bool align = false)
         {
             var prefab = Skins.Pick(options, rng);
-            if (prefab == null) return false;
+            if (prefab == null) return null;
             var t = Skins.SpawnProp(prefab, packRoot, p, rng.Randf() * 360f, 1f);
             if (targetSize > 0f)
             {
@@ -221,7 +238,7 @@ namespace Skyfall
             }
             if (align) t.rotation = Quaternion.FromToRotation(Vector3.up, NormalAt(p.x, p.z)) * t.rotation;
             foreach (var r in t.GetComponentsInChildren<Renderer>()) r.gameObject.layer = PROP_LAYER;
-            return true;
+            return t;
         }
 
         SkinLibrary Lib => Skins.Lib;
@@ -291,11 +308,15 @@ namespace Skyfall
             {
                 var center = Spot(30f, 0.12f);
                 if (M.IsInf(center)) continue;
-                int houses = rng.RangeInt(4, 7);
+                bool kit = KitAvailable;
+                if (kit) BuildKitVillage(center);
+                int houses = kit ? rng.RangeInt(2, 3) : rng.RangeInt(4, 7);
                 for (int h = 0; h < houses; h++)
                 {
-                    var p = Spot(16f, 0.16f, center, 22f);
-                    if (!M.IsInf(p)) Place(Props.RuinedHouse(rng), p - new Vector3(0, 0.3f, 0));
+                    var p = Spot(16f, 0.12f, center, 22f);
+                    if (M.IsInf(p)) continue;
+                    if (kit) BuildKitHouse(p);
+                    else Place(Props.RuinedHouse(rng), p - new Vector3(0, 0.3f, 0));
                 }
                 int carts = rng.RangeInt(1, 3);
                 for (int c = 0; c < carts; c++)
@@ -342,7 +363,9 @@ namespace Skyfall
             for (int i = 0; i < 8; i++)
             {
                 var p = Spot(40f, 0.18f);
-                if (!M.IsInf(p)) Place(Props.Watchtower(rng), p - new Vector3(0, 0.5f, 0));
+                if (M.IsInf(p)) continue;
+                if (KitAvailable) BuildKitTower(p);
+                else Place(Props.Watchtower(rng), p - new Vector3(0, 0.5f, 0));
             }
             // Standing stones.
             for (int i = 0; i < 4; i++)

@@ -30,11 +30,11 @@ namespace Skyfall
         float weakenT, weakenF;
         public bool lanceMarked;
         float bleedT, bleedDps;
-        public float buffT;          // empowered by a shaman: faster and hits harder
+        public float buffT;          // empowered by a shaman: faster and hits harder (no glow: the buff is stats only)
         string role = "";            // "", "archer", "shaman"
         float shootCd = 2f, buffCd = 1f;
-        Transform buffRing;
         float burnT, burnDps;
+        float poisonT, poisonDps;
         public Vector3 knock;
         float pop, flash;
         public bool dead;
@@ -52,6 +52,11 @@ namespace Skyfall
         string state = "";
         float stateT;
         Vector3 chargeDir;
+
+        /// The final boss never leaves the floating island: movement and knockback are clamped to its footprint.
+        public bool islandBound;
+        WorldTerrain.Island island;
+        const float EDGE_MARGIN = 3f;
 
         public static Enemy Make(Game g, string k, float hpMult, float dmgMult)
         {
@@ -96,13 +101,13 @@ namespace Skyfall
             return e;
         }
 
-        public static Enemy MakeBoss(Game g, int idx, float hpMult, float dmgMult = 1f)
+        public static Enemy MakeBoss(Game g, int idx, float hpMult, float dmgMult = 1f, string name = null, Color? tint = null)
         {
             var d = Data.BOSSES[idx];
             var e = new GameObject("Boss_" + idx).AddComponent<Enemy>();
             e.game = g;
             e.kind = "boss";
-            e.displayName = d.name;
+            e.displayName = name ?? d.name;
             e.size = d.size;
             e.maxHp = d.hp * hpMult;
             e.hp = e.maxHp;
@@ -111,9 +116,10 @@ namespace Skyfall
             e.radius = 0.55f * e.size;
             e.abilities = d.abilities;
             e.isBoss = true;
-            e.xpValue = 60 + idx * 30;
+            e.xpValue = 60 + idx * 60;
             e.abilityCd = 3f;
-            if (!e.TrySkin(true, idx)) e.BuildOgre(d.skin, true, true);
+            if (!e.TrySkin(true, idx)) e.BuildOgre(tint.HasValue ? d.skin * tint.Value : d.skin, true, true);
+            else if (tint.HasValue && tint.Value != Color.white) e.TintModel(tint.Value);
             return e;
         }
 
@@ -132,8 +138,8 @@ namespace Skyfall
             bool isOgreModel = false;
             if (boss)
             {
-                if (bossIdx == 2 && lib.golem) prefab = lib.golem;
-                else if (bossIdx == 4 && lib.golemKing) prefab = lib.golemKing;
+                if (bossIdx == Data.MINI_BOSS && lib.golem) prefab = lib.golem;
+                else if (bossIdx == Data.FINAL_BOSS && lib.golemKing) prefab = lib.golemKing;
                 else { prefab = Skins.Pick(lib.bossOgres) ?? Skins.Pick(lib.ogres); isOgreModel = true; }
             }
             else if (role == "archer") prefab = lib.archer;
@@ -176,9 +182,6 @@ namespace Skyfall
                     FX.Part(st, MeshGen.Sphere(8), FX.Lit(new Color(0.9f, 0.86f, 0.75f)), new Vector3(0, 1.55f, 0), new Vector3(0.3f, 0.32f, 0.3f));
                     FX.Part(st, MeshGen.Sphere(8), FX.Glow(new Color(0.3f, 1f, 0.4f), 3f), new Vector3(0, 1.55f, -0.12f), Vector3.one * 0.12f);
                 }
-                var ring = FX.Part(transform, MeshGen.Ring(), FX.Glow(new Color(0.3f, 1f, 0.4f, 0.5f), 1.3f), new Vector3(0, 0.2f, 0), new Vector3(9f, 0.5f, 9f));
-                FX.NoShadow(ring);
-                buffRing = ring.transform;
             }
             if (boss && headBone)
             {
@@ -202,9 +205,31 @@ namespace Skyfall
             return true;
         }
 
+        readonly System.Collections.Generic.List<Material> tintMats = new System.Collections.Generic.List<Material>();
+
         void OnDestroy()
         {
             if (skinMat) Destroy(skinMat);
+            foreach (var m in tintMats) if (m) Destroy(m);
+        }
+
+        /// Recolors a pack model (stage bosses): per-instance material copies multiplied by the tint.
+        void TintModel(Color tint)
+        {
+            if (model == null) return;
+            foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r is ParticleSystemRenderer) continue;
+                var mats = r.materials;
+                foreach (var m in mats)
+                {
+                    if (m == null) continue;
+                    tintMats.Add(m);
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.GetColor("_BaseColor") * tint);
+                    else if (m.HasProperty("_Color")) m.SetColor("_Color", m.GetColor("_Color") * tint);
+                }
+                r.materials = mats;
+            }
         }
 
         public Vector3 Pos
@@ -315,9 +340,6 @@ namespace Skyfall
             for (int k = 0; k < 3; k++)
                 P(model, MeshGen.Box(), FX.Lit(fc[k]), new Vector3((k - 1) * 0.12f * size, 2.35f * size, -0.25f * size), new Vector3(0.05f, 0.4f, 0.02f) * size,
                     new Vector3(0, 0, (k - 1) * 0.3f));
-            var ring = P(transform, MeshGen.Ring(), FX.Glow(new Color(0.3f, 1f, 0.4f, 0.5f), 1.3f), new Vector3(0, 0.2f, 0), new Vector3(9f, 0.5f, 9f));
-            FX.NoShadow(ring);
-            buffRing = ring.transform;
         }
 
         // ---------------------------------------------------------------- status effects
@@ -330,6 +352,23 @@ namespace Skyfall
         }
 
         public bool Buffed => buffT > 0f;
+        public bool Bleeding => bleedT > 0f;
+        public bool Burning => burnT > 0f;
+        public bool Poisoned => poisonT > 0f;
+
+        /// Poison (Venom Wyrm): damage over time; an ogre that dies poisoned bursts and poisons its neighbors.
+        public void Poison(float t, float dps)
+        {
+            poisonT = Mathf.Max(poisonT, t);
+            poisonDps = Mathf.Max(poisonDps, dps);
+        }
+
+        /// Slows movement to frac of normal speed for t seconds (bosses too).
+        public void Slow(float t, float frac)
+        {
+            slowT = Mathf.Max(slowT, t);
+            slowF = frac;
+        }
 
         public void HitPop()
         {
@@ -387,13 +426,19 @@ namespace Skyfall
             if (burnT > 0f)
             {
                 burnT -= delta;
-                game.DamageEnemy(this, burnDps * delta, Vector3.zero, 0f, false);
+                game.DamageEnemy(this, burnDps * player.BurnMult * delta, Vector3.zero, 0f, false);
             }
             if (bleedT > 0f)
             {
                 bleedT -= delta;
-                game.DamageEnemy(this, bleedDps * delta, Vector3.zero, 0f, false);
+                game.DamageEnemy(this, bleedDps * player.BleedMult * delta, Vector3.zero, 0f, false);
                 if (M.RandF() < delta * 6f) FX.Burst(Pos + new Vector3(0, size, 0), new Color(0.7f, 0f, 0.03f), 3, 2f, 0.12f);
+            }
+            if (poisonT > 0f)
+            {
+                poisonT -= delta;
+                game.DamageEnemy(this, poisonDps * delta, Vector3.zero, 0f, false);
+                if (M.RandF() < delta * 5f) FX.Burst(Pos + new Vector3(0, size * 1.2f, 0), new Color(0.5f, 1f, 0.2f), 3, 1.5f, 0.15f);
             }
             if (dead) return;
             slowT -= delta;
@@ -411,9 +456,11 @@ namespace Skyfall
             else if (shockT > 0f) SetEmission(new Color(0.5f, 0.65f, 1f), 0.6f + M.RandF() * 0.8f);
             else if (burnT > 0f) SetEmission(new Color(1f, 0.45f, 0.1f), 0.35f + Mathf.Sin(animT * 18f) * 0.2f);
             else if (weakenT > 0f) SetEmission(new Color(0.6f, 0f, 0.05f), 0.5f);
-            else if (buffT > 0f) SetEmission(new Color(0.25f, 1f, 0.35f), 0.35f + Mathf.Sin(animT * 6f) * 0.1f);
             else SetEmission(Color.black, 0f);
-            model.localScale = Vector3.one * (1f + pop * 0.18f);
+            // Crouch before a jump, stretch in the air, squash on landing.
+            squash = Mathf.MoveTowards(squash, jumpWind > 0f ? -0.25f : (airborne ? 0.15f : 0f), delta * 2.2f);
+            model.localScale = Vector3.one * (1f + pop * 0.18f) + new Vector3(-squash * 0.5f, squash, -squash * 0.5f);
+            jumpCd -= delta;
 
             var terrain = game.terrain;
             var to = M.Flat(player.Pos - Pos);
@@ -422,7 +469,17 @@ namespace Skyfall
             float spd = speed * (slowT > 0f ? slowF : 1f) * (buffT > 0f ? 1.3f : 1f);
 
             var move = Vector3.zero;
-            if (stunT > 0f) stunT -= delta;
+            if (stunT > 0f)
+            {
+                stunT -= delta;
+                jumpWind = 0f;
+            }
+            else if (airborne) { }
+            else if (jumpWind > 0f)
+            {
+                jumpWind -= delta;
+                if (jumpWind <= 0f) LaunchJump();
+            }
             else if (isBoss) move = BossAi(delta, player, dir, dist, spd);
             else if (role == "archer")
             {
@@ -447,16 +504,55 @@ namespace Skyfall
                     buffCd = 1f;
                     foreach (var o in game.EnemiesInRadius(Pos, 9f, 6f))
                         if (o != this && !o.isBoss) o.buffT = Mathf.Max(o.buffT, 1.6f);
-                    FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 9f, new Color(0.3f, 1f, 0.4f, 0.5f), 0.6f);
                 }
-                if (buffRing) buffRing.Rotate(0f, delta * Mathf.Rad2Deg, 0f, Space.Self);
             }
-            else move = dir * spd;
+            else
+            {
+                move = dir * spd;
+                if (role == "" && jumpCd <= 0f && frozenT <= 0f) TryJump(player, dir, dist);
+            }
 
-            var p = Pos + (move + knock) * delta;
-            knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
-            p.y = terrain.Height(p.x, p.z);
-            Pos = p;
+            if (airborne) FlyStep(delta);
+            else
+            {
+                var p = Pos + (move + knock) * delta;
+                knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
+                float g;
+                if (islandBound && island != null)
+                {
+                    bool clamped = ClampToIsland(ref p);
+                    if (clamped && state == "charge")
+                    {
+                        // The charge ends at the edge with a crash.
+                        state = "";
+                        FX.Shockwave(p + new Vector3(0, 0.3f, 0), 7f, M.WithA(FX.EnemyRed, 0.8f), 0.35f, false);
+                        FX.Burst(p + new Vector3(0, 0.5f, 0), FX.EnemyRed, 14, 6f, 0.5f);
+                        game.Shake(0.3f);
+                    }
+                    g = terrain.SurfaceHeight(p.x, p.z, island.topY);
+                }
+                else g = terrain.SurfaceHeight(p.x, p.z, Pos.y);
+                if (perched)
+                {
+                    // Landed on a ruin top: stay up there until walking off its edge.
+                    float og = terrain.ObstacleTop(p.x, p.z, Pos.y);
+                    if (og > g) g = og;
+                    else perched = false;
+                }
+                if (Pos.y - g > 0.7f)
+                {
+                    // Walked off a ledge: fall.
+                    fallV -= JUMP_G * delta;
+                    p.y = Mathf.Max(g, Pos.y + fallV * delta);
+                    if (p.y <= g) fallV = 0f;
+                }
+                else
+                {
+                    fallV = 0f;
+                    p.y = g;
+                }
+                Pos = p;
+            }
             if (dist > 0.1f && state != "charge" && frozenT <= 0f)
             {
                 yaw = M.LerpAngle(yaw, M.YawTo(dir), Mathf.Clamp01(delta * 8f));
@@ -495,6 +591,113 @@ namespace Skyfall
             }
         }
 
+        // ---------------------------------------------------------------- jumping up to the player
+
+        /// Big ogres and bosses are solid for the player; the small ones get shoved aside.
+        public bool Solid => isBoss || kind == "brute" || kind == "hulk";
+        public bool Airborne => airborne;
+
+        /// Moves this ogre sideways (the player or another body pushing it).
+        public void Shove(Vector3 flat) => transform.position += flat;
+
+        /// True while this ogre stands on a floating island (it is bound to one, or its feet are on an island top).
+        public bool OnFloatingIsland()
+        {
+            if (islandBound) return true;
+            var isl = game.terrain.IslandAt(Pos.x, Pos.z, Pos.y);
+            return isl != null && Pos.y - isl.topY < 1f;
+        }
+
+        public static int jumpCount;
+        public static float highestJump;
+        const float JUMP_G = 24f;
+        float jumpCd = 1.5f, jumpWind, takeoffY, jumpLife, fallV, squash;
+        bool airborne, perched;
+        Vector3 jumpVel;
+
+        /// Leaps at a player who is above this ogre (on a ruin, a ledge or hovering low on the dragon). The landing spot is
+        /// always the terrain or a ruin top within about 4.6 m of the take-off height, never an island, so ground ogres can
+        /// not reach the floating islands.
+        void TryJump(Player player, Vector3 dir, float dist)
+        {
+            jumpCd = 0.3f;
+            if (isBoss || islandBound || dist > 6.5f) return;
+            var terrain = game.terrain;
+            float py = player.Pos.y, dy = py - Pos.y;
+            if (dy < 1.1f + 0.3f * dist || dy > (player.flying ? 3.6f : 4.6f)) return;
+            var isl = terrain.IslandAt(player.Pos.x, player.Pos.z, py);
+            if (isl != null && py - isl.topY < 0.8f && !OnFloatingIsland()) return;   // the player is up on an island
+            float reachY = Pos.y + 4.1f;
+            float Land(Vector3 q) => Mathf.Max(terrain.SurfaceHeight(q.x, q.z, Pos.y), terrain.ObstacleTop(q.x, q.z, reachY));
+            var near = player.Pos - dir * (radius + 0.5f);
+            Vector3 target;
+            float yL, h;
+            if (player.flying)
+            {
+                target = near;
+                yL = Land(near);
+                h = dy + 0.6f;
+            }
+            else
+            {
+                float y1 = Land(near);
+                float y2 = Land(player.Pos);
+                if (y1 >= py - 1f) { target = near; yL = y1; }
+                else if (y2 >= py - 1f) { target = player.Pos; yL = y2; }
+                else return;   // the player stands on something an ogre cannot get onto
+                h = Mathf.Max(yL - Pos.y, 0f) + 0.9f;
+            }
+            if (yL - Pos.y > 4.7f) return;
+            float vy0 = Mathf.Sqrt(2f * JUMP_G * h);
+            float disc = vy0 * vy0 - 2f * JUMP_G * (yL - Pos.y);
+            if (disc < 0f) return;
+            float flight = (vy0 + Mathf.Sqrt(disc)) / JUMP_G;
+            var d = new Vector3(target.x - Pos.x, 0f, target.z - Pos.z);
+            if (d.magnitude / flight > 15f) return;
+            jumpVel = new Vector3(d.x / flight, vy0, d.z / flight);
+            jumpWind = 0.4f;
+            jumpLife = flight + 0.6f;
+            if (rig) rig.Loop("Idle", "Idle01");
+            else armR.KeysX((-0.6f, 0.15f), (0.2f, 0.25f));
+        }
+
+        void LaunchJump()
+        {
+            airborne = true;
+            perched = false;
+            takeoffY = Pos.y;
+            jumpCd = M.RandRange(2.8f, 4.5f);
+            jumpCount++;
+            if (rig) rig.Action(0.9f, "Attack02", "Attack01");
+            else armR.KeysX((-2.4f, 0.1f), (0.4f, 0.5f));
+            FX.Burst(Pos + new Vector3(0, 0.3f, 0), new Color(0.5f, 0.42f, 0.32f), 6, 3f, 0.3f);
+        }
+
+        void FlyStep(float delta)
+        {
+            var terrain = game.terrain;
+            jumpVel.y -= JUMP_G * delta;
+            jumpLife -= delta;
+            var p = Pos + (jumpVel + new Vector3(knock.x, 0f, knock.z)) * delta;
+            knock = Vector3.Lerp(knock, Vector3.zero, Mathf.Clamp01(delta * 7f));
+            highestJump = Mathf.Max(highestJump, p.y - takeoffY);
+            float surface = terrain.SurfaceHeight(p.x, p.z, takeoffY);
+            float og = terrain.ObstacleTop(p.x, p.z, Pos.y);
+            float g = Mathf.Max(surface, og);
+            if ((jumpVel.y < 0f && p.y <= g) || jumpLife <= 0f)
+            {
+                p.y = g;
+                airborne = false;
+                perched = og > surface + 0.05f;
+                squash = -0.3f;
+                fallV = 0f;
+                jumpCd = Mathf.Max(jumpCd, 1.5f);
+                FX.Burst(p + new Vector3(0, 0.2f, 0), new Color(0.5f, 0.42f, 0.32f), 8, 4f * size, 0.35f);
+                if (Vector3.Distance(p, game.player.Pos) < 18f) game.Shake(0.08f * size);
+            }
+            Pos = p;
+        }
+
         void ShootArrow(Player player)
         {
             var from = Pos + new Vector3(0, 1.6f * size, 0);
@@ -527,14 +730,61 @@ namespace Skyfall
                     return chargeDir * spd * 7f;
             }
             abilityCd -= delta;
+            bool stranded = islandBound && !PlayerOnIsland(player);
             if (abilityCd <= 0f && dist < 45f)
             {
                 string ab = abilities[abilityI % abilities.Length];
                 abilityI++;
+                // With the player below the island only ranged attacks and summons make sense.
+                if (stranded && ab != "boulders" && ab != "summon") ab = "boulders";
                 abilityCd = M.RandRange(3.5f, 5f);
                 UseAbility(ab, player, dir);
             }
+            // If the player is off the island the boss waits at the edge, facing them.
+            if (stranded && !IslandRoom(Pos, dir)) return Vector3.zero;
             return dir * spd;
+        }
+
+        /// Pins this boss to the floating island (final battle).
+        public void BindToIsland(WorldTerrain.Island isl)
+        {
+            island = isl;
+            islandBound = isl != null;
+        }
+
+        /// True while the player stands on (or hovers above) the boss island.
+        public bool PlayerOnIsland(Player player) =>
+            island != null && island.Contains(player.Pos.x, player.Pos.z) && player.Pos.y > island.topY - 2f;
+
+        /// Largest distance from the island center this boss may walk to in direction angle a.
+        float EdgeLimit(float a) => Mathf.Max(2f, island.EdgeRadius(a) - EDGE_MARGIN);
+
+        /// Clamps p (x/z) to the island footprint. Returns true if it had to be pulled back.
+        bool ClampToIsland(ref Vector3 p)
+        {
+            var c = island.center;
+            float dx = p.x - c.x, dz = p.z - c.z;
+            float d = Mathf.Sqrt(dx * dx + dz * dz);
+            float lim = EdgeLimit(Mathf.Atan2(dz, dx));
+            if (d <= lim) return false;
+            p.x = c.x + dx / d * lim;
+            p.z = c.z + dz / d * lim;
+            return true;
+        }
+
+        /// Whether there is still room to step from `from` in direction `dir` without hitting the island rim.
+        bool IslandRoom(Vector3 from, Vector3 dir)
+        {
+            var q = from + dir * 1.2f;
+            float dx = q.x - island.center.x, dz = q.z - island.center.z;
+            return Mathf.Sqrt(dx * dx + dz * dz) < EdgeLimit(Mathf.Atan2(dz, dx)) - 0.2f;
+        }
+
+        /// Pulls a point back inside the island footprint (for adds summoned by the island boss).
+        public Vector3 InsideIsland(Vector3 want)
+        {
+            if (island != null) ClampToIsland(ref want);
+            return want;
         }
 
         void UseAbility(string ab, Player player, Vector3 dir)
@@ -559,7 +809,7 @@ namespace Skyfall
                     stateT = 0.7f;
                     chargeDir = dir;
                     if (rig) rig.Action(0.7f, "Victory", "Attack02");
-                    FX.Telegraph(Pos, radius + 1.5f, 0.7f, new Color(1f, 0.5f, 0.1f, 0.4f));
+                    FX.Telegraph(Pos, radius + 1.5f, 0.7f, new Color(FX.EnemyRed.r, FX.EnemyRed.g, FX.EnemyRed.b, 0.4f));
                     Sfx.Play("roar", Pos, -4f, 0.15f);
                     break;
                 case "boulders":
@@ -580,7 +830,9 @@ namespace Skyfall
                     for (int i = 0; i < 6; i++)
                     {
                         float a = M.TAU * i / 6f;
-                        game.SpawnEnemy(i % 3 == 0 ? "brute" : "ogre", Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * (radius + 4f));
+                        var sp = Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * (radius + 4f);
+                        if (islandBound) game.SpawnEnemy(i % 3 == 0 ? "brute" : "ogre", InsideIsland(sp), island.topY);
+                        else game.SpawnEnemy(i % 3 == 0 ? "brute" : "ogre", sp);
                     }
                     break;
             }
@@ -595,13 +847,13 @@ namespace Skyfall
             }
             else yield return Tw.Wait(1.05f);
             if (this == null || dead || player == null) yield break;
-            FX.Vfx("ground_explosion", at, rad / 6f);
-            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad, new Color(1f, 0.4f, 0.2f, 0.9f), 0.4f);
-            FX.Burst(at + new Vector3(0, 0.5f, 0), new Color(0.55f, 0.42f, 0.3f), 30, 12f, 0.7f);
+            FX.Vfx("ground_explosion", at, rad / 6f, 2f, null, 0.04f, FX.EnemyRed);
+            FX.Shockwave(at + new Vector3(0, 0.3f, 0), rad, M.WithA(FX.EnemyRed, 0.9f), 0.4f, false);
+            FX.Burst(at + new Vector3(0, 0.5f, 0), FX.EnemyRed, 30, 12f, 0.7f);
             Sfx.Play("boom", at, 2f);
             game.Shake(0.6f);
             var d = player.Pos - at;
-            float gh = game.terrain.Height(player.Pos.x, player.Pos.z);
+            float gh = game.terrain.GroundHeight(player.Pos.x, player.Pos.z, player.Pos.y);
             if (new Vector2(d.x, d.z).magnitude < rad && player.Pos.y - gh < 3f)
                 player.TakeDamage(damage * 1.4f * AtkMult);
         }
@@ -624,7 +876,7 @@ namespace Skyfall
             b.damage = damage;
             var d = to - from;
             b.velocity = new Vector3(d.x / flightTime, (d.y + 0.5f * G * flightTime * flightTime) / flightTime, d.z / flightTime);
-            FX.Telegraph(new Vector3(to.x, g.terrain.Height(to.x, to.z), to.z), 2.6f, flightTime, new Color(1f, 0.3f, 0.1f, 0.35f));
+            FX.Telegraph(new Vector3(to.x, g.terrain.SurfaceHeight(to.x, to.z, to.y), to.z), 2.6f, flightTime, new Color(FX.EnemyRed.r, FX.EnemyRed.g, FX.EnemyRed.b, 0.35f));
             FX.Part(b.transform, MeshGen.Sphere(7), FX.Lit(Props.STONE_DARK), Vector3.zero, new Vector3(1.1f, 0.9f, 1f));
             b.transform.position = from;
         }
@@ -640,13 +892,13 @@ namespace Skyfall
             var p = game.player;
             var pos = transform.position;
             bool hitPlayer = p != null && Vector3.Distance(p.Center, pos) < p.HitRadius + 0.8f;
-            float gh = game.terrain.Height(pos.x, pos.z);
+            float gh = game.terrain.SurfaceHeight(pos.x, pos.z, pos.y - velocity.y * delta);
             if (hitPlayer || pos.y < gh || life <= 0f)
             {
-                FX.Burst(pos, new Color(0.45f, 0.4f, 0.35f), 14, 7f, 0.4f);
-                FX.Shockwave(pos + new Vector3(0, 0.2f, 0), 2.6f, new Color(0.7f, 0.5f, 0.3f, 0.7f), 0.3f);
+                FX.Burst(pos, FX.EnemyRed, 14, 7f, 0.4f);
+                FX.Shockwave(pos + new Vector3(0, 0.2f, 0), 2.6f, M.WithA(FX.EnemyRed, 0.7f), 0.3f, false);
                 Sfx.Play("arrow_hit", pos, 2f);
-                FX.Vfx("stones_hit", pos, 1f, 2f);
+                FX.Vfx("stones_hit", pos, 1f, 2f, null, 0.04f, FX.EnemyRed);
                 if (p != null && Vector3.Distance(p.Center, pos) < 2.6f) p.TakeDamage(damage);
                 Destroy(gameObject);
             }

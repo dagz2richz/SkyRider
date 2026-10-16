@@ -14,10 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Skyfall.SkinLibrary
   knight: {fileID: 1319517528997712, guid: 1543549dcdf638d488bd40cb68dd9b8e, type: 3}
   pyromancer: {fileID: 1248815240492774, guid: ccd8c3b89aa02e943a08ab9238a8a70c, type: 3}
-  huntress: {fileID: 0}
-  dragonBlue: {fileID: 971994670, guid: 31a77d5e57bdce243a1c38bc0ba2808f, type: 3}
-  dragonRed: {fileID: 101568, guid: 59c100dd669d88f46b60555886d4dae7, type: 3}
+  huntress: {fileID: 7991373657290914776, guid: 0d1dc15b702800b41900704ee66dac39, type: 3}
+  huntressController: {fileID: 9100000, guid: 70015e4d52e077d4894c25a94115fb2f, type: 2}
+  dragonBlue: {fileID: 194904, guid: 445a5c29e7f715947b713a753f242af0, type: 3}
+  dragonRed: {fileID: 139696, guid: eb58e8f2831a51f45a44a261e6710cdd, type: 3}
   dragonBlack: {fileID: 116688, guid: 09ade59177310454ba3c93ae4b7dc125, type: 3}
+  dragonAlbino: {fileID: 132738, guid: aeb4794909bc89d43b72ad784903e0f5, type: 3}
   ogres:
   - {fileID: 5674075356657402348, guid: 7e38136a601fead4a9e3d91f1163ff27, type: 3}
   - {fileID: 5674075356657402348, guid: e3b54a198a81ae947869418b3de8360d, type: 3}
@@ -58,7 +60,63 @@ MonoBehaviour:
   - {fileID: 6739804228592001243, guid: 6cdd667aa0034cd4dadc8d58a65fb098, type: 3}
   - {fileID: 6739804228592001243, guid: 6cdd667aa0034cd4dadc8d58a65fb098, type: 3}
   - {fileID: 6444807355431749394, guid: f593bc20677ebf14abd27a4853408c68, type: 3}
+  ruinsKit: {fileID: -927199367670048503, guid: 71ff0e77341aa304c921a48a639924b6, type: 3}
+  forestTrees:
+  - {fileID: 143020, guid: aee731a00031fcc4d9d2b075e528e050, type: 3}
+  - {fileID: 142018, guid: d537224908c5f444f86c9e57e0c7234c, type: 3}
+  - {fileID: 104588, guid: 702740a5e4ac1ee40a1888d3b62faa91, type: 3}
+  - {fileID: 166966, guid: 78c29697749a6d44e964f9a0cf83d77a, type: 3}
+  - {fileID: 188972, guid: 7641c7e8354e2c44cab6432d9d2c6d1b, type: 3}
+  - {fileID: 168064, guid: fb8ae0828a555f74996970b8d0495f15, type: 3}
+  - {fileID: 112728, guid: 069e1e44b643edc4fb4a9d4311a78fb7, type: 3}
+  - {fileID: 176282, guid: ac00d368a6864c04791bc85c5567bd51, type: 3}
+  - {fileID: 174854, guid: 3fd9507fb16d56044bcf520c1d14427c, type: 3}
+  - {fileID: 1955220120978140, guid: e03898b14a86f234a97b28e18ce3a154, type: 3}
+  - {fileID: 1756270387487942424, guid: 1286e3a745458f4438fb05c8ad88add5, type: 3}
+  - {fileID: 1191365904497370, guid: 66b2ba6f28a15344e8faa85458712b9d, type: 3}
+  forestBushes:
+  - {fileID: 4537925530980420048, guid: eed938129e31212468dfecd2e4246b59, type: 3}
+  - {fileID: 7742300369867183706, guid: a03ab4b398d4be2419fb1eb53e6aef65, type: 3}
+  - {fileID: 3653093322411788321, guid: c81ddac14e06bd74aa5cebb160dd3fc1, type: 3}
+  - {fileID: 8430129678805992213, guid: 3902e77c6481c6246b1a1943d749bb44, type: 3}
+  - {fileID: 4763368041989940180, guid: 9aa1ebd2266f0fa489786f9dc7e73ef8, type: 3}
+  forestRocks:
+  - {fileID: 178873758778006785, guid: 0d3784e80d2c3074bb909d9cdd536402, type: 3}
+  - {fileID: 1598535351202878, guid: d4c3b8efab3e0cc4f9c5e7d47142f18c, type: 3}
+  - {fileID: 3642687927013169682, guid: 8c52122c59156cb43a6d20cc2533c98a, type: 3}
+  - {fileID: 1487456567395968, guid: feae48108558fbc49aa10a5c915abd98, type: 3}
+  villageHouses:
+  - {fileID: 4637899505770374537, guid: 7c41964487b21dc4997089d9294c86f1, type: 3}
+  - {fileID: 2694867359139682505, guid: 8df3daf84b58c4b4bb283bcedf5d9d62, type: 3}
+  - {fileID: 7732115209062666588, guid: 22585a2e94d83b7478b76483455dbd91, type: 3}
+  - {fileID: 1414805672330745005, guid: 94f76ea580cc3594e940ce929301f400, type: 3}
+  - {fileID: 1844134078099234, guid: 7ee8d320528490b4c95b7e1173450eea, type: 3}
+  - {fileID: 1195863253874382, guid: 6aec5bac406a2d044ae41b2b1ef23ffd, type: 3}
+  villageProps:
+  - {fileID: 1828137249404456, guid: eb736a11e2ad7564eb316234731e2539, type: 3}
+  - {fileID: 4942618445395523490, guid: 67c45f71b737c68498d0195bc68cefc3, type: 3}
+  - {fileID: 1154291972530608, guid: 7fa469182d2dc504ebec967a2e6bec53, type: 3}
+  - {fileID: 2928252327384129804, guid: f31d7085a400ebb4d8a0db596ba837f8, type: 3}
+  - {fileID: 1448268250351644, guid: a6a526ad9171b0c49a3c326944250047, type: 3}
+  - {fileID: 2431882903320965899, guid: d83008bf16dbec848bb3db2bfa781c7b, type: 3}
+  cryptPieces:
+  - {fileID: 1159351990771520630, guid: 91ad7bf144749b04ab484a680630a040, type: 3}
+  - {fileID: 8644115839786080152, guid: 4963b55652180e946b10fda98efef25e, type: 3}
+  - {fileID: 178811535428721102, guid: f8c0297a8d99e2747baeb5697c8ecb66, type: 3}
+  - {fileID: 1159351990771520630, guid: 91ad7bf144749b04ab484a680630a040, type: 3}
+  cryptProps:
+  - {fileID: 4377933626515690895, guid: a1834b6441f5f964186d094e8fd881e5, type: 3}
+  - {fileID: 4302944737786620945, guid: d429c8a2280208c43ace747d82fa1864, type: 3}
+  - {fileID: 5030231515337382016, guid: 83b081522f15df64cb4f8b5416eccdec, type: 3}
+  - {fileID: 4710245704244623678, guid: 566ca9ac4aee88e47906121eaa705eb1, type: 3}
+  - {fileID: 556515823571614727, guid: 2908a19ef1a7b3a49bfc9a55bf645e69, type: 3}
+  - {fileID: 6967361487159559488, guid: c533c10f37d12c941bf5dfea26e26cac, type: 3}
+  - {fileID: 2157335988112527113, guid: c0b6670604b282847a0f26cf98f36820, type: 3}
+  - {fileID: 7212807089758395303, guid: 587911d8e2e27694daaec695bc48f418, type: 3}
+  cryptTorch: {fileID: 510141063021254879, guid: 7a937ee5bc40ba142a195e3a41fa7258, type: 3}
   skybox: {fileID: 2100000, guid: de1d750fefeeac642bf9b11a3978ccf5, type: 2}
+  skyStage2: {fileID: 2100000, guid: 9ca22510633fbfd4399f1704cd9d5c72, type: 2}
+  skyStage3: {fileID: 2100000, guid: d1fdb8e44b28da34d9e922cca0bc740e, type: 2}
   vfx:
   - name: hit
     prefab: {fileID: 5238538877814813142, guid: 47096eff328e11a418ace7db2d72aa97, type: 3}
@@ -92,6 +150,8 @@ MonoBehaviour:
     prefab: {fileID: 7155335147208632822, guid: 97c43495f80a3244fad1301dfafbe252, type: 3}
   - name: portal_red
     prefab: {fileID: 4617036660772024948, guid: 52c7d057cba585641bb68312c10d7791, type: 3}
+  - name: portal_blue
+    prefab: {fileID: 5607819269926399345, guid: 45e0f06c750176947862c10346226439, type: 3}
   - name: dust_puff
     prefab: {fileID: 5610010966355794069, guid: 803ecf87f61d9fb4f84ba6319ba95c9c, type: 3}
   sounds:
@@ -170,3 +230,172 @@ MonoBehaviour:
   - name: flame
     clips:
     - {fileID: 8300000, guid: 674258a055e994b72bbb15a28eb79838, type: 3}
+  icons:
+  - name: gravity_well
+    icon: {fileID: 2800000, guid: 1d6d7bf04d2101c4ea04650b6d6b911b, type: 3}
+  - name: frost_bolt
+    icon: {fileID: 2800000, guid: 4184495d79c523148bd19006e6e88b2d, type: 3}
+  - name: chain_lightning
+    icon: {fileID: 2800000, guid: 44fb229f9697ff644a55d68e6a978821, type: 3}
+  - name: meteor
+    icon: {fileID: 2800000, guid: 0d852f5493cecf94a90183f3f83ce947, type: 3}
+  - name: blood_aura
+    icon: {fileID: 2800000, guid: c1d35b40e3fb0f9438f23087432d9765, type: 3}
+  - name: lightning_storm
+    icon: {fileID: 2800000, guid: 4637953d65a24364aab3372a525b9ed2, type: 3}
+  - name: bloodthirst
+    icon: {fileID: 2800000, guid: 2531e15fe967a354d9d28c9cfc1d71ca, type: 3}
+  - name: spellblade
+    icon: {fileID: 2800000, guid: 3a88d46ed00b9214a8cc55ba6e67ab09, type: 3}
+  - name: windwalker
+    icon: {fileID: 2800000, guid: 62ce59ce09148c847b198159a3abc9f6, type: 3}
+  - name: sword
+    icon: {fileID: 2800000, guid: d31aa8412a4d374458c912d11686642a, type: 3}
+  - name: blood_lance
+    icon: {fileID: 2800000, guid: 44b8110a9d8ba7144abcd7bda8d5caf3, type: 3}
+  - name: staff
+    icon: {fileID: 2800000, guid: ed0a32aeeb2bf0f40ad22e944d930018, type: 3}
+  - name: def_shield
+    icon: {fileID: 2800000, guid: a42b3b2bb82524b4c9e97aca1cb294fe, type: 3}
+  - name: def_evasion
+    icon: {fileID: 2800000, guid: 62ce59ce09148c847b198159a3abc9f6, type: 3}
+  - name: def_ward
+    icon: {fileID: 2800000, guid: 9725fb87facc42a4984598500f76e0fb, type: 3}
+  - name: dragonfire
+    icon: {fileID: 2800000, guid: 9f69b220176e6964fbd87f5f158d45e3, type: 3}
+  - name: ride
+    icon: {fileID: 2800000, guid: 00fbb4588136cde4fbf9001df788bcfb, type: 3}
+  - name: bucket_health
+    icon: {fileID: 2800000, guid: a20d322c5e65a6746808e67a31dfe555, type: 3}
+  - name: bucket_mana
+    icon: {fileID: 2800000, guid: 51d32f802cfabaf4a86ad058906b4c11, type: 3}
+  - name: bucket_offense
+    icon: {fileID: 2800000, guid: 4ad16adfdf2d1a441879a598de742eb6, type: 3}
+  - name: bucket_defense
+    icon: {fileID: 2800000, guid: a42b3b2bb82524b4c9e97aca1cb294fe, type: 3}
+  - name: bucket_dragon
+    icon: {fileID: 2800000, guid: 4dfcd6afbd5d195479600ca5d9a0e4bf, type: 3}
+  - name: bucket_utility
+    icon: {fileID: 2800000, guid: dc32764b6d7615c408f2d50d6c532c9f, type: 3}
+  - name: armor_helm
+    icon: {fileID: 2800000, guid: 45603c38f879a314bb0baedd8f1f5eba, type: 3}
+  - name: armor_helm_epic
+    icon: {fileID: 2800000, guid: 3253ad9deab97584d9f92d6a2fad17b4, type: 3}
+  - name: armor_chest
+    icon: {fileID: 2800000, guid: 40f2d97515d2434418f9dcdd11d438a2, type: 3}
+  - name: armor_chest_epic
+    icon: {fileID: 2800000, guid: 9c8101d479c60d34185259c220494c61, type: 3}
+  - name: armor_gloves
+    icon: {fileID: 2800000, guid: 43c039c3ce9d3a94eb99e8c982a7818e, type: 3}
+  - name: armor_gloves_epic
+    icon: {fileID: 2800000, guid: 86ecd0e7d75363342a60b7e042cff71a, type: 3}
+  - name: armor_legs
+    icon: {fileID: 2800000, guid: 4e9975a025efd034badb33c60e701083, type: 3}
+  - name: armor_legs_epic
+    icon: {fileID: 2800000, guid: 600efcd1e359c604b823dcc06b09c4fc, type: 3}
+  - name: armor_boots
+    icon: {fileID: 2800000, guid: cd7b401a96a069e45a2313a33309ef26, type: 3}
+  - name: armor_boots_epic
+    icon: {fileID: 2800000, guid: 1b932e329d2e122489394506ac8a777b, type: 3}
+  - name: pu_speed
+    icon: {fileID: 2800000, guid: 62ce59ce09148c847b198159a3abc9f6, type: 3}
+  - name: pu_damage
+    icon: {fileID: 2800000, guid: 3a88d46ed00b9214a8cc55ba6e67ab09, type: 3}
+  - name: pu_magnet
+    icon: {fileID: 2800000, guid: 1d6d7bf04d2101c4ea04650b6d6b911b, type: 3}
+  - name: hero_knight
+    icon: {fileID: 2800000, guid: 4b5c3887b0bad8548a4414947f05a7ba, type: 3}
+  - name: hero_huntress
+    icon: {fileID: 2800000, guid: 31af4c11b0228d142b71af2d3940bbcb, type: 3}
+  - name: hero_pyromancer
+    icon: {fileID: 2800000, guid: fb9bcc3943d1ca94497fd61e5e8c2fde, type: 3}
+  - name: k_wyrmsteel
+    icon: {fileID: 2800000, guid: d31aa8412a4d374458c912d11686642a, type: 3}
+  - name: k_bulwark
+    icon: {fileID: 2800000, guid: a42b3b2bb82524b4c9e97aca1cb294fe, type: 3}
+  - name: k_rally
+    icon: {fileID: 2800000, guid: 2e350bcef09f70943ba03de78d8c063a, type: 3}
+  - name: k_whirlwind
+    icon: {fileID: 2800000, guid: 00fbb4588136cde4fbf9001df788bcfb, type: 3}
+  - name: k_bash
+    icon: {fileID: 2800000, guid: 31d9fd9a71fd2fa46b253808d9db9ab2, type: 3}
+  - name: k_reach
+    icon: {fileID: 2800000, guid: e32aad571b880e549a22b1cc2f2f84a2, type: 3}
+  - name: k_aegis
+    icon: {fileID: 2800000, guid: 9c8101d479c60d34185259c220494c61, type: 3}
+  - name: k_charge
+    icon: {fileID: 2800000, guid: 9725fb87facc42a4984598500f76e0fb, type: 3}
+  - name: k_oath
+    icon: {fileID: 2800000, guid: 9f69b220176e6964fbd87f5f158d45e3, type: 3}
+  - name: k_thunderclap
+    icon: {fileID: 2800000, guid: 448d600b6b959074d94c8933775142fc, type: 3}
+  - name: k_retribution
+    icon: {fileID: 2800000, guid: 2531e15fe967a354d9d28c9cfc1d71ca, type: 3}
+  - name: k_sky
+    icon: {fileID: 2800000, guid: 62ce59ce09148c847b198159a3abc9f6, type: 3}
+  - name: k_dragonform
+    icon: {fileID: 2800000, guid: 0d852f5493cecf94a90183f3f83ce947, type: 3}
+  - name: k_firewave
+    icon: {fileID: 2800000, guid: 3a88d46ed00b9214a8cc55ba6e67ab09, type: 3}
+  - name: k_vow
+    icon: {fileID: 2800000, guid: 511b7df189d509e4bbb3271bf1df0df5, type: 3}
+  - name: h_hemorrhage
+    icon: {fileID: 2800000, guid: c1d35b40e3fb0f9438f23087432d9765, type: 3}
+  - name: h_pact
+    icon: {fileID: 2800000, guid: 2531e15fe967a354d9d28c9cfc1d71ca, type: 3}
+  - name: h_fleet
+    icon: {fileID: 2800000, guid: ef630bd2e9341ec4e955ee2eedcf33d1, type: 3}
+  - name: h_volley
+    icon: {fileID: 2800000, guid: e32aad571b880e549a22b1cc2f2f84a2, type: 3}
+  - name: h_sanguine
+    icon: {fileID: 2800000, guid: 2e350bcef09f70943ba03de78d8c063a, type: 3}
+  - name: h_orbs
+    icon: {fileID: 2800000, guid: a20d322c5e65a6746808e67a31dfe555, type: 3}
+  - name: h_execute
+    icon: {fileID: 2800000, guid: 3a88d46ed00b9214a8cc55ba6e67ab09, type: 3}
+  - name: h_shadowstep
+    icon: {fileID: 2800000, guid: 62ce59ce09148c847b198159a3abc9f6, type: 3}
+  - name: h_wyrmbond
+    icon: {fileID: 2800000, guid: 09567225435258a4ea231465d28978cb, type: 3}
+  - name: h_lance
+    icon: {fileID: 2800000, guid: 97eb33f17282b874aafc04781652f343, type: 3}
+  - name: h_thirst
+    icon: {fileID: 2800000, guid: c1d35b40e3fb0f9438f23087432d9765, type: 3}
+  - name: h_phantom
+    icon: {fileID: 2800000, guid: 1d6d7bf04d2101c4ea04650b6d6b911b, type: 3}
+  - name: h_bloodmoon
+    icon: {fileID: 2800000, guid: 2531e15fe967a354d9d28c9cfc1d71ca, type: 3}
+  - name: h_tempest
+    icon: {fileID: 2800000, guid: 00fbb4588136cde4fbf9001df788bcfb, type: 3}
+  - name: h_wings
+    icon: {fileID: 2800000, guid: 465a559bdfa55bd4daa55ba2dccc5240, type: 3}
+  - name: p_kindling
+    icon: {fileID: 2800000, guid: 9725fb87facc42a4984598500f76e0fb, type: 3}
+  - name: p_emberward
+    icon: {fileID: 2800000, guid: 2e350bcef09f70943ba03de78d8c063a, type: 3}
+  - name: p_font
+    icon: {fileID: 2800000, guid: 51d32f802cfabaf4a86ad058906b4c11, type: 3}
+  - name: p_twin
+    icon: {fileID: 2800000, guid: 9f69b220176e6964fbd87f5f158d45e3, type: 3}
+  - name: p_firewalk
+    icon: {fileID: 2800000, guid: f3372779de276dc48accf9af14b380d9, type: 3}
+  - name: p_combustion
+    icon: {fileID: 2800000, guid: 0d852f5493cecf94a90183f3f83ce947, type: 3}
+  - name: p_phoenix
+    icon: {fileID: 2800000, guid: 511b7df189d509e4bbb3271bf1df0df5, type: 3}
+  - name: p_blink
+    icon: {fileID: 2800000, guid: 62ce59ce09148c847b198159a3abc9f6, type: 3}
+  - name: p_dragonkin
+    icon: {fileID: 2800000, guid: 4dfcd6afbd5d195479600ca5d9a0e4bf, type: 3}
+  - name: p_inferno
+    icon: {fileID: 2800000, guid: 9f69b220176e6964fbd87f5f158d45e3, type: 3}
+  - name: p_molten
+    icon: {fileID: 2800000, guid: e1ba674e14010ec4580da105317b7b77, type: 3}
+  - name: p_weaver
+    icon: {fileID: 2800000, guid: 23e3487bd159e544bbce0a44b6faadc4, type: 3}
+  - name: p_supernova
+    icon: {fileID: 2800000, guid: 6f98b3e70c3ad8a48a0396785dad48e8, type: 3}
+  - name: p_sunorbs
+    icon: {fileID: 2800000, guid: 9725fb87facc42a4984598500f76e0fb, type: 3}
+  - name: p_pillars
+    icon: {fileID: 2800000, guid: 0d852f5493cecf94a90183f3f83ce947, type: 3}

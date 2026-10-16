@@ -3,13 +3,17 @@ using UnityEngine;
 
 namespace Skyfall
 {
-    /// Static game data: heroes, weapons, spells, passives, dragons, stat buckets, ogres, bosses and waves.
+    /// Static game data: heroes, weapons, spells, passives, dragons, stat buckets, armor, talents, ogres, bosses, stages.
     /// Balance lives almost entirely here.
     public static class Data
     {
-        public const float RUN_LENGTH = 600f;
+        /// Length of one stage; the mini boss arrives at 4:00 and the stage's final boss at 0:00 on the floating island.
+        public const float RUN_LENGTH = 480f;
         public const float WAVE_LENGTH = 120f;
+        public const float MINI_BOSS_TIME = 240f;
         public const int MAX_LEVEL = 5;
+        /// Spells reach their evolved form (a unique, visually distinct upgrade) on their third upgrade.
+        public const int EVOLVE_LEVEL = 4;
 
         static Color C(float r, float g, float b, float a = 1f) => new Color(r, g, b, a);
 
@@ -29,11 +33,11 @@ namespace Skyfall
                 desc = "Armored melee battlemage. Longsword sweeps around you; a shield blocks blows.", hp = 100f },
             ["huntress"] = new HeroDef { name = "Blood Huntress", color = C(0.9f, 0.2f, 0.25f), weapon = "blood_lance", defense = "evasion",
                 desc = "Ranged blood mage. Hurls piercing Blood Javelins paid for in her own blood that make ogres bleed; dodges instead of blocking.", hp = 90f },
-            ["pyromancer"] = new HeroDef { name = "Ember Mage", color = C(1.0f, 0.55f, 0.15f), weapon = "ember_bolt", defense = "ward",
-                desc = "Fire caster. Rapidly flings small fireballs that burst and singe; a Flame Ward turns blows aside and burns the attacker.", hp = 85f },
+            ["pyromancer"] = new HeroDef { name = "Ember Mage", color = C(1.0f, 0.55f, 0.15f), weapon = "staff", defense = "ward",
+                desc = "Fire caster. Her Ember Staff hurls bursting fire bolts that set ogres alight; a Flame Ward turns blows aside and burns the attacker.", hp = 85f },
         };
 
-        // ------------------------------------------------------------ weapons (auto attacks)
+        // ------------------------------------------------------------ weapons (auto attacks, upgraded on level-up)
 
         public class WeaponDef
         {
@@ -44,18 +48,37 @@ namespace Skyfall
 
         public static readonly Dictionary<string, WeaponDef> WEAPONS = new Dictionary<string, WeaponDef>
         {
-            ["sword"] = new WeaponDef { name = "Knight's Longsword", color = C(0.75f, 0.88f, 1.0f),
+            ["sword"] = new WeaponDef { name = "Dragonguard Longsword", color = C(0.75f, 0.88f, 1.0f),
                 damage = 27.5f, cooldown = 0.6f, range = 5.0f, arc = 170f, knock = 5f,
-                up = "+15% damage, faster swings, +6% reach" },
-            ["blood_lance"] = new WeaponDef { name = "Blood Lance", color = C(0.95f, 0.15f, 0.2f),
+                desc = "Wide sweeping cuts that knock ogres back.",
+                up = "+15% damage, faster swings, +6% reach, +1 defense level" },
+            ["blood_lance"] = new WeaponDef { name = "Blood Javelin", color = C(0.95f, 0.15f, 0.2f),
                 damage = 27.5f, cooldown = 0.75f, range = 28f, hp_cost = 0.02f, orb_bonus = 0.05f, bleed = 0.35f,
                 desc = "Blood Javelins that pierce through everything and cause bleeding. Costs 2% of current health per throw, no mana. +5% blood orb chance on kills.",
-                up = "+15% damage, faster throws; +1 javelin at Lv 3 and 5" },
-            ["ember_bolt"] = new WeaponDef { name = "Ember Bolt", color = C(1.0f, 0.55f, 0.15f),
-                damage = 20f, cooldown = 0.5f, range = 26f, radius = 1.6f,
-                desc = "Small fireballs that burst on impact and singe ogres.",
-                up = "+15% damage, faster casting; +1 fireball at Lv 3 and 5" },
+                up = "+15% damage, faster throws, +1 defense level; +1 javelin at Lv 3 and 5" },
+            ["staff"] = new WeaponDef { name = "Ember Staff", color = C(1.0f, 0.55f, 0.15f),
+                damage = 24f, cooldown = 0.5f, range = 30f, radius = 1.6f,
+                desc = "Fire bolts from the staff's crystal that burst on impact and set ogres alight.",
+                up = "+15% damage, faster casts, +1 defense level; +1 bolt at Lv 3 and 5; bigger bursts at Lv 5" },
         };
+
+        /// Weapon stats at a level (1..5), one line each; used by the level-up card and the stats screen.
+        public static string[] WeaponStats(string id, int lvl)
+        {
+            var w = WEAPONS[id];
+            float dmg = w.damage * (1f + 0.15f * (lvl - 1));
+            float perSec = 1f / (w.cooldown * Mathf.Pow(0.93f, lvl - 1));
+            int shots = 1 + (lvl >= 3 ? 1 : 0) + (lvl >= 5 ? 1 : 0);
+            switch (id)
+            {
+                case "sword":
+                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} swings/s", $"Reach {w.range * (1f + 0.06f * (lvl - 1)):0.0} m" };
+                case "blood_lance":
+                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} throws/s", $"{shots} javelin{(shots > 1 ? "s" : "")} per throw  ·  bleeds, 2% health cost" };
+                default:
+                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} casts/s", $"{shots} bolt{(shots > 1 ? "s" : "")} per cast  ·  bursts, ignites" };
+            }
+        }
 
         // ------------------------------------------------------------ defenses
 
@@ -75,7 +98,7 @@ namespace Skyfall
             desc = "A chance to dodge any blow entirely.",
             ups = new[] { "", "+5% dodge chance", "+5% dodge; dodging heals 3% health", "+5% dodge chance", "+5% dodge; dodging hurls a counter-javelin" } };
 
-        public static readonly DefenseDef SHIELD = new DefenseDef { name = "Dragonguard Shield", color = C(0.45f, 0.65f, 1.0f),
+        public static readonly DefenseDef SHIELD = new DefenseDef { name = "Dragonguard Shield", color = C(0.45f, 0.65f, 1.0f), baseChance = 0.12f,
             desc = "A chance to block any blow entirely.",
             ups = new[] { "", "+5% block chance", "+5% block; blocks stagger the attacker", "+5% block chance", "+5% block; blocks reflect double damage" } };
 
@@ -87,8 +110,8 @@ namespace Skyfall
 
         public class SpellDef
         {
-            public string name, desc;
-            public Color color;
+            public string name, desc, evolved;
+            public Color color, evolvedColor;
             public float cost, cd;
             public string[] ups;
         }
@@ -97,17 +120,29 @@ namespace Skyfall
         public static readonly Dictionary<string, SpellDef> SPELLS = new Dictionary<string, SpellDef>
         {
             ["gravity_well"] = new SpellDef { name = "Gravity Well", color = C(0.6f, 0.3f, 1.0f), cost = 40f, cd = 4f,
+                evolved = "Event Horizon", evolvedColor = C(1f, 0.78f, 0.3f),
                 desc = "Opens a crushing vortex in the thickest crowd, dragging ogres in before it implodes.",
-                ups = new[] { "", "+pull, +damage", "+radius, longer vortex", "+damage, bigger implosion", "opens a second well" } },
+                ups = new[] { "", "+pull, +damage", "+radius, longer vortex",
+                    "EVOLVES into Event Horizon: a golden-ringed black hole that drags ogres from far away, implodes twice and stuns everything it crushed",
+                    "opens a second well" } },
             ["frost_bolt"] = new SpellDef { name = "Frost Bolt", color = C(0.6f, 0.9f, 1.0f), cost = 16f, cd = 0.8f,
+                evolved = "Glacial Comet", evolvedColor = C(0.85f, 1f, 1f),
                 desc = "A bolt of ice that bursts on contact, sending shards out from the center. Shards can freeze.",
-                ups = new[] { "", "+2 shards, +damage", "+freeze chance", "+2 shards, +damage", "shards pierce through foes" } },
+                ups = new[] { "", "+2 shards, +damage", "+freeze chance",
+                    "EVOLVES into Glacial Comet: a huge comet that always freezes what it hits and leaves a field of ice that freezes ogres walking in",
+                    "shards pierce through foes" } },
             ["chain_lightning"] = new SpellDef { name = "Chain Lightning", color = C(0.75f, 0.75f, 1.0f), cost = 24f, cd = 1.4f,
+                evolved = "Storm Lord", evolvedColor = C(0.85f, 0.55f, 1f),
                 desc = "Lightning leaps from foe to foe, with a chance to shock (1s stun on all but bosses).",
-                ups = new[] { "", "+2 jumps, +damage", "+shock chance", "+2 jumps, +damage", "forks into two chains" } },
+                ups = new[] { "", "+2 jumps, +damage", "+shock chance",
+                    "EVOLVES into Storm Lord: violet lightning that never weakens as it jumps and leaves a crackling storm orb that keeps zapping",
+                    "forks into two chains" } },
             ["meteor"] = new SpellDef { name = "Meteor Storm", color = C(1.0f, 0.65f, 0.25f), cost = 48f, cd = 5f,
+                evolved = "Starfall", evolvedColor = C(0.6f, 0.8f, 1f),
                 desc = "Burning stars rain on the thickest crowd, with a chance to ignite what they hit.",
-                ups = new[] { "", "+2 meteors, +damage", "+ignite chance, bigger impacts", "+2 meteors, +damage", "a giant final meteor" } },
+                ups = new[] { "", "+2 meteors, +damage", "+ignite chance, bigger impacts",
+                    "EVOLVES into Starfall: blue-white stars that hit twice as hard and leave pools of starfire burning on the ground",
+                    "a giant final meteor" } },
         };
 
         // ------------------------------------------------------------ passives
@@ -145,29 +180,47 @@ namespace Skyfall
             public string name, focus, desc, sig, sig_desc;
             public float damage;
             public Color body, edge, belly, membrane, horn, eye, breath;
+            /// Every dragon uses the same Asset Store model (the Usurper); skin picks its color variant and skinTint
+            /// multiplies its texture so each dragon's hide matches its ability color.
+            public string skin;
+            public Color skinTint = Color.white;
+            /// Breath particles are additive (glowing) unless false.
+            public bool glowBreath = true;
         }
 
-        public static readonly string[] DRAGON_ORDER = { "blue", "red", "black" };
+        public static readonly string[] DRAGON_ORDER = { "blue", "red", "black", "green", "gold" };
         public static readonly Dictionary<string, DragonDef> DRAGONS = new Dictionary<string, DragonDef>
         {
-            ["blue"] = new DragonDef { name = "Azure Wyrm", focus = "Fire", damage = 1.0f,
+            ["blue"] = new DragonDef { name = "Azure Wyrm", focus = "Fire", damage = 1.0f, skin = "blue",
                 body = C(0.1f, 0.42f, 1.0f), edge = C(0.02f, 0.07f, 0.3f), belly = C(0.62f, 0.82f, 1.0f),
                 membrane = C(0.1f, 0.3f, 0.75f), horn = C(0.92f, 0.88f, 0.78f), eye = C(1.0f, 0.85f, 0.25f),
                 breath = C(0.25f, 0.6f, 1.0f),
-                desc = "Fire focus. Its flames leave a heavy burning debuff.",
+                desc = "Fire focus. Its blue flames leave a heavy burning debuff.",
                 sig = "Inferno Wave", sig_desc = "A torrent of fireballs sets the crowd ablaze." },
-            ["red"] = new DragonDef { name = "Crimson Drake", focus = "Explosive", damage = 1.25f,
-                body = C(0.75f, 0.08f, 0.05f), edge = C(0.2f, 0.02f, 0.01f), belly = C(0.95f, 0.7f, 0.35f),
-                membrane = C(0.5f, 0.06f, 0.04f), horn = C(0.25f, 0.2f, 0.18f), eye = C(1.0f, 0.9f, 0.3f),
-                breath = C(1.0f, 0.55f, 0.15f),
+            ["red"] = new DragonDef { name = "Crimson Drake", focus = "Explosive", damage = 1.25f, skin = "red", skinTint = C(0.82f, 0.3f, 0.3f),
+                body = C(0.5f, 0.03f, 0.05f), edge = C(0.12f, 0.01f, 0.02f), belly = C(0.72f, 0.38f, 0.22f),
+                membrane = C(0.32f, 0.02f, 0.04f), horn = C(0.25f, 0.2f, 0.18f), eye = C(1.0f, 0.9f, 0.3f),
+                breath = C(0.85f, 0.08f, 0.06f),
                 desc = "Explosive and physical. Deals 1.25x the damage of other dragons; its breath bursts on impact.",
                 sig = "Cataclysm", sig_desc = "A massive blast at the heart of the crowd, then a ring of aftershocks." },
-            ["black"] = new DragonDef { name = "Night Wyrm", focus = "Blood", damage = 1.0f,
+            ["black"] = new DragonDef { name = "Night Wyrm", focus = "Blood", damage = 1.0f, skin = "black", glowBreath = false,
                 body = C(0.08f, 0.07f, 0.08f), edge = C(0.45f, 0.02f, 0.04f), belly = C(0.3f, 0.05f, 0.07f),
                 membrane = C(0.18f, 0.02f, 0.03f), horn = C(0.6f, 0.55f, 0.5f), eye = C(1.0f, 0.15f, 0.1f),
                 breath = C(0.75f, 0.05f, 0.1f),
                 desc = "Rains blood. Its breath and rain weaken ogres so they hit for less.",
                 sig = "Blood Rain", sig_desc = "A storm of blood over the crowd: steady damage and -40% ogre attack." },
+            ["green"] = new DragonDef { name = "Venom Wyrm", focus = "Plague", damage = 1.0f, skin = "albino", skinTint = C(0.45f, 0.95f, 0.35f),
+                body = C(0.16f, 0.6f, 0.12f), edge = C(0.03f, 0.18f, 0.03f), belly = C(0.7f, 0.9f, 0.4f),
+                membrane = C(0.12f, 0.4f, 0.1f), horn = C(0.3f, 0.25f, 0.15f), eye = C(1.0f, 0.95f, 0.2f),
+                breath = C(0.45f, 1.0f, 0.2f),
+                desc = "Plague breath poisons ogres. Anything that dies poisoned bursts in a toxic cloud that poisons its neighbors.",
+                sig = "Plague Cloud", sig_desc = "A choking green miasma drifts through the crowd: poison and -40% speed for everything inside." },
+            ["gold"] = new DragonDef { name = "Tempest Drake", focus = "Storm", damage = 1.0f, skin = "albino", skinTint = C(1.0f, 0.8f, 0.3f),
+                body = C(0.95f, 0.72f, 0.15f), edge = C(0.35f, 0.18f, 0.02f), belly = C(1.0f, 0.95f, 0.7f),
+                membrane = C(0.7f, 0.45f, 0.1f), horn = C(0.3f, 0.2f, 0.5f), eye = C(0.6f, 0.9f, 1.0f),
+                breath = C(1.0f, 0.85f, 0.3f),
+                desc = "Breathes crackling lightning that leaps to a second foe and can shock.",
+                sig = "Eye of the Storm", sig_desc = "A howling tornado tears through the crowd, dragging ogres in and calling lightning down on them." },
         };
 
         /// Dragon upgrades (shared by all dragons).
@@ -175,31 +228,184 @@ namespace Skyfall
         public const string SIGNATURE_UP = "+damage, bigger area, shorter cooldown";
         public const float SIGNATURE_CD = 10f;
 
+        /// Eggs: the first final boss you ever slay always drops one (for a dragon you don't own); after that it's a coin flip.
+        public const float EGG_CHANCE = 0.5f;
+
         // ------------------------------------------------------------ stat buckets
+
+        /// One stat inside a bucket: per-rank amount and a format string for it ({0} is replaced by the amount).
+        public class StatDef
+        {
+            public float amount;
+            public string fmt;
+            public string Text(float ranks = 1f)
+            {
+                float v = amount * ranks;
+                string n = Mathf.Abs(v - Mathf.Round(v)) < 0.05f ? Mathf.Round(v).ToString("0") : v.ToString("0.#");
+                return string.Format(fmt, n);
+            }
+        }
 
         public class BucketDef
         {
             public string name;
             public Color color;
-            public string[] stats;
+            public StatDef[] stats;
         }
+
+        static StatDef St(float amount, string fmt) => new StatDef { amount = amount, fmt = fmt };
 
         public static readonly string[] BUCKET_ORDER = { "health", "mana", "offense", "defense", "dragon", "utility" };
         public static readonly Dictionary<string, BucketDef> BUCKETS = new Dictionary<string, BucketDef>
         {
             ["health"] = new BucketDef { name = "Health", color = C(0.9f, 0.25f, 0.25f),
-                stats = new[] { "+12% max health", "+0.5 health regen / s", "+10% healing received" } },
+                stats = new[] { St(12f, "+{0}% max health"), St(0.5f, "+{0} health regen / s"), St(10f, "+{0}% healing received") } },
             ["mana"] = new BucketDef { name = "Mana", color = C(0.5f, 0.45f, 1.0f),
-                stats = new[] { "+15 max mana", "+0.8 mana regen / s", "+15% mana per hit" } },
+                stats = new[] { St(15f, "+{0} max mana"), St(0.8f, "+{0} mana regen / s"), St(15f, "+{0}% mana per hit") } },
             ["offense"] = new BucketDef { name = "Offense", color = C(1.0f, 0.6f, 0.25f),
-                stats = new[] { "+8% damage", "+3% critical chance", "+6% attack speed" } },
+                stats = new[] { St(8f, "+{0}% damage"), St(3f, "+{0}% critical chance"), St(6f, "+{0}% attack speed") } },
             ["defense"] = new BucketDef { name = "Defense", color = C(0.5f, 0.75f, 1.0f),
-                stats = new[] { "+5% block / dodge (defense level)", "+1.5 armor", "+2% parry" } },
+                stats = new[] { St(2f, "+{0}% block / dodge / ward"), St(1.5f, "+{0} armor"), St(2f, "+{0}% parry") } },
             ["dragon"] = new BucketDef { name = "Dragon", color = C(0.35f, 0.65f, 1.0f),
-                stats = new[] { "+12% dragon damage", "+20% flight time", "-6% dragon cooldowns" } },
+                stats = new[] { St(12f, "+{0}% dragon damage"), St(20f, "+{0}% flight time"), St(6f, "-{0}% dragon cooldowns") } },
             ["utility"] = new BucketDef { name = "Utility", color = C(0.6f, 1.0f, 0.6f),
-                stats = new[] { "+10% jump height", "+6% movement speed", "+25% orb attract range" } },
+                stats = new[] { St(10f, "+{0}% jump height"), St(6f, "+{0}% movement speed"), St(25f, "+{0}% orb attract range"), St(0.1f, "+{0}% power-up drop chance") } },
         };
+
+        /// Stat key used by armor and the player's stat table: "bucket:index".
+        public static string StatKey(string bucket, int idx) => bucket + ":" + idx;
+
+        // ------------------------------------------------------------ armor (chosen every 5 levels)
+
+        /// Armor pieces are offered every ARMOR_EVERY levels: pick one of three. Each piece fills a slot (replacing what was
+        /// there) and carries stats drawn from the stat buckets. Tiers: Common (3 stats), Superior (4), Mythic (6, rare);
+        /// each tier is 15% stronger per stat than the one below.
+        public const int ARMOR_EVERY = 5;
+        public static readonly string[] ARMOR_SLOTS = { "helm", "chest", "gloves", "legs", "boots" };
+        public static readonly Dictionary<string, string> ARMOR_SLOT_NAMES = new Dictionary<string, string>
+        {
+            ["helm"] = "Helm", ["chest"] = "Breastplate", ["gloves"] = "Gauntlets", ["legs"] = "Greaves", ["boots"] = "Boots",
+        };
+        public static readonly string[] ARMOR_TIER_NAMES = { "Common", "Superior", "Mythic" };
+        public static readonly int[] ARMOR_TIER_STATS = { 3, 4, 6 };
+        public static readonly float[] ARMOR_TIER_MULT = { 1f, 1.15f, 1.3225f };
+        public static readonly float[] ARMOR_TIER_ODDS = { 0.62f, 0.30f, 0.08f };
+        public static readonly Color[] ARMOR_TIER_COLORS = { C(0.75f, 0.78f, 0.82f), C(0.35f, 0.65f, 1f), C(1f, 0.6f, 0.15f) };
+        /// Fancy names per bucket for the piece's main stat.
+        public static readonly Dictionary<string, string> ARMOR_SUFFIX = new Dictionary<string, string>
+        {
+            ["health"] = "of Vigor", ["mana"] = "of the Arcane", ["offense"] = "of Fury", ["defense"] = "of the Bulwark",
+            ["dragon"] = "of the Wyrm", ["utility"] = "of the Wind",
+        };
+
+        // ------------------------------------------------------------ talents (5 rows of 3 per hero)
+
+        public class TalentDef
+        {
+            public string id, name, desc;
+        }
+
+        /// Hero levels at which a talent row opens (row 1 at level 3 ... row 5 at level 18).
+        public static readonly int[] TALENT_LEVELS = { 3, 7, 11, 14, 18 };
+
+        static TalentDef T(string id, string name, string desc) => new TalentDef { id = id, name = name, desc = desc };
+
+        public static readonly Dictionary<string, TalentDef[][]> TALENTS = new Dictionary<string, TalentDef[][]>
+        {
+            ["knight"] = new[]
+            {
+                new[] { T("k_wyrmsteel", "Wyrmsteel Edge", "Sword damage +30%; every swing sets ogres ablaze."),
+                        T("k_bulwark", "Bulwark", "+12% block chance; each block heals 2% max health."),
+                        T("k_rally", "Rallying Cry", "+20% max health. Every 10 s gain a barrier that absorbs 15% of your max health.") },
+                new[] { T("k_whirlwind", "Whirlwind", "Every 5th swing becomes a full spin dealing double damage around you."),
+                        T("k_bash", "Shield Bash", "Blocks send out a shockwave that stuns and hurls back nearby ogres."),
+                        T("k_reach", "Dragon's Reach", "+35% sword reach and +50% knockback.") },
+                new[] { T("k_aegis", "Aegis of Scales", "Dropping below 30% health makes you invulnerable for 3 s and heals 20% (60 s cooldown)."),
+                        T("k_charge", "Ember Charge", "Every 8 s you charge into the thickest nearby crowd, burning and scattering it."),
+                        T("k_oath", "Oathbound", "Your dragon deals +40% damage and breathes 25% more often.") },
+                new[] { T("k_thunderclap", "Thunderclap", "Landing after a double jump slams the ground for heavy damage."),
+                        T("k_retribution", "Retribution", "30% of the damage you take lashes out at every ogre within 6 m (tripled)."),
+                        T("k_sky", "Sky Sovereign", "Flight lasts twice as long; while flying you take 30% less damage.") },
+                new[] { T("k_dragonform", "Dragon Form", "Press F (gamepad LB) to become a dragon for 12 s: fly freely, breathe fire on everything, take 50% less damage. 45 s cooldown."),
+                        T("k_firewave", "Dragonfire Blade", "Every swing also launches a wave of dragonfire that rolls forward through the crowd."),
+                        T("k_vow", "Undying Vow", "Once per stage, a killing blow instead leaves you at 50% health in a nova of holy fire.") },
+            },
+            ["huntress"] = new[]
+            {
+                new[] { T("h_hemorrhage", "Hemorrhage", "Bleeds deal 60% more damage and last longer."),
+                        T("h_pact", "Blood Pact", "Javelins no longer cost health and deal 10% more damage."),
+                        T("h_fleet", "Fleetfoot", "+15% dodge chance and +15% movement speed.") },
+                new[] { T("h_volley", "Crimson Volley", "+2 javelins per throw."),
+                        T("h_sanguine", "Sanguine Shield", "Dodging grants a blood barrier absorbing 10% of your max health (6 s cooldown)."),
+                        T("h_orbs", "Blood Harvest", "Health orbs drop twice as often and also restore 20 mana.") },
+                new[] { T("h_execute", "Exsanguinate", "Javelins execute bleeding ogres below 25% health (not bosses)."),
+                        T("h_shadowstep", "Shadowstep", "When an ogre gets close, blink 8 m away and leave a blood decoy that explodes (7 s cooldown)."),
+                        T("h_wyrmbond", "Wyrm Bond", "Your dragon's breath makes ogres bleed; dragon damage +30%.") },
+                new[] { T("h_lance", "Bloodstorm Lance", "Every 8th throw hurls a giant lance that explodes along its whole path."),
+                        T("h_thirst", "Thirst", "Every kill heals 1.5% of your max health."),
+                        T("h_phantom", "Phantom Hunt", "While flying you throw twice as fast and take 25% less damage.") },
+                new[] { T("h_bloodmoon", "Blood Moon", "Every 30 s a blood moon rises for 8 s: triple javelins, 10% lifesteal and every ogre near you bleeds."),
+                        T("h_tempest", "Crimson Tempest", "Javelins split into three smaller javelins on their first hit."),
+                        T("h_wings", "Wings of Blood", "Crimson wings: +2 air jumps, and holding jump in the air lets you glide.") },
+            },
+            ["pyromancer"] = new[]
+            {
+                new[] { T("p_kindling", "Kindling", "Burns deal 60% more damage."),
+                        T("p_emberward", "Ember Ward", "+12% ward chance; each ward heals 3% max health."),
+                        T("p_font", "Mana Font", "+40 max mana and +2 mana regen per second.") },
+                new[] { T("p_twin", "Twin Embers", "+1 fire bolt per cast."),
+                        T("p_firewalk", "Fire Walk", "You leave a trail of flames that burns ogres who follow you."),
+                        T("p_combustion", "Combustion", "Burning ogres explode when they die, igniting their neighbors.") },
+                new[] { T("p_phoenix", "Phoenix Rebirth", "Once per stage, death instead revives you at full health in a burst of phoenix fire."),
+                        T("p_blink", "Blink", "When 5+ ogres surround you, teleport 10 m away leaving an explosion (6 s cooldown)."),
+                        T("p_dragonkin", "Dragon Kin", "Dragon damage +35% and its breath reaches 30% farther.") },
+                new[] { T("p_inferno", "Inferno Bolts", "Fire bolts burst 80% wider and pass through the first ogre they hit."),
+                        T("p_molten", "Molten Armor", "+6 armor; ogres that hit you in melee catch fire."),
+                        T("p_weaver", "Spell Weaver", "Spells cool down 25% faster and cost 20% less mana.") },
+                new[] { T("p_supernova", "Supernova", "Every 35 s you erupt in a supernova that scorches every ogre within 18 m."),
+                        T("p_sunorbs", "Sunfire Orbs", "Three blazing orbs circle you, burning any ogre they touch."),
+                        T("p_pillars", "Pillars of Flame", "Every 12 s a ring of fire pillars erupts around you.") },
+            },
+        };
+
+        public static TalentDef FindTalent(string id)
+        {
+            foreach (var hero in TALENTS.Values)
+                foreach (var row in hero)
+                    foreach (var t in row)
+                        if (t.id == id) return t;
+            return null;
+        }
+
+        // ------------------------------------------------------------ power-ups
+
+        /// Temporary run-only boosts dropped by ogres. Each lasts POWERUP_TIME seconds; picking up the same kind refreshes it.
+        public class PowerUpDef
+        {
+            public string name, desc, glyph;
+            public Color color;
+        }
+
+        public const float POWERUP_TIME = 15f;
+        public const float POWERUP_SPEED = 0.4f;     // +40% move speed
+        public const float POWERUP_DAMAGE = 0.5f;    // +50% damage
+        public const float POWERUP_MAGNET = 12f;     // magnet radius x12 (and everything on the map flies to you on pickup)
+        /// Chance that a regular ogre drops a power-up: 1 in 500 kills (bosses always drop BOSS_POWERUPS); each Utility rank adds POWERUP_DROP_RANK.
+        public const float POWERUP_DROP = 0.002f;
+        public const float POWERUP_DROP_RANK = 0.001f;
+        public const int BOSS_POWERUPS = 2;
+
+        public static readonly string[] POWERUP_ORDER = { "speed", "damage", "magnet" };
+        public static readonly Dictionary<string, PowerUpDef> POWERUPS = new Dictionary<string, PowerUpDef>
+        {
+            ["speed"] = new PowerUpDef { name = "Swiftness", glyph = "»", color = C(0.25f, 0.9f, 1f), desc = "+40% movement speed" },
+            ["damage"] = new PowerUpDef { name = "Fury", glyph = "†", color = C(1f, 0.2f, 0.18f), desc = "+50% damage" },
+            ["magnet"] = new PowerUpDef { name = "Lodestone", glyph = "U", color = C(0.78f, 0.45f, 1f), desc = "Every gem and orb on the field flies to you; huge pickup range" },
+        };
+
+        /// XP: half as many ogres drop a gem, but each gem is worth twice as much.
+        public const float GEM_DROP_CHANCE = 0.5f;
+        public const float GEM_VALUE_MULT = 2f;
 
         /// Chance that a level-up swaps its usual type (ability <-> stats).
         public const float LEVEL_SWAP_CHANCE = 0.25f;
@@ -222,28 +428,18 @@ namespace Skyfall
             ["shaman"] = new OgreDef { name = "Ogre Shaman", size = 1.1f, role = "shaman" },
         };
 
-        /// Global enemy tuning.
+        /// Global enemy tuning (health and damage were raised 25%: 1.3 -> 1.625 and 1.5 -> 1.875).
         public const float SPAWN_RATE_MULT = 0.7f;
-        public const float ENEMY_STAT_MULT = 1.3f;
-        public const float BOSS_STAT_MULT = 1.5f;
+        public const float ENEMY_STAT_MULT = 1.625f;
+        public const float BOSS_STAT_MULT = 1.875f;
 
-        /// Spawn weights per wave, as (kind, weight) pairs in a fixed order.
+        /// Spawn weights per wave (four 2-minute waves, the hardest mix last), as (kind, weight) pairs in a fixed order.
         public static readonly (string kind, int weight)[][] WAVE_WEIGHTS =
         {
             new[] { ("runt", 65), ("ogre", 30), ("archer", 5) },
             new[] { ("runt", 45), ("ogre", 35), ("brute", 8), ("archer", 10), ("shaman", 2) },
             new[] { ("runt", 35), ("ogre", 30), ("brute", 15), ("hulk", 4), ("archer", 12), ("shaman", 4) },
-            new[] { ("runt", 25), ("ogre", 30), ("brute", 20), ("hulk", 8), ("archer", 12), ("shaman", 5) },
             new[] { ("runt", 20), ("ogre", 27), ("brute", 23), ("hulk", 12), ("archer", 12), ("shaman", 6) },
-        };
-
-        public static readonly string[] WAVE_NAMES =
-        {
-            "The Burning Fields",
-            "Night of Clubs",
-            "The Hungry March",
-            "Thunder in the Hills",
-            "The Ashen Dusk",
         };
 
         public class BossDef
@@ -254,18 +450,59 @@ namespace Skyfall
             public Color skin;
         }
 
+        /// Index 0 is the mini boss (4:00); index 1 is the final boss on the floating island (0:00). Stages rename and
+        /// strengthen them (StageDef).
+        public const int MINI_BOSS = 0, FINAL_BOSS = 1;
         public static readonly BossDef[] BOSSES =
         {
-            new BossDef { name = "Grimgar, the Ogre Warlord", size = 3.6f, hp = 1800f, speed = 3.4f, damage = 22f,
-                abilities = new[] { "slam", "charge" }, skin = C(0.4f, 0.48f, 0.3f) },
-            new BossDef { name = "Mother Gruul", size = 4.0f, hp = 3200f, speed = 3.0f, damage = 20f,
-                abilities = new[] { "boulders", "summon", "slam" }, skin = C(0.5f, 0.42f, 0.32f) },
-            new BossDef { name = "Krag the Stonehide", size = 4.6f, hp = 5200f, speed = 3.2f, damage = 28f,
+            new BossDef { name = "Krag the Stonehide", size = 4.4f, hp = 3600f, speed = 3.2f, damage = 24f,
                 abilities = new[] { "charge", "slam", "boulders" }, skin = C(0.42f, 0.42f, 0.45f) },
-            new BossDef { name = "The Twin-Club Butcher", size = 5.0f, hp = 7000f, speed = 3.8f, damage = 26f,
-                abilities = new[] { "charge", "boulders", "slam", "summon" }, skin = C(0.55f, 0.32f, 0.28f) },
-            new BossDef { name = "Gorrak, the Mountain King", size = 6.5f, hp = 14000f, speed = 3.0f, damage = 34f,
+            new BossDef { name = "Gorrak, the Mountain King", size = 6.5f, hp = 12000f, speed = 3.0f, damage = 34f,
                 abilities = new[] { "slam", "boulders", "charge", "summon", "boulders" }, skin = C(0.32f, 0.38f, 0.28f) },
+        };
+
+        // ------------------------------------------------------------ stages
+
+        /// The run is three stages. Clearing a stage's final boss opens a portal to the next; the hero keeps everything.
+        public class StageDef
+        {
+            public string name, intro;
+            public string[] waves;
+            public string miniBoss, finalBoss, islandName;
+            /// Enemy health multiplier on top of the stage's time growth (damage grows by its square root).
+            public float enemyMult;
+            /// Terrain palette.
+            public Color grass, grass2, dry, dirt, rock, ash, mud;
+            public float scorch;          // how much of the ground is burned (0..1)
+            public Color fog, skyTop, skyHorizon, sunColor, skyTint;
+            public float fogDensity, sunPitch;
+            public Color bossTint;
+        }
+
+        public const int STAGE_COUNT = 3;
+        public static readonly StageDef[] STAGES =
+        {
+            new StageDef { name = "The Burning Fields", intro = "Survive. A champion comes at 4:00; at 0:00 the Mountain King awaits.",
+                waves = new[] { "The Burning Fields", "Night of Clubs", "Thunder in the Hills", "The Ashen Dusk" },
+                miniBoss = "Krag the Stonehide", finalBoss = "Gorrak, the Mountain King", islandName = "Mountain King's Island", enemyMult = 1f,
+                grass = C(0.27f, 0.34f, 0.15f), grass2 = C(0.36f, 0.38f, 0.17f), dry = C(0.47f, 0.41f, 0.25f), dirt = C(0.33f, 0.26f, 0.18f),
+                rock = C(0.40f, 0.39f, 0.37f), ash = C(0.10f, 0.09f, 0.08f), mud = C(0.22f, 0.19f, 0.14f), scorch = 1f,
+                fog = C(0.62f, 0.58f, 0.52f), skyTop = C(0.28f, 0.38f, 0.52f), skyHorizon = C(0.72f, 0.64f, 0.55f), sunColor = C(1f, 0.9f, 0.78f),
+                skyTint = Color.white, fogDensity = 0.0045f, sunPitch = -38f, bossTint = Color.white },
+            new StageDef { name = "The Verdant Marches", intro = "The portal sets you down among forest villages. The clans followed you through.",
+                waves = new[] { "Whispering Pines", "The Hunted Hamlet", "Moonlit Clearing", "Wolfsbane Dusk" },
+                miniBoss = "Vorna the Thornhide", finalBoss = "Ulgrim, the Forest Tyrant", islandName = "Forest Tyrant's Island", enemyMult = 1.9f,
+                grass = C(0.22f, 0.42f, 0.14f), grass2 = C(0.32f, 0.5f, 0.17f), dry = C(0.42f, 0.45f, 0.22f), dirt = C(0.36f, 0.27f, 0.17f),
+                rock = C(0.45f, 0.45f, 0.42f), ash = C(0.2f, 0.22f, 0.12f), mud = C(0.24f, 0.22f, 0.14f), scorch = 0.15f,
+                fog = C(0.55f, 0.66f, 0.6f), skyTop = C(0.3f, 0.48f, 0.66f), skyHorizon = C(0.72f, 0.78f, 0.7f), sunColor = C(1f, 0.96f, 0.85f),
+                skyTint = C(0.75f, 0.95f, 0.85f), fogDensity = 0.004f, sunPitch = -48f, bossTint = C(0.55f, 0.85f, 0.5f) },
+            new StageDef { name = "The Sunken Crypts", intro = "A land of buried halls and torchlight. Their warlord waits at the end.",
+                waves = new[] { "Crypt Gate", "Halls of Bone", "The Drowned Chapel", "Last Torch" },
+                miniBoss = "Mordak the Gravecaller", finalBoss = "Skarnath, the Crypt Warlord", islandName = "Crypt Warlord's Island", enemyMult = 3.0f,
+                grass = C(0.31f, 0.3f, 0.25f), grass2 = C(0.38f, 0.34f, 0.27f), dry = C(0.46f, 0.39f, 0.29f), dirt = C(0.33f, 0.27f, 0.21f),
+                rock = C(0.42f, 0.4f, 0.42f), ash = C(0.13f, 0.11f, 0.12f), mud = C(0.2f, 0.17f, 0.15f), scorch = 0.35f,
+                fog = C(0.4f, 0.37f, 0.48f), skyTop = C(0.22f, 0.2f, 0.34f), skyHorizon = C(0.55f, 0.45f, 0.58f), sunColor = C(0.95f, 0.85f, 1f),
+                skyTint = C(0.55f, 0.48f, 0.7f), fogDensity = 0.006f, sunPitch = -24f, bossTint = C(0.65f, 0.55f, 0.85f) },
         };
     }
 }

@@ -51,7 +51,10 @@ namespace Skyfall
 
         public int Level => player.spells.TryGetValue(player.spellId, out int v) ? v : 1;
 
-        public float Cost => Spell.cost * (1f - 0.04f * (Level - 1));
+        public float Cost => Spell.cost * (1f - 0.04f * (Level - 1)) * player.SpellCostMult;
+
+        /// True once the spell has reached its evolved form (its third upgrade).
+        public bool Evolved => Level >= Data.EVOLVE_LEVEL;
 
         float CooldownTime => Spell.cd * player.CooldownMult;
 
@@ -185,12 +188,14 @@ namespace Skyfall
 
         void SpawnWell(Vector3 at, int L, float area, float dm)
         {
+            bool evo = L >= Data.EVOLVE_LEVEL;
             GravityWell.Spawn(this, at + new Vector3(0, 1.2f, 0),
-                radius: (7f + (L >= 3 ? 1.5f : 0f)) * area,
-                pull: 7f + 2f * L,
+                radius: (7f + (L >= 3 ? 1.5f : 0f)) * area * (evo ? 1.5f : 1f),
+                pull: (7f + 2f * L) * (evo ? 2f : 1f),
                 life: 2.5f + (L >= 3 ? 0.8f : 0f),
                 tickDamage: (8f + 3f * L) * dm,
-                finalDamage: (60f + 25f * L + (L >= 4 ? 40f : 0f)) * dm);
+                finalDamage: (60f + 25f * L + (evo ? 60f : 0f)) * dm,
+                evolved: evo);
         }
 
         bool FrostBoltCast(int L, float area, float dm)
@@ -198,13 +203,15 @@ namespace Skyfall
             var t = game.NearestEnemy(player.Center, 28f, 20f);
             if (t == null) return false;
             var from = player.HandPosition;
-            FrostBolt.Spawn(this, from, (t.Pos + new Vector3(0, t.size, 0) - from).normalized * 36f,
-                damage: (30f + 12f * L) * dm,
+            bool evo = L >= Data.EVOLVE_LEVEL;
+            FrostBolt.Spawn(this, from, (t.Pos + new Vector3(0, t.size, 0) - from).normalized * (evo ? 30f : 36f),
+                damage: (30f + 12f * L) * dm * (evo ? 1.6f : 1f),
                 shards: 6 + (L >= 2 ? 2 : 0) + (L >= 4 ? 2 : 0),
                 shardDamage: (12f + 5f * L) * dm,
                 freezeChance: 0.2f + (L >= 3 ? 0.15f : 0f) + 0.03f * L,
                 pierce: L >= 5,
-                radius: 2.2f * area);
+                radius: 2.2f * area * (evo ? 1.6f : 1f),
+                evolved: evo);
             Sfx.Play("frost", -8f, 0.1f);
             return true;
         }
@@ -226,24 +233,29 @@ namespace Skyfall
 
         void Chain(Enemy first, int L, float dm, List<Enemy> hit)
         {
-            float dmg = (26f + 10f * L) * dm;
+            bool evo = L >= Data.EVOLVE_LEVEL;
+            float dmg = (26f + 10f * L) * dm * (evo ? 1.4f : 1f);
             float shockChance = 0.3f + (L >= 3 ? 0.2f : 0f) + 0.04f * L;
-            var col = new Color(0.75f, 0.75f, 1f);
-            FX.Bolt(player.HandPosition, first.Pos + new Vector3(0, first.size, 0), col, 0.25f, 0.2f);
+            var col = evo ? Data.SPELLS["chain_lightning"].evolvedColor : new Color(0.75f, 0.75f, 1f);
+            float w = evo ? 0.45f : 0.25f;
+            FX.Bolt(player.HandPosition, first.Pos + new Vector3(0, first.size, 0), col, w, 0.2f);
+            if (evo) FX.Bolt(player.HandPosition, first.Pos + new Vector3(0, first.size, 0), new Color(1f, 0.9f, 0.5f), w * 0.4f, 0.25f);
             Zap(first, dmg, shockChance);
             hit.Add(first);
             var cur = first;
             int jumps = 2 + (L >= 2 ? 2 : 0) + (L >= 4 ? 2 : 0);
             for (int i = 0; i < jumps; i++)
             {
-                var nxt = game.NearestEnemy(cur.Pos, 9f, 8f, null, hit);
+                var nxt = game.NearestEnemy(cur.Pos, evo ? 12f : 9f, 8f, null, hit);
                 if (nxt == null) break;
-                FX.Bolt(cur.Pos + new Vector3(0, cur.size, 0), nxt.Pos + new Vector3(0, nxt.size, 0), col, 0.18f, 0.2f);
+                FX.Bolt(cur.Pos + new Vector3(0, cur.size, 0), nxt.Pos + new Vector3(0, nxt.size, 0), col, w * 0.75f, 0.2f);
                 Zap(nxt, dmg, shockChance);
                 hit.Add(nxt);
                 cur = nxt;
             }
-            FX.Flash(first.Pos + new Vector3(0, 1, 0), 1.5f, new Color(0.7f, 0.7f, 1f, 0.8f), 0.2f);
+            FX.Flash(first.Pos + new Vector3(0, 1, 0), evo ? 2.5f : 1.5f, M.WithA(col, 0.8f), 0.2f);
+            // Storm Lord: a crackling orb stays where the chain ended and keeps zapping.
+            if (evo) StormOrb.Spawn(this, cur.Pos + new Vector3(0, cur.size + 1f, 0), dmg * 0.4f, col);
         }
 
         void Zap(Enemy e, float dmg, float shockChance)
@@ -258,25 +270,27 @@ namespace Skyfall
             var center = game.DensestPoint(player.Pos, 26f);
             if (M.IsInf(center)) return false;
             int count = 5 + (L >= 2 ? 2 : 0) + (L >= 4 ? 2 : 0);
+            bool evo = L >= Data.EVOLVE_LEVEL;
             float rad = (3f + (L >= 3 ? 1f : 0f)) * area;
             float ignite = 0.4f + (L >= 3 ? 0.2f : 0f) + 0.04f * L;
+            float dmg = (32f + 14f * L) * dm * (evo ? 2f : 1f);
             for (int i = 0; i < count; i++)
             {
                 var at = center + new Vector3(M.RandRange(-6f, 6f), 0, M.RandRange(-6f, 6f)) * area;
                 var near = game.RandomEnemyNear(center, 9f * area);
                 if (near && M.RandF() < 0.6f) at = near.Pos;
-                DropMeteor(at, rad, (32f + 14f * L) * dm, i * 0.12f, 1f, ignite);
+                DropMeteor(at, rad, dmg, i * 0.12f, 1f, ignite, evo);
             }
-            if (L >= 5) DropMeteor(center, rad * 2.2f, (32f + 14f * L) * dm * 3f, count * 0.12f + 0.3f, 2.5f, 1f);
-            FX.Telegraph(center, 7f * area, 0.6f, new Color(1f, 0.5f, 0.1f, 0.3f));
+            if (L >= 5) DropMeteor(center, rad * 2.2f, dmg * 3f, count * 0.12f + 0.3f, 2.5f, 1f, evo);
+            FX.Telegraph(center, 7f * area, 0.6f, evo ? new Color(0.5f, 0.7f, 1f, 0.35f) : new Color(1f, 0.5f, 0.1f, 0.3f));
             Sfx.Play("whoosh", -2f, 0.05f);
             return true;
         }
 
-        void DropMeteor(Vector3 at, float rad, float dmg, float delay, float scaleK, float ignite)
+        void DropMeteor(Vector3 at, float rad, float dmg, float delay, float scaleK, float ignite, bool evolved)
         {
-            at.y = game.terrain.Height(at.x, at.z);
-            Meteor.Spawn(this, at + new Vector3(M.RandRange(-8f, 8f), 32f, M.RandRange(-8f, 8f)), at, rad, dmg, delay, scaleK, ignite);
+            at.y = game.terrain.SurfaceHeight(at.x, at.z, at.y + 1f);
+            Meteor.Spawn(this, at + new Vector3(M.RandRange(-8f, 8f), 32f, M.RandRange(-8f, 8f)), at, rad, dmg, delay, scaleK, ignite, evolved);
         }
     }
 
@@ -286,12 +300,13 @@ namespace Skyfall
     {
         SpellBook book;
         float radius = 7f, pull = 8f, tickDamage = 6f, finalDamage = 50f, life = 2.5f, tick;
-        Transform core, halo;
+        bool evolved;
+        Transform core, halo, halo2;
         float haloSpin;
 
-        public static void Spawn(SpellBook book, Vector3 pos, float radius, float pull, float life, float tickDamage, float finalDamage)
+        public static void Spawn(SpellBook book, Vector3 pos, float radius, float pull, float life, float tickDamage, float finalDamage, bool evolved = false)
         {
-            var w = new GameObject("GravityWell").AddComponent<GravityWell>();
+            var w = new GameObject(evolved ? "EventHorizon" : "GravityWell").AddComponent<GravityWell>();
             w.transform.SetParent(book.transform, false);
             w.transform.position = pos;
             w.book = book;
@@ -300,22 +315,39 @@ namespace Skyfall
             w.life = life;
             w.tickDamage = tickDamage;
             w.finalDamage = finalDamage;
+            w.evolved = evolved;
             w.Build();
         }
 
         void Build()
         {
+            // Event Horizon: a black core with a golden accretion disc instead of the violet ring.
+            var ringCol = evolved ? new Color(1f, 0.75f, 0.25f, 0.9f) : new Color(0.6f, 0.25f, 1f, 0.8f);
+            var floorCol = evolved ? new Color(1f, 0.6f, 0.15f, 0.4f) : new Color(0.5f, 0.2f, 0.9f, 0.35f);
             core = FX.Part(transform, MeshGen.Sphere(16), FX.Lit(new Color(0.02f, 0f, 0.04f), 0.1f), Vector3.zero, Vector3.one * 0.2f).transform;
-            var h = FX.Part(transform, MeshGen.Ring(), FX.Glow(new Color(0.6f, 0.25f, 1f, 0.8f), 2.5f), Vector3.zero, new Vector3(1.6f, 2f, 1.6f));
+            var h = FX.Part(transform, MeshGen.Ring(), FX.Glow(ringCol, evolved ? 3f : 2.5f), Vector3.zero, new Vector3(1.6f, 2f, 1.6f) * (evolved ? 1.8f : 1f));
             FX.NoShadow(h);
             halo = h.transform;
-            var floorRing = FX.Part(transform, MeshGen.Ring(), FX.Glow(new Color(0.5f, 0.2f, 0.9f, 0.35f), 1.2f), new Vector3(0, -1f, 0), new Vector3(radius, 0.4f, radius));
+            if (evolved)
+            {
+                var h2 = FX.Part(transform, MeshGen.Torus(0.55f, 1f, 48, 4), FX.Glow(new Color(1f, 0.9f, 0.6f, 0.5f), 2.2f), Vector3.zero, new Vector3(4.5f, 0.3f, 4.5f));
+                FX.NoShadow(h2);
+                halo2 = h2.transform;
+                var l = new GameObject("Light").AddComponent<Light>();
+                l.transform.SetParent(transform, false);
+                l.type = LightType.Point;
+                l.color = new Color(1f, 0.7f, 0.3f);
+                l.intensity = 3f;
+                l.range = radius * 1.5f;
+                l.shadows = LightShadows.None;
+            }
+            var floorRing = FX.Part(transform, MeshGen.Ring(), FX.Glow(floorCol, 1.2f), new Vector3(0, -1f, 0), new Vector3(radius, 0.4f, radius));
             FX.NoShadow(floorRing);
             FX.VfxLoop("magic_circle", transform, new Vector3(0, -1.1f, 0), radius / 3.5f);
             FX.Particles(transform, new FX.ParticleSpec
             {
-                amount = 60, lifetime = 0.8f, size = 0.5f, sphereRadius = radius, radialSpeed = -10f, worldSpace = false,
-                startColor = new Color(0.6f, 0.2f, 1f, 0f), midColor = new Color(0.7f, 0.35f, 1f, 1f), midAt = 0.4f, endColor = new Color(0.2f, 0f, 0.4f, 0f),
+                amount = evolved ? 120 : 60, lifetime = 0.8f, size = 0.5f, sphereRadius = radius, radialSpeed = evolved ? -16f : -10f, worldSpace = false,
+                startColor = M.WithA(ringCol, 0f), midColor = M.WithA(Color.Lerp(ringCol, Color.white, 0.2f), 1f), midAt = 0.4f, endColor = new Color(0.2f, 0f, 0.4f, 0f),
             });
         }
 
@@ -328,6 +360,7 @@ namespace Skyfall
             core.localScale = Vector3.Lerp(core.localScale, Vector3.one * 2.4f, Mathf.Clamp01(delta * 4f));
             haloSpin += delta * 5f;
             halo.localRotation = Quaternion.Euler(Mathf.Sin(life * 3f) * 0.4f * Mathf.Rad2Deg, haloSpin * Mathf.Rad2Deg, 0);
+            if (halo2) halo2.localRotation = Quaternion.Euler(0.35f * Mathf.Rad2Deg, -haloSpin * 0.6f * Mathf.Rad2Deg, 0);
             tick -= delta;
             if (tick <= 0f)
             {
@@ -342,14 +375,36 @@ namespace Skyfall
             if (life <= 0f)
             {
                 var pos = transform.position;
-                if (!FX.Vfx("hit_magic", pos, radius / 3f, 1.8f, null, 0f))
-                    FX.Flash(pos, radius * 0.8f, new Color(0.6f, 0.2f, 1f, 0.8f), 0.4f);
-                FX.Shockwave(pos - new Vector3(0, 1f, 0), radius, new Color(0.7f, 0.3f, 1f, 0.9f), 0.4f);
-                Sfx.Play("boom", pos, 0f);
-                foreach (var e in g.EnemiesInRadius(pos, radius * 0.75f, 8f))
-                    g.DamageEnemy(e, finalDamage, Vector3.zero, 0f, true, new Color(0.8f, 0.5f, 1f));
+                var col = evolved ? new Color(1f, 0.75f, 0.3f) : new Color(0.7f, 0.3f, 1f);
+                Implode(pos, radius * 0.75f, finalDamage, col);
+                if (evolved)
+                {
+                    // Event Horizon implodes a second time a moment later, and everything it crushes is stunned.
+                    var gg = g;
+                    float r2 = radius * 0.6f, d2 = finalDamage * 0.7f;
+                    Tw.After(0.35f, () => { if (gg != null) ImplodeStatic(gg, pos, r2, d2, new Color(1f, 0.9f, 0.6f)); });
+                }
                 Destroy(gameObject);
             }
+        }
+
+        void Implode(Vector3 pos, float r, float dmg, Color col)
+        {
+            var g = book.game;
+            ImplodeStatic(g, pos, r, dmg, col);
+            if (evolved)
+                foreach (var e in g.EnemiesInRadius(pos, r, 8f))
+                    if (!e.isBoss) e.stunT = Mathf.Max(e.stunT, 1.5f);
+        }
+
+        static void ImplodeStatic(Game g, Vector3 pos, float r, float dmg, Color col)
+        {
+            if (!FX.Vfx("hit_magic", pos, r / 2.2f, 1.8f, null, 0f, col))
+                FX.Flash(pos, r, M.WithA(col, 0.8f), 0.4f);
+            FX.Shockwave(pos - new Vector3(0, 1f, 0), r * 1.33f, M.WithA(col, 0.9f), 0.4f);
+            Sfx.Play("boom", pos, 0f);
+            foreach (var e in g.EnemiesInRadius(pos, r, 8f))
+                g.DamageEnemy(e, dmg, Vector3.zero, 0f, true, Color.Lerp(col, Color.white, 0.3f));
         }
     }
 
@@ -359,11 +414,12 @@ namespace Skyfall
         Vector3 velocity;
         float damage = 30f, radius = 2.2f, shardDamage = 12f, freezeChance = 0.2f, life = 1.4f;
         int shards = 6;
-        bool pierce;
+        bool pierce, evolved;
 
-        public static void Spawn(SpellBook book, Vector3 from, Vector3 velocity, float damage, int shards, float shardDamage, float freezeChance, bool pierce, float radius)
+        public static void Spawn(SpellBook book, Vector3 from, Vector3 velocity, float damage, int shards, float shardDamage, float freezeChance, bool pierce, float radius, bool evolved = false)
         {
-            var b = new GameObject("FrostBolt").AddComponent<FrostBolt>();
+            var b = new GameObject(evolved ? "GlacialComet" : "FrostBolt").AddComponent<FrostBolt>();
+            b.evolved = evolved;
             b.transform.SetParent(book.transform, false);
             b.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
             b.book = book;
@@ -374,11 +430,29 @@ namespace Skyfall
             b.freezeChance = freezeChance;
             b.pierce = pierce;
             b.radius = radius;
-            var mi = FX.Part(b.transform, MeshGen.Cylinder(0f, 0.5f, 6), FX.Glow(new Color(0.65f, 0.92f, 1f), 2.2f), Vector3.zero, new Vector3(0.45f, 1.2f, 0.45f), new Vector3(-M.PI * 0.5f, 0, 0));
-            FX.NoShadow(mi);
+            if (evolved)
+            {
+                // Glacial Comet: a big crystalline head with a long white trail and a cold light.
+                FX.NoShadow(FX.Part(b.transform, MeshGen.Sphere(14), FX.Glow(new Color(0.85f, 1f, 1f), 2.8f), Vector3.zero, Vector3.one * 0.9f));
+                for (int i = 0; i < 6; i++)
+                    FX.NoShadow(FX.Part(b.transform, MeshGen.Cylinder(0f, 0.5f, 4), FX.Glow(new Color(0.6f, 0.9f, 1f), 2.4f), Quaternion.Euler(0, 0, i * 60f) * new Vector3(0.45f, 0, 0.2f),
+                        new Vector3(0.22f, 0.9f, 0.22f), new Vector3(M.PI * 0.5f, 0, i * M.PI / 3f)));
+                var l = new GameObject("Light").AddComponent<Light>();
+                l.transform.SetParent(b.transform, false);
+                l.type = LightType.Point;
+                l.color = new Color(0.6f, 0.9f, 1f);
+                l.intensity = 2.5f;
+                l.range = 7f;
+                l.shadows = LightShadows.None;
+            }
+            else
+            {
+                var mi = FX.Part(b.transform, MeshGen.Cylinder(0f, 0.5f, 6), FX.Glow(new Color(0.65f, 0.92f, 1f), 2.2f), Vector3.zero, new Vector3(0.45f, 1.2f, 0.45f), new Vector3(-M.PI * 0.5f, 0, 0));
+                FX.NoShadow(mi);
+            }
             FX.Particles(b.transform, new FX.ParticleSpec
             {
-                amount = 30, lifetime = 0.35f, size = 0.4f, speedMin = 0.5f, speedMax = 1.5f, spread = 25f, gravity = new Vector3(0, -3, 0),
+                amount = evolved ? 90 : 30, lifetime = evolved ? 0.6f : 0.35f, size = evolved ? 0.8f : 0.4f, speedMin = 0.5f, speedMax = 1.5f, spread = 25f, gravity = new Vector3(0, -3, 0),
                 startColor = new Color(0.9f, 1f, 1f, 1f), endColor = new Color(0.4f, 0.7f, 1f, 0f),
             });
         }
@@ -407,7 +481,14 @@ namespace Skyfall
             foreach (var e in g.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f))
             {
                 g.DamageEnemy(e, damage, Vector3.zero, 0f, true, new Color(0.7f, 0.95f, 1f));
-                if (M.RandF() < freezeChance) e.Freeze(1.5f);
+                if (evolved || M.RandF() < freezeChance) e.Freeze(evolved ? 2f : 1.5f);
+            }
+            if (evolved)
+            {
+                var ground = at;
+                ground.y = g.terrain.SurfaceHeight(at.x, at.z, at.y + 0.5f);
+                IceField.Spawn(book, ground, radius * 1.4f, 3.5f, damage * 0.15f);
+                FX.Shockwave(ground + new Vector3(0, 0.2f, 0), radius * 1.6f, new Color(0.8f, 0.97f, 1f, 0.9f), 0.45f);
             }
             // Shards fly out from the center.
             float off = M.RandF() * M.TAU;
@@ -471,11 +552,13 @@ namespace Skyfall
         SpellBook book;
         Vector3 target;
         float radius = 3f, damage = 30f, delay, speed = 55f, size = 1f, igniteChance = 0.4f;
+        bool evolved;
         GameObject visual;
 
-        public static void Spawn(SpellBook book, Vector3 from, Vector3 target, float radius, float damage, float delay, float size, float igniteChance)
+        public static void Spawn(SpellBook book, Vector3 from, Vector3 target, float radius, float damage, float delay, float size, float igniteChance, bool evolved = false)
         {
-            var m = new GameObject("Meteor").AddComponent<Meteor>();
+            var m = new GameObject(evolved ? "Star" : "Meteor").AddComponent<Meteor>();
+            m.evolved = evolved;
             m.transform.SetParent(book.transform, false);
             m.transform.position = from;
             m.book = book;
@@ -487,14 +570,17 @@ namespace Skyfall
             m.igniteChance = igniteChance;
             m.visual = new GameObject("Visual");
             m.visual.transform.SetParent(m.transform, false);
-            var mi = FX.Part(m.visual.transform, MeshGen.Sphere(10), FX.Glow(new Color(1f, 0.6f, 0.2f), 3f), Vector3.zero, Vector3.one * 1.1f * size);
+            var col = evolved ? new Color(0.65f, 0.85f, 1f) : new Color(1f, 0.6f, 0.2f);
+            var mi = FX.Part(m.visual.transform, MeshGen.Sphere(10), FX.Glow(col, 3f), Vector3.zero, Vector3.one * 1.1f * size * (evolved ? 1.3f : 1f));
             FX.NoShadow(mi);
+            if (evolved) FX.NoShadow(FX.Part(m.visual.transform, MeshGen.Sphere(8), FX.Glow(Color.white, 4f), Vector3.zero, Vector3.one * 0.6f * size));
             var trailNode = FX.Node(m.visual.transform, "Trail");
             trailNode.rotation = Quaternion.LookRotation(from - target);
             FX.Particles(trailNode, new FX.ParticleSpec
             {
-                amount = 30, lifetime = 0.4f, size = 1f, speedMin = 1f, speedMax = 2f, spread = 20f,
-                startColor = new Color(1f, 0.8f, 0.4f, 1f), endColor = new Color(0.6f, 0.1f, 0f, 0f),
+                amount = evolved ? 50 : 30, lifetime = 0.4f, size = 1f, speedMin = 1f, speedMax = 2f, spread = 20f,
+                startColor = evolved ? new Color(0.9f, 0.95f, 1f, 1f) : new Color(1f, 0.8f, 0.4f, 1f),
+                endColor = evolved ? new Color(0.2f, 0.4f, 1f, 0f) : new Color(0.6f, 0.1f, 0f, 0f),
             });
             m.visual.SetActive(delay <= 0f);
         }
@@ -522,23 +608,26 @@ namespace Skyfall
         void Impact()
         {
             var g = book.game;
-            if (!FX.Vfx("explosion", target, radius / 2.5f, 2f, null, 0f))
-                FX.Flash(target + new Vector3(0, 0.5f, 0), radius, new Color(1f, 0.55f, 0.15f, 0.8f), 0.35f);
-            FX.Shockwave(target + new Vector3(0, 0.3f, 0), radius * 1.2f, new Color(1f, 0.6f, 0.2f, 0.8f), 0.4f);
-            FX.Burst(target + new Vector3(0, 0.5f, 0), new Color(1f, 0.6f, 0.2f), 16, 10f, 0.4f);
+            var col = evolved ? new Color(0.6f, 0.8f, 1f) : new Color(1f, 0.6f, 0.2f);
+            if (!FX.Vfx("explosion", target, radius / 2.5f, 2f, null, 0f, evolved ? col : (Color?)null))
+                FX.Flash(target + new Vector3(0, 0.5f, 0), radius, M.WithA(col, 0.8f), 0.35f);
+            FX.Shockwave(target + new Vector3(0, 0.3f, 0), radius * 1.2f, M.WithA(col, 0.8f), 0.4f);
+            FX.Burst(target + new Vector3(0, 0.5f, 0), col, 16, 10f, 0.4f);
             Sfx.Play("boom", target, -3f + size * 2f);
             if (size > 1.5f) g.Shake(0.6f);
             foreach (var e in g.EnemiesInRadius(target, radius, 4f))
             {
                 var outDir = M.Flat(e.Pos - target);
-                g.DamageEnemy(e, damage, outDir.normalized, 6f, true, new Color(1f, 0.7f, 0.3f));
-                if (M.RandF() < igniteChance) e.Ignite(4f, damage * 0.15f);
+                g.DamageEnemy(e, damage, outDir.normalized, 6f, true, Color.Lerp(col, Color.white, 0.3f));
+                if (evolved || M.RandF() < igniteChance) e.Ignite(4f, damage * 0.15f);
             }
+            // Starfall: each star leaves a pool of blue starfire.
+            if (evolved) FirePatch.Spawn(g, target, radius * 0.9f, 3f, damage * 0.35f, new Color(0.45f, 0.7f, 1f));
             Destroy(gameObject);
         }
     }
 
-    /// Fireballs: the Ember Mage's auto attack (small) and the Azure Wyrm's Inferno Wave (large).
+    /// Fireballs: the Ember Mage's staff bolts (small) and the Azure Wyrm's Inferno Wave (large).
     public class Fireball : MonoBehaviour
     {
         Game game;
@@ -546,10 +635,15 @@ namespace Skyfall
         float damage = 40f, radius = 2.8f, life = 1.6f, burnMult = 0.12f;
         Player ownerPlayer;
         bool small;
+        Color fx = new Color(1f, 0.5f, 0.12f);
+        bool custom;
+        int pierce;
+        readonly HashSet<Enemy> passed = new HashSet<Enemy>();
 
-        public static void Spawn(Game game, Player owner, Vector3 from, Vector3 velocity, float damage, float radius, float burnMult, bool small)
+        public static void Spawn(Game game, Player owner, Vector3 from, Vector3 velocity, float damage, float radius, float burnMult, bool small, Color? color = null, int pierce = 0)
         {
             var f = new GameObject("Fireball").AddComponent<Fireball>();
+            f.pierce = pierce;
             f.transform.SetParent(game.spellbook.transform, false);
             f.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
             f.game = game;
@@ -559,21 +653,27 @@ namespace Skyfall
             f.radius = radius;
             f.burnMult = burnMult;
             f.small = small;
-            var mi = FX.Part(f.transform, MeshGen.Sphere(12), FX.Glow(new Color(1f, 0.5f, 0.12f, small ? 1f : 0.55f), small ? 3f : 2.2f), Vector3.zero, Vector3.one * (small ? 0.4f : 0.7f));
+            f.custom = color.HasValue;
+            f.fx = color ?? new Color(1f, 0.5f, 0.12f);
+            var c = f.fx;
+            var core0 = f.custom ? Color.Lerp(c, Color.white, 0.7f) : new Color(1f, 0.9f, 0.6f);
+            var spark0 = f.custom ? Color.Lerp(c, Color.white, 0.5f) : new Color(1f, 0.85f, 0.4f);
+            var spark1 = f.custom ? M.WithA(M.Mul(c, 0.45f), 0f) : new Color(0.7f, 0.1f, 0f, 0f);
+            var mi = FX.Part(f.transform, MeshGen.Sphere(12), FX.Glow(new Color(c.r, c.g, c.b, small ? 1f : 0.55f), small ? 3f : 2.2f), Vector3.zero, Vector3.one * (small ? 0.4f : 0.7f));
             FX.NoShadow(mi);
-            var core = FX.Part(f.transform, MeshGen.Sphere(8), FX.Glow(new Color(1f, 0.9f, 0.6f, small ? 1f : 0.7f), small ? 3f : 2f), Vector3.zero, Vector3.one * (small ? 0.22f : 0.4f));
+            var core = FX.Part(f.transform, MeshGen.Sphere(8), FX.Glow(new Color(core0.r, core0.g, core0.b, small ? 1f : 0.7f), small ? 3f : 2f), Vector3.zero, Vector3.one * (small ? 0.22f : 0.4f));
             FX.NoShadow(core);
             FX.Particles(f.transform, new FX.ParticleSpec
             {
                 amount = small ? 16 : 40, lifetime = 0.35f, size = 0.7f, scaleMin = 0.6f, scaleMax = 1.4f, speedMin = 0.5f, speedMax = 2f, spread = 30f,
-                gravity = new Vector3(0, 2, 0), startColor = new Color(1f, 0.85f, 0.4f, 1f), endColor = new Color(0.7f, 0.1f, 0f, 0f),
+                gravity = new Vector3(0, 2, 0), startColor = spark0, endColor = spark1,
             });
             if (!small)
             {
                 var light = new GameObject("Light").AddComponent<Light>();
                 light.transform.SetParent(f.transform, false);
                 light.type = LightType.Point;
-                light.color = new Color(1f, 0.55f, 0.2f);
+                light.color = f.custom ? c : new Color(1f, 0.55f, 0.2f);
                 light.intensity = 2f;
                 light.range = 6f;
                 light.shadows = LightShadows.None;
@@ -587,28 +687,141 @@ namespace Skyfall
             life -= delta;
             transform.position += velocity * delta;
             var pos = transform.position;
-            bool hit = game.EnemiesInRadius(pos - new Vector3(0, 1f, 0), 0.9f, 2.2f).Count > 0;
-            if (hit || life <= 0f || pos.y < game.terrain.Height(pos.x, pos.z) + 0.2f) Explode();
+            Enemy first = null;
+            foreach (var e in game.EnemiesInRadius(pos - new Vector3(0, 1f, 0), 0.9f, 2.2f))
+                if (!passed.Contains(e)) { first = e; break; }
+            if (first != null && pierce > 0)
+            {
+                // Inferno Bolts: burst on the first ogre and keep flying.
+                pierce--;
+                passed.Add(first);
+                Explode(false);
+                return;
+            }
+            if (first != null || life <= 0f || pos.y < game.terrain.Height(pos.x, pos.z) + 0.2f) Explode(true);
         }
 
-        void Explode()
+        void Explode(bool final)
         {
             var at = transform.position;
-            bool packFx = FX.Vfx("hit_fire", at, small ? 0.7f : radius / 2f, 1.8f, null, small ? 0.04f : 0f);
-            if (!packFx) FX.Flash(at, radius, new Color(1f, 0.5f, 0.12f, 0.85f), small ? 0.25f : 0.35f);
-            if (!small) FX.Shockwave(at - new Vector3(0, 0.5f, 0), radius * 1.2f, new Color(1f, 0.6f, 0.2f, 0.8f), 0.35f);
-            FX.Burst(at, new Color(1f, 0.6f, 0.2f), small ? 8 : 18, 10f, small ? 0.3f : 0.45f);
+            bool packFx = FX.Vfx("hit_fire", at, small ? 0.7f : radius / 2f, 1.8f, null, small ? 0.04f : 0f, custom ? fx : (Color?)null);
+            if (!packFx) FX.Flash(at, radius, new Color(fx.r, fx.g, fx.b, 0.85f), small ? 0.25f : 0.35f);
+            if (!small) FX.Shockwave(at - new Vector3(0, 0.5f, 0), radius * 1.2f, custom ? new Color(fx.r, fx.g, fx.b, 0.8f) : new Color(1f, 0.6f, 0.2f, 0.8f), 0.35f);
+            FX.Burst(at, custom ? fx : new Color(1f, 0.6f, 0.2f), small ? 8 : 18, 10f, small ? 0.3f : 0.45f);
             Sfx.Play(small ? "hit" : "boom", at, small ? -9f : -5f);
             int hits = 0;
             foreach (var e in game.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f))
             {
                 var outDir = M.Flat(e.Pos - at);
-                game.DamageEnemy(e, damage, outDir.normalized, small ? 2.5f : 6f, true, new Color(1f, 0.7f, 0.3f));
+                game.DamageEnemy(e, damage, outDir.normalized, small ? 2.5f : 6f, true, custom ? Color.Lerp(fx, Color.white, 0.4f) : new Color(1f, 0.7f, 0.3f));
                 e.Ignite(3f, damage * burnMult);
                 hits++;
             }
             if (ownerPlayer) ownerPlayer.WeaponHits(hits, damage);
-            Destroy(gameObject);
+            if (final) Destroy(gameObject);
+        }
+    }
+
+    /// Glacial Comet's field of ice: ogres that walk in are frozen.
+    public class IceField : MonoBehaviour
+    {
+        SpellBook book;
+        float radius, life, damage, tick;
+
+        public static void Spawn(SpellBook book, Vector3 ground, float radius, float life, float damage)
+        {
+            var f = new GameObject("IceField").AddComponent<IceField>();
+            f.transform.SetParent(book.transform, false);
+            f.transform.position = ground + new Vector3(0, 0.06f, 0);
+            f.book = book;
+            f.radius = radius;
+            f.life = life;
+            f.damage = damage;
+            FX.NoShadow(FX.Part(f.transform, MeshGen.Disc(), FX.Lit(new Color(0.75f, 0.92f, 1f, 0.7f), 0.05f, 0.2f, 0.6f), Vector3.zero, new Vector3(radius, 1f, radius)));
+            var crystal = FX.Glow(new Color(0.75f, 0.95f, 1f), 2f);
+            for (int i = 0; i < 9; i++)
+            {
+                float a = M.TAU * i / 9f + M.RandF() * 0.4f;
+                float r = radius * M.RandRange(0.25f, 0.9f);
+                FX.NoShadow(FX.Part(f.transform, MeshGen.Cylinder(0f, 0.5f, 5), crystal, new Vector3(Mathf.Cos(a) * r, 0.4f, Mathf.Sin(a) * r),
+                    new Vector3(0.3f, M.RandRange(0.6f, 1.4f), 0.3f), new Vector3(M.RandRange(-0.3f, 0.3f), 0, M.RandRange(-0.3f, 0.3f))));
+            }
+        }
+
+        void Update()
+        {
+            float delta = Time.deltaTime;
+            if (delta <= 0f) return;
+            var g = book.game;
+            life -= delta;
+            tick -= delta;
+            if (tick <= 0f)
+            {
+                tick = 0.3f;
+                foreach (var e in g.EnemiesInRadius(transform.position, radius, 2.5f))
+                {
+                    e.Freeze(1f);
+                    g.DamageEnemy(e, damage, Vector3.zero, 0f, false);
+                }
+            }
+            if (life < 0.5f) transform.localScale = Vector3.one * Mathf.Max(0.01f, life / 0.5f);
+            if (life <= 0f) Destroy(gameObject);
+        }
+    }
+
+    /// Storm Lord's storm orb: hovers where the chain ended and zaps nearby ogres for a few seconds.
+    public class StormOrb : MonoBehaviour
+    {
+        SpellBook book;
+        float damage, life = 3f, tick;
+        Color color;
+        Transform core;
+
+        public static void Spawn(SpellBook book, Vector3 at, float damage, Color color)
+        {
+            var o = new GameObject("StormOrb").AddComponent<StormOrb>();
+            o.transform.SetParent(book.transform, false);
+            o.transform.position = at;
+            o.book = book;
+            o.damage = damage;
+            o.color = color;
+            o.core = FX.Part(o.transform, MeshGen.Sphere(12), FX.Glow(color, 3f), Vector3.zero, Vector3.one * 0.8f).transform;
+            FX.NoShadow(o.core.GetComponent<Renderer>());
+            FX.NoShadow(FX.Part(o.transform, MeshGen.Sphere(10), FX.Glow(new Color(1f, 0.95f, 0.8f), 3.5f), Vector3.zero, Vector3.one * 0.35f));
+            FX.Particles(o.transform, new FX.ParticleSpec
+            {
+                amount = 30, lifetime = 0.25f, size = 0.3f, speedMin = 3f, speedMax = 6f, spread = 180f, startColor = Color.white, endColor = M.WithA(color, 0f),
+            });
+            var l = new GameObject("Light").AddComponent<Light>();
+            l.transform.SetParent(o.transform, false);
+            l.type = LightType.Point;
+            l.color = color;
+            l.intensity = 2f;
+            l.range = 6f;
+            l.shadows = LightShadows.None;
+        }
+
+        void Update()
+        {
+            float delta = Time.deltaTime;
+            if (delta <= 0f) return;
+            var g = book.game;
+            life -= delta;
+            tick -= delta;
+            core.localScale = Vector3.one * (0.7f + Mathf.Sin(Time.time * 30f) * 0.15f);
+            if (tick <= 0f)
+            {
+                tick = 0.3f;
+                int n = 0;
+                foreach (var e in g.EnemiesInRadius(transform.position - Vector3.up, 7f, 6f))
+                {
+                    if (n++ >= 3) break;
+                    FX.Bolt(transform.position, e.Pos + new Vector3(0, e.size, 0), color, 0.18f, 0.15f);
+                    g.DamageEnemy(e, damage, Vector3.zero, 0f, true, Color.Lerp(color, Color.white, 0.4f));
+                    if (M.RandF() < 0.25f) e.Shock(1f);
+                }
+            }
+            if (life <= 0f) Destroy(gameObject);
         }
     }
 }

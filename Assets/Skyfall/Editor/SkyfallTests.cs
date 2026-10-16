@@ -9,7 +9,7 @@ namespace Skyfall.EditorTools
     /// headless for a few seconds while saving camera snapshots to Logs/.
     /// Usage: Unity.exe -batchmode -projectPath ... -executeMethod Skyfall.EditorTools.SkyfallTests.Run
     [InitializeOnLoad]
-    public static class SkyfallTests
+    public static partial class SkyfallTests
     {
         const string Key = "SkyfallTestsRunning";
         static int frame;
@@ -27,7 +27,23 @@ namespace Skyfall.EditorTools
             SessionState.SetBool(Key, true);
             EditorApplication.update += Tick;
             Time.captureDeltaTime = 1f / 60f;
+            AudioListener.volume = 0f;
             EditorApplication.isPlaying = true;
+        }
+
+        /// -executeMethod Skyfall.EditorTools.SkyfallTests.KitReport: logs every Ruins kit piece's size and triangle count.
+        public static void KitReport()
+        {
+            var lib = AssetDatabase.LoadAssetAtPath<SkinLibrary>("Assets/Skyfall/Resources/Skyfall/SkinLibrary.asset");
+            foreach (var mf in lib.ruinsKit.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var b = mf.sharedMesh.bounds;
+                var m = mf.transform.localToWorldMatrix;
+                var wb = new Bounds(m.MultiplyPoint3x4(b.center), Vector3.zero);
+                for (int i = 0; i < 8; i++)
+                    wb.Encapsulate(m.MultiplyPoint3x4(b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1))));
+                Debug.Log($"SKYFALL_TEST kit {mf.name} size={wb.size:F2} tris={mf.sharedMesh.triangles.Length / 3} readable={mf.sharedMesh.isReadable} subs={mf.sharedMesh.subMeshCount} rot={mf.transform.localRotation.eulerAngles} scale={mf.transform.localScale}");
+            }
         }
 
         public static void CheckShaders()
@@ -86,6 +102,8 @@ namespace Skyfall.EditorTools
             if (!EditorApplication.isPlaying) return;
             frame++;
             Time.captureDeltaTime = 1f / 60f;
+            // Test runs are silent: the game sets the master volume when it starts, so hold it at zero every frame.
+            AudioListener.volume = 0f;
             var game = Game.I;
             try
             {
@@ -134,12 +152,52 @@ namespace Skyfall.EditorTools
                     stage = 1;
                     frame = 0;
                     game.StartRun(lo[2], lo[3], lo[0], lo[1]);
-                    game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
+                    ApplyGear(game);
+                    LogStats(game, "start");
+                    if (Arg("-skyfallIslandView", "") == "" && Arg("-skyfallFinale", "") == "" && Arg("-skyfallSolidTest", "") == "" && Arg("-skyfallKitView", "") == "" && Arg("-skyfallFeatureTest", "") == "") game.timeElapsed = 110f;   // skip ahead: the field fills with ogres and the first boss arrives soon
                     game.player.hp = game.player.maxHp = 5000f;   // keep the hero alive for the whole test
+                }
+                else if (stage == 1 && Arg("-skyfallFeatureTest", "") != "")
+                {
+                    FeatureTest(game, Arg("-skyfallFeatureTest", ""));
+                }
+                else if (stage == 1 && Arg("-skyfallFinale", "") != "")
+                {
+                    Finale(game);
+                }
+                else if (stage == 1 && Arg("-skyfallBowView", "") != "")
+                {
+                    BowView(game);
+                }
+                else if (stage == 1 && Arg("-skyfallKitView", "") != "")
+                {
+                    KitView(game);
+                }
+                else if (stage == 1 && Arg("-skyfallSolidTest", "") != "")
+                {
+                    SolidTest(game);
+                }
+                else if (stage == 1 && Arg("-skyfallIslandView", "") != "")
+                {
+                    IslandView(game);
                 }
                 else if (stage == 1)
                 {
                     game.player.hp = game.player.maxHp;
+                    TimeFrame(game);
+                    if (frame == 200 && Arg("-skyfallStress", "") != "")
+                    {
+                        // Performance check: 300 tough ogres around the hero.
+                        int n = int.Parse(Arg("-skyfallStress", "300"));
+                        string[] kinds = { "runt", "ogre", "ogre", "brute", "hulk", "archer" };
+                        for (int i = 0; i < n; i++)
+                        {
+                            float a = i * 2.399f, r = 6f + 22f * Mathf.Sqrt(i / (float)n);
+                            var p = game.player.Pos + new Vector3(Mathf.Cos(a) * r, 0, Mathf.Sin(a) * r);
+                            var e = game.SpawnEnemy(kinds[i % kinds.Length], p);
+                            e.hp = e.maxHp = 1e7f;
+                        }
+                    }
                     if (frame % 300 == 0) game.pet.RideCommand();                       // E: dragon signature on the ground
                     if (frame == 400)
                         typeof(Player).GetMethod("SummonDragon", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
@@ -193,6 +251,7 @@ namespace Skyfall.EditorTools
                     {
                         Snap($"snap_{tag}_3_wide");
                         Log("wide", game);
+                        Debug.Log($"SKYFALL_TEST perf: avg frame {perfMs / Mathf.Max(1, perfFrames):0.00} ms over {perfFrames} frames, avg enemies {perfEnemies / Mathf.Max(1, perfFrames):0}");
                         Finish(0);
                     }
                 }
@@ -215,6 +274,272 @@ namespace Skyfall.EditorTools
             }
         }
 
+        /// -skyfallGear "weapon=5,level=12,talents=k_dragonform+k_rally,armor=3,alldragons=1,stage=2": shapes the hero after the
+        /// run starts (weapon level, hero level, talents, random armor pieces, owned dragons in the TEST save, starting stage).
+        static void ApplyGear(Game game)
+        {
+            var gear = Arg("-skyfallGear", "");
+            if (gear == "") return;
+            var p = game.player;
+            foreach (var kv in gear.Split(','))
+            {
+                var parts = kv.Split('=');
+                string v = parts.Length > 1 ? parts[1] : "1";
+                switch (parts[0])
+                {
+                    case "weapon": p.spells["weapon"] = Mathf.Clamp(int.Parse(v), 1, Data.MAX_LEVEL); break;
+                    case "spell": p.spells[p.spellId] = Mathf.Clamp(int.Parse(v), 1, Data.MAX_LEVEL); break;
+                    case "level": p.AddXp(0f); p.level = int.Parse(v); p.RecalcMaxHp(); break;
+                    case "talents": foreach (var t in v.Split('+')) p.LearnTalent(t); break;
+                    case "armor":
+                        for (int i = 0; i < int.Parse(v); i++) p.EquipArmor(Game.RollArmor(Data.ARMOR_SLOTS[i % Data.ARMOR_SLOTS.Length]));
+                        break;
+                    case "alldragons":
+                        if (Arg("-skyfallSaveFile", "") == "") { Debug.LogError("SKYFALL_TEST alldragons needs -skyfallSaveFile; ignored"); break; }
+                        Save.unlocked_dragons = new System.Collections.Generic.List<string>(Data.DRAGON_ORDER);
+                        Save.Write();
+                        break;
+                    case "stage":
+                        typeof(Game).GetMethod("BuildStage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(game, new object[] { int.Parse(v) });
+                        break;
+                }
+            }
+        }
+
+        static void LogStats(Game game, string what)
+        {
+            var p = game.player;
+            Debug.Log($"SKYFALL_TEST stats {what} {p.heroId}: weapon={p.Weapon.name} wLv={p.weaponLevel} dmg/hit={p.WeaponBaseDamage * p.WeaponDamageMult:0.0} interval={p.AttackInterval:0.000}s shots={p.ShotCount} " +
+                      $"armor={p.Armor:0.0} defLv={p.shieldLevel} block={p.BlockChance:0.00} dodge={p.DodgeChance:0.00} crit={p.CritChance:0.00} move={p.MoveMult:0.00} maxHp={p.maxHp:0.0} " +
+                      $"talents=[{string.Join(",", p.talents)}] armorPieces={p.armor.Count} stage={game.stage}");
+        }
+
+        /// -skyfallBowView 1 (use with the pyromancer): close-ups of the Ember Staff and a burst of fire bolts in flight.
+        static void BowView(Game game)
+        {
+            var pl = game.player;
+            pl.hp = pl.maxHp = 99999f;
+            if (frame == 1) game.timeElapsed = 110f;
+            if (frame == 100)
+            {
+                Debug.Log($"SKYFALL_TEST staff: hand={pl.HandPosition} player={pl.Pos} foes={game.enemies.Count}");
+                pl.camDistTarget = 2.6f; pl.camPitch = 0.05f; pl.camYaw = Mathf.PI * 0.85f;
+            }
+            if (frame == 130) Snap("staff_1_front");
+            if (frame == 131) { pl.camYaw = Mathf.PI * 0.5f; }
+            if (frame == 160) Snap("staff_2_side");
+            if (frame == 161) { pl.camYaw = Mathf.PI * 0.8f; pl.camDistTarget = 7f; pl.camPitch = 0.25f; }
+            if (frame >= 220 && frame <= 232 && frame % 3 == 1) Snap($"staff_3_bolts_{frame}");
+            if (frame == 252)
+            {
+                int bolts = Object.FindObjectsByType<Fireball>(FindObjectsInactive.Exclude).Length;
+                Debug.Log($"SKYFALL_TEST staff: bolts in flight={bolts} kills={game.kills} dmgDealt={game.damageDealt:0}");
+                LogStats(game, "end");
+                Finish(0);
+            }
+        }
+
+        /// -skyfallIslandView 1: photographs the floating islands from the ground and from the boss island's top.
+        static void IslandView(Game game)
+        {
+            var pl = game.player;
+            var tr = game.terrain;
+            pl.hp = pl.maxHp = 99999f;
+            var bc = tr.BossIslandCenter;
+            if (frame == 1)
+            {
+                Debug.Log($"SKYFALL_TEST islands={tr.islands.Count} boss center={bc} radius={tr.BossIslandRadius} ground={tr.Height(bc.x, bc.z):0.0}");
+                foreach (var i in tr.islands)
+                    Debug.Log($"SKYFALL_TEST island big={i.big} pos={i.center} r={i.radius:0.0} depth={i.depth:0.0} groundBelow={tr.Height(i.center.x, i.center.z):0.0}");
+            }
+            void LookFrom(Vector3 stand, Vector3 look, float dist, float pitch)
+            {
+                pl.Pos = stand;
+                pl.velocity = Vector3.zero;
+                var d = look - stand; d.y = 0;
+                pl.camYaw = Mathf.Atan2(-d.x, -d.z);
+                pl.camDistTarget = dist;
+                pl.camPitch = pitch;
+            }
+            Vector3 toward = new Vector3(bc.x, 0, bc.z).normalized;
+            if (frame < 60) LookFrom(new Vector3(0, tr.Height(0, 0), 0), bc, 30f, 0.1f);
+            else if (frame < 100)
+            {
+                var s = bc - toward * 70f; s.y = tr.Height(s.x, s.z);
+                LookFrom(s, bc, 20f, 0.05f);
+                if (frame == 99) Snap("islands_1_far");
+            }
+            else if (frame < 140)
+            {
+                var s = bc - toward * 45f; s.y = tr.Height(s.x, s.z);
+                LookFrom(s, bc, 12f, 0.5f);
+                if (frame == 139) Snap("islands_2_chain");
+            }
+            else if (frame < 180)
+            {
+                var side = new Vector3(-toward.z, 0, toward.x);
+                var s = bc + side * 62f; s.y = tr.Height(s.x, s.z);
+                LookFrom(s, bc, 8f, 0.12f);
+                if (frame == 179) Snap("islands_3_side");
+            }
+            else if (frame == 180)
+            {
+                pl.Pos = bc + new Vector3(0, 1f, 0);
+                pl.velocity = Vector3.zero;
+                pl.camDistTarget = 14f; pl.camPitch = 0.35f;
+            }
+            else if (frame == 300)
+            {
+                Snap("islands_4_top");
+                Debug.Log($"SKYFALL_TEST on top: pos={pl.Pos} expectedTop={bc.y} dy={pl.Pos.y - bc.y:0.00}");
+                pl.camYaw += 2.5f; pl.camDistTarget = 26f; pl.camPitch = 0.55f;
+            }
+            else if (frame == 330) { Snap("islands_5_top_wide"); Finish(0); }
+        }
+
+        /// -skyfallFinale 1 (use with -skyfallSaveFile test_save.json): mini boss at 4:00, the 0:00 clear-out, the island boss,
+        /// the egg drop and pickup, and the victory. Never touches the real save when a separate save file is given.
+        static void Finale(Game game)
+        {
+            var pl = game.player;
+            var tr = game.terrain;
+            pl.hp = pl.maxHp = 99999f;
+            var bc = tr.BossIslandCenter;
+            void LookAt(Vector3 stand, Vector3 look, float dist, float pitch)
+            {
+                pl.Pos = stand;
+                pl.velocity = Vector3.zero;
+                var d = look - stand; d.y = 0;
+                pl.camYaw = Mathf.Atan2(-d.x, -d.z);
+                pl.camDistTarget = dist;
+                pl.camPitch = pitch;
+            }
+            void Marker(string what)
+            {
+                bool ok = game.hud.IslandMarker(out var pos, out bool on, out float m, out float ang);
+                Debug.Log($"SKYFALL_TEST marker {what}: visible={ok} pos={pos} onScreen={on} meters={m:0} angle={ang:0}");
+            }
+            if (frame == 1)
+            {
+                game.timeElapsed = 235f;
+                Debug.Log($"SKYFALL_TEST save before: unlocked=[{string.Join(",", Save.unlocked_dragons)}] runLength={Data.RUN_LENGTH}");
+            }
+            if (frame < 400) pl.Pos = new Vector3(pl.Pos.x, tr.Height(pl.Pos.x, pl.Pos.z), pl.Pos.z);
+            if (frame == 420)
+            {
+                Log("mini", game);
+                foreach (var b in game.bosses) Debug.Log($"SKYFALL_TEST mini boss {b.displayName} hp={b.hp:0} pos={b.Pos} dist={Vector3.Distance(b.Pos, pl.Pos):0}");
+                pl.camYaw += 0.5f; pl.camDistTarget = 16f;
+                Snap("finale_1_mini");
+                game.timeElapsed = 478.5f;
+            }
+            if (frame == 520)
+            {
+                Log("finale", game);
+                Debug.Log($"SKYFALL_TEST finalStarted={game.finalStarted} foes={game.enemies.Count} kills={game.kills} bossName={(game.bosses.Count > 0 ? game.bosses[0].displayName : "none")}");
+                if (game.bosses.Count > 0)
+                {
+                    var b = game.bosses[0];
+                    Debug.Log($"SKYFALL_TEST final boss pos={b.Pos} islandCenter={bc} horiz={Vector2.Distance(new Vector2(b.Pos.x, b.Pos.z), new Vector2(bc.x, bc.z)):0.0} islandBound={b.islandBound}");
+                }
+                Marker("from spawn");
+                var toward = new Vector3(bc.x, 0, bc.z).normalized;
+                var s = bc - toward * 65f; s.y = tr.Height(s.x, s.z);
+                LookAt(s, bc, 14f, 0.1f);
+            }
+            if (frame == 560) { Marker("ground facing island"); Snap("finale_2_beacon"); }
+            if (frame == 570)
+            {
+                var toward = new Vector3(bc.x, 0, bc.z).normalized;
+                var s = bc - toward * 65f; s.y = tr.Height(s.x, s.z);
+                LookAt(s, bc - toward * 200f, 14f, 0.1f);   // turn away: the arrow should flip to the edge
+            }
+            if (frame == 590) { Marker("ground facing away"); }
+            if (frame == 600)
+            {
+                // Stranded below the island: the boss must stay on it.
+                var side = new Vector3(-bc.z, 0, bc.x).normalized;
+                var s = bc + side * (tr.BossIslandRadius + 14f); s.y = tr.Height(s.x, s.z);
+                LookAt(s, bc, 14f, 0.15f);
+                if (game.bosses.Count > 0)
+                {
+                    // Edge test: put the boss near the rim facing the stranded player and shove him outward hard.
+                    var b = game.bosses[0];
+                    var outDir = new Vector3(s.x - bc.x, 0, s.z - bc.z).normalized;
+                    b.Pos = bc + outDir * 15f;
+                    game.DamageEnemy(b, 1f, outDir, 4000f);
+                }
+            }
+            if ((frame == 610 || frame == 700) && game.bosses.Count > 0)
+            {
+                var b = game.bosses[0];
+                Debug.Log($"SKYFALL_TEST stranded: boss horiz={Vector2.Distance(new Vector2(b.Pos.x, b.Pos.z), new Vector2(bc.x, bc.z)):0.0} limit~{tr.BossIslandRadius - 3f:0.0} y={b.Pos.y:0.0} top={bc.y:0.0}");
+                Snap("finale_3_edge");
+            }
+            if (frame == 710)
+            {
+                var toward = new Vector3(bc.x, 0, bc.z).normalized;
+                LookAt(bc + new Vector3(-toward.x, 0, -toward.z) * (tr.BossIslandRadius * 0.6f) + Vector3.up, bc, 22f, 0.3f);
+            }
+            if (frame > 710 && frame < 900 && game.bosses.Count > 0)
+            {
+                var b = game.bosses[0];
+                if (frame % 30 == 0)
+                    Debug.Log($"SKYFALL_TEST on island: boss horiz={Vector2.Distance(new Vector2(b.Pos.x, b.Pos.z), new Vector2(bc.x, bc.z)):0.0} onIsland={game.PlayerOnBossIsland()} foes={game.enemies.Count}");
+                if (frame % 30 == 0) Marker("player on island");
+                if (frame == 800) Snap("finale_4_fight");
+                if (frame == 840)
+                {
+                    b.hp = 1f;
+                    game.DamageEnemy(b, 5f);
+                    Debug.Log("SKYFALL_TEST boss killed");
+                    var e0 = Object.FindFirstObjectByType<DragonEgg>();
+                    if (e0) e0.hold = true;
+                }
+            }
+            if (frame >= 841)
+            {
+                var egg = Object.FindFirstObjectByType<DragonEgg>();
+                if (egg != null && frame < 905 && frame % 10 == 2 && frame != 902)
+                {
+                    var rend = egg.GetComponentInChildren<MeshRenderer>();
+                    var mc = rend.sharedMaterial.GetVector("_BaseColor");
+                    var want = Data.DRAGONS[egg.dragonId].body;
+                    Debug.Log($"SKYFALL_TEST egg for {egg.dragonId} at {egg.transform.position} shellColor(lin)={mc} wantLin={FX.Lin(want)}");
+                }
+                if (egg != null && frame == 902) egg.hold = false;
+                if (frame == 900 && egg != null)
+                {
+                    var ct = pl.cam.transform;
+                    ct.position = egg.transform.position + new Vector3(2.2f, 0.4f, 4.5f);
+                    ct.LookAt(egg.transform.position);
+                    Snap("finale_5_egg");
+                }
+                if (game.ended || frame > 1400)
+                {
+                    Debug.Log($"SKYFALL_TEST victory ended={game.ended} hatched=[{string.Join(",", game.hatched)}] stage={game.stage} unlocked=[{string.Join(",", Save.unlocked_dragons)}] wins={Save.wins} bossesSlain={game.bossesSlain}");
+                    Debug.Log($"SKYFALL_TEST save file: {System.IO.File.ReadAllText(System.IO.Path.Combine(Application.persistentDataPath, Arg("-skyfallSaveFile", "skyfall_save.json"))).Replace("\n", " ")}");
+                    Finish(0);
+                }
+            }
+        }
+
+        static double perfMs, perfEnemies, perfLast;
+        static int perfFrames;
+
+        /// Averages the real time per frame between frames 300 and 1500 of the normal run (the field is full of ogres by then).
+        static void TimeFrame(Game game)
+        {
+            double now = EditorApplication.timeSinceStartup;
+            if (frame > 300 && frame <= 1500 && perfLast > 0)
+            {
+                perfMs += (now - perfLast) * 1000.0;
+                perfEnemies += game.enemies.Count;
+                perfFrames++;
+            }
+            perfLast = now;
+        }
+
         static string tag = "run";
 
         static string Arg(string name, string fallback)
@@ -227,7 +552,7 @@ namespace Skyfall.EditorTools
 
         static void Log(string what, Game game) =>
             Debug.Log($"SKYFALL_TEST {tag} {what}: enemies={game.enemies.Count} kills={game.kills} lvl={game.player.level} " +
-                      $"t={game.timeElapsed:0} bosses={game.bosses.Count} spawned={game.bossesSpawned} dmg={game.damageDealt:0}");
+                      $"t={game.timeElapsed:0} bosses={game.bosses.Count} spawned={game.bossesSpawned} dmg={game.damageDealt:0} stage={game.stage}");
 
         static void Finish(int code)
         {

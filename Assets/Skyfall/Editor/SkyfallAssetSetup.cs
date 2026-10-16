@@ -26,7 +26,17 @@ namespace Skyfall.EditorTools
             "Assets/Mini Legion Rock Golem PBR HP Polyart", "Assets/Ogre",
         };
 
-        static readonly string[] EffectFolders = { "Assets/Hovl Studio", "Assets/Matthew Guz" };
+        static readonly string[] EffectFolders = { "Assets/Hovl Studio", "Assets/Matthew Guz", "Assets/Polygonal Particles" };
+
+        /// Scenery packs added for stages 2 and 3 (built-in materials converted to URP Lit).
+        static readonly string[] SceneryFolders = { "Assets/BrokenVector", "Assets/Gridness Studios" };
+
+        const string KI = "Assets/Kevin Iglesias/Human Animations/";
+        const string HuntressControllerPath = "Assets/Skyfall/Resources/Skyfall/Huntress.controller";
+        const string Icons = "Assets/Basic_RPG_Icons/";
+        const string Slavic = "Assets/EmaceArt/Slavic World Free/Prefabs/";
+        const string Trees = "Assets/BrokenVector/LowPolyTreePack/Prefabs/";
+        const string Dungeon = "Assets/Gridness Studios/Elementary Dungeon Pack Lite/Prefabs/";
 
         const string PolytopeUrpPackage = "Assets/Polytope Studio/Lowpoly_Environments/URP/PT_Nature_Free_URP_17.unitypackage";
         const string PolytopeShader = "Assets/Polytope Studio/Lowpoly_Environments/Sources/Shaders/PT_Rock_Shader.shader";
@@ -44,10 +54,71 @@ namespace Skyfall.EditorTools
             }
             int converted = ConvertMaterials();
             int nature = PrepareNatureMaterials();
+            converted += PrepareRuinsKit();
             BuildLibrary();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log($"SKYFALL_TEST asset setup done: {converted} materials converted to URP, {nature} nature materials prepared, library at {LibraryPath}");
+        }
+
+        const string KitFolder = "Assets/Ruins_creation_kit";
+        const string KitModel = "Assets/Ruins_creation_kit/ruins_creation_kit.FBX";
+
+        /// Ruins kit: converts its legacy materials to URP Lit (keeping texture + normal map) and maps the FBX's
+        /// embedded materials onto them by name, since the model ships without linked materials.
+        static int PrepareRuinsKit()
+        {
+            if (!AssetDatabase.IsValidFolder(KitFolder)) return 0;
+            var upgraders = Upgraders();
+            var known = new HashSet<string>(upgraders.Select(u => u.OldShaderPath));
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            var byName = new Dictionary<string, Material>();
+            int n = 0;
+            foreach (var mat in MaterialsIn(KitFolder + "/Materials"))
+            {
+                string sh = mat.shader ? mat.shader.name : "";
+                if (known.Contains(sh)) { MaterialUpgrader.Upgrade(mat, upgraders, MaterialUpgrader.UpgradeFlags.None); n++; }
+                else if (!sh.StartsWith("Universal Render Pipeline/") && lit != null)
+                {
+                    Texture main = mat.HasProperty("_MainTex") ? mat.GetTexture("_MainTex") : null;
+                    Texture bump = mat.HasProperty("_BumpMap") ? mat.GetTexture("_BumpMap") : null;
+                    Color col = mat.HasProperty("_Color") ? mat.GetColor("_Color") : Color.white;
+                    mat.shader = lit;
+                    mat.SetTexture("_BaseMap", main);
+                    mat.SetColor("_BaseColor", col);
+                    if (bump) { mat.SetTexture("_BumpMap", bump); mat.EnableKeyword("_NORMALMAP"); }
+                    mat.SetFloat("_Smoothness", 0.12f);
+                    mat.SetFloat("_Metallic", 0f);
+                    n++;
+                }
+                mat.enableInstancing = true;
+                EditorUtility.SetDirty(mat);
+                byName[mat.name] = mat;
+            }
+            // FBX material name -> kit material.
+            var map = new Dictionary<string, string>
+            {
+                ["walls"] = "wall_01", ["walls_break"] = "ruins_creation_kit-walls_break", ["01_ground"] = "ruins_creation_kit-01_ground",
+                ["worked_Stone"] = "dif_smoothStone_01", ["worked_Stone_2"] = "dif_smoothStone_02", ["woodRoof"] = "dif_woodRoof_01",
+                ["old_wood"] = "dif_oldWood_01", ["wood_planks"] = "dif_dirtyPlanks_02", ["messBrick"] = "dif_messBrick",
+                ["metal"] = "dif_metal_01", ["iron"] = "dif_metal_01", ["pew_01"] = "dif_dirtyWood_01", ["tomb_01"] = "dif_smoothStone_01",
+                ["domeOutside"] = "dif_coupole_01", ["domeInside"] = "dif_coupole_01",
+                ["vitrail_01"] = "dif_vitrail_01", ["vitrail_02"] = "dif_vitrail_02", ["vitrail_03"] = "dif_vitrail_03", ["vitrail_04"] = "dif_vitrail_04",
+            };
+            if (AssetImporter.GetAtPath(KitModel) is ModelImporter imp)
+            {
+                bool changed = false;
+                foreach (var emb in AssetDatabase.LoadAllAssetsAtPath(KitModel).OfType<Material>().ToList())
+                {
+                    if (!map.TryGetValue(emb.name, out var target) || !byName.TryGetValue(target, out var kitMat)) continue;
+                    var id = new AssetImporter.SourceAssetIdentifier(typeof(Material), emb.name);
+                    if (imp.GetExternalObjectMap().TryGetValue(id, out var cur) && cur == kitMat) continue;
+                    imp.AddRemap(id, kitMat);
+                    changed = true;
+                }
+                if (changed) imp.SaveAndReimport();
+            }
+            return n;
         }
 
         // ---------------------------------------------------------------- materials
@@ -98,7 +169,7 @@ namespace Skyfall.EditorTools
                 EditorUtility.SetDirty(mat);
                 Debug.Log("Skyfall: repaired 2D material " + AssetDatabase.GetAssetPath(mat));
             }
-            foreach (var mat in MaterialsIn(CharacterFolders.Concat(EffectFolders).ToArray()))
+            foreach (var mat in MaterialsIn(CharacterFolders.Concat(EffectFolders).Concat(SceneryFolders).ToArray()))
             {
                 string shader = mat.shader ? mat.shader.name : "";
                 if (known.Contains(shader))
@@ -186,15 +257,41 @@ namespace Skyfall.EditorTools
                 AssetDatabase.CreateAsset(lib, LibraryPath);
             }
 
-            // Heroes (the Blood Huntress has no model in these packs and keeps her procedural look).
+            // Heroes. The Blood Huntress is the Kevin Iglesias female warrior with a polearm (recolored crimson in game),
+            // driven by a controller built from that pack's female clips.
             lib.knight = Load<GameObject>("Assets/RPGHero/Prefabs/RPGHeroPBR.prefab");
             lib.pyromancer = Load<GameObject>("Assets/WizardPolyArt/Prefabs/PolyArtWizardStandardMat.prefab");
-            lib.huntress = null;
+            lib.huntress = Load<GameObject>(KI + "Unity Demo Scenes/Human Melee Animations/Prefabs/Characters/HumanF_Dummy_Red - Polearm.prefab");
+            lib.huntressController = BuildHuntressController();
 
-            // Dragons: Azure Wyrm = Soul Eater (blue), Crimson Drake = Terror Bringer (red), Night Wyrm = Usurper (black).
-            lib.dragonBlue = Load<GameObject>(Dragons + "DragonSoulEaterPBR/DragonSoulEaterBluePBR.prefab");
-            lib.dragonRed = Load<GameObject>(Dragons + "DragonTerrorBringer/Red.prefab");
+            // Dragons: every dragon is the Usurper; the game tints the variants per dragon (albino is the base for the new ones).
+            lib.dragonBlue = Load<GameObject>(Dragons + "DragonUsurper/Blue.prefab");
+            lib.dragonRed = Load<GameObject>(Dragons + "DragonUsurper/Red.prefab");
             lib.dragonBlack = Load<GameObject>(Dragons + "DragonUsurper/Black.prefab");
+            lib.dragonAlbino = Load<GameObject>(Dragons + "DragonUsurper/Albino.prefab");
+
+            // Stage 2: Slavic villages among low-poly trees.
+            lib.forestTrees = Prefabs(Trees + "Tree Type0 01.prefab", Trees + "Tree Type0 03.prefab", Trees + "Tree Type1 02.prefab", Trees + "Tree Type2 01.prefab",
+                Trees + "Tree Type3 02.prefab", Trees + "Tree Type4 01.prefab", Trees + "Tree Type5 03.prefab", Trees + "Tree Type6 02.prefab", Trees + "Tree Type7 01.prefab",
+                Slavic + "Nature/Tree/EA03_Nature_Tree_01b_PRE.prefab", Slavic + "Nature/Tree/EA03_Nature_Tree_02b_PRE.prefab", Slavic + "Nature/Tree/EA03_Nature_Tree_05a_PRE.prefab");
+            lib.forestBushes = Prefabs(Slavic + "Nature/Bushes/EA03_Nature_Bush_01a_PRE.prefab", Slavic + "Nature/Bushes/EA03_Nature_Bush_02a_PRE.prefab",
+                Slavic + "Nature/Bushes/EA03_Nature_Bush_03a_PRE.prefab", Slavic + "Nature/Bushes/EA03_Nature_Bush_05a_PRE.prefab", Slavic + "Nature/Plant/EA03_Nature_SweetFlag_01a_PRE.prefab");
+            lib.forestRocks = Prefabs(Slavic + "Environment/Rock/EA03_Environment_Rock_Big_Head_01a_PRE.prefab", Slavic + "Environment/Rock/EA03_Environment_Rock_CatHead_01b_PRE.prefab",
+                Slavic + "Environment/Rock/EA03_EnvRock_01a_PRE.prefab", Slavic + "Environment/Rock/EA03_Environment_Rock_Mini_Head_01a_PRE.prefab");
+            lib.villageHouses = Prefabs(Slavic + "Town/Building/EA03_Town_House_Comp_01a_PRE.prefab", Slavic + "Town/Building/EA03_Town_House_Comp_02a_PRE.prefab",
+                Slavic + "Town/Building/EA03_Town_House_Comp_03a_PRE.prefab", Slavic + "Town/Building/EA03_Town_House_Comp_03b_PRE.prefab",
+                Slavic + "Village/OutBuilding/EA03_Village_OutBuilding_Shed_01a_PRE.prefab", Slavic + "Village/Village/AnimalBreeding/EA03_Village_AnimalBreeding_Hovel_01a_PRE.prefab");
+            lib.villageProps = Prefabs(Slavic + "Fence/Plank2/EA03_Fence_Plank_02a_PRE.prefab", Slavic + "Fence/Plank2/EA03_Village_Fence_01a_PRE.prefab",
+                Slavic + "Prop/Container/EA03_Prop_Container_Barrel_01d_PRE.prefab", Slavic + "Prop/Container/EA03_Prop_Container_Bale_01a_PRE.prefab",
+                Slavic + "Prop/Container/EA03_Prop_Container_Basket_01a_PRE.prefab", Slavic + "Prop/Container/EA03_Prop_Container_Bag_02a_PRE.prefab");
+
+            // Stage 3: crypt ruins from the dungeon pack.
+            lib.cryptPieces = Prefabs(Dungeon + "Wall_Chiseled.prefab", Dungeon + "Wall_DoorStand.prefab", Dungeon + "Column_Half.prefab", Dungeon + "Wall_Chiseled.prefab");
+            lib.cryptProps = Prefabs(Dungeon + "Barrel_C.prefab", Dungeon + "Cauldron.prefab", Dungeon + "Flag.004.prefab", Dungeon + "SquareChest_Bottom.prefab",
+                Dungeon + "Pot.prefab", Dungeon + "Table.003.prefab", Dungeon + "Shelf_Framed.prefab", Dungeon + "Book_Holy_C.prefab");
+            lib.cryptTorch = Load<GameObject>(Dungeon + "Torch.001.prefab");
+
+            BuildIcons(lib);
 
             // Ogres borrow the Grunt's humanoid animations (the ogre pack has a rig but no animations).
             lib.ogres = Prefabs("Assets/Ogre/Prefabs/PBR/Ogre Generic.prefab", "Assets/Ogre/Prefabs/PBR/Ogre Green.prefab",
@@ -220,8 +317,12 @@ namespace Skyfall.EditorTools
                 Nature + "Shrubs/PT_Generic_Shrub_01_green.prefab");
             lib.grass = Prefabs(Nature + "Plants/PT_Grass_02.prefab", Nature + "Plants/PT_Grass_02.prefab", Nature + "Flowers/PT_Poppy_02.prefab");
 
+            lib.ruinsKit = Load<GameObject>(KitModel);
+
             // Sky.
             lib.skybox = Load<Material>(SkyPath());
+            lib.skyStage2 = Load<Material>("Assets/Fantasy Skybox FREE/Panoramics/FS002/FS002_Day.mat");
+            lib.skyStage3 = Load<Material>("Assets/Fantasy Skybox FREE/Panoramics/FS002/FS002_Night.mat");
 
             // Effects.
             lib.vfx = new List<SkinLibrary.Named>();
@@ -246,6 +347,7 @@ namespace Skyfall.EditorTools
             V("healing", Hovl + "Character auras/Healing.prefab");
             V("buff", Hovl + "Character auras/Buff.prefab");
             V("portal_red", Hovl + "Portals/Portal red.prefab");
+            V("portal_blue", Hovl + "Portals/Portal blue.prefab");
             V("dust_puff", Hovl + "Smoke effects/Dust puff.prefab");
 
             // Sounds (pickup and click keep their crisp synthesized blips).
@@ -280,6 +382,148 @@ namespace Skyfall.EditorTools
             S("flame", Amp + "AMP_Fire_Cast_04.wav");
 
             EditorUtility.SetDirty(lib);
+        }
+
+        // ---------------------------------------------------------------- Blood Huntress animator
+
+        static AnimationClip Clip(string fbx)
+        {
+            var clip = AssetDatabase.LoadAllAssetsAtPath(fbx).OfType<AnimationClip>().FirstOrDefault(c => !c.name.StartsWith("__preview"));
+            if (clip == null) Debug.LogWarning("Skyfall: missing animation " + fbx);
+            return clip;
+        }
+
+        /// A controller whose state names match what the game asks for (Idle, Walk, Run, JumpAir, Attack01, GetHit),
+        /// built from the Kevin Iglesias female clips.
+        static RuntimeAnimatorController BuildHuntressController()
+        {
+            string f = KI + "Animations/Female/";
+            var states = new (string name, string fbx)[]
+            {
+                ("Idle", f + "Combat/Polearm/HumanF@CombatIdlePolearm01.fbx"),
+                ("Walk", f + "Movement/Walk/HumanF@Walk01_Forward.fbx"),
+                ("Run", f + "Movement/Run/HumanF@Run01_Forward.fbx"),
+                ("JumpAir", f + "Movement/Jump/HumanF@Fall01.fbx"),
+                ("Attack01", f + "Combat/Polearm/HumanF@AttackPolearm01.fbx"),
+                ("GetHit", f + "Combat/HumanF@CombatDamage01.fbx"),
+            };
+            if (!File.Exists(states[0].fbx)) return null;
+            AssetDatabase.DeleteAsset(HuntressControllerPath);
+            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(HuntressControllerPath);
+            var sm = ctrl.layers[0].stateMachine;
+            foreach (var (name, fbx) in states)
+            {
+                var clip = Clip(fbx);
+                if (clip == null) continue;
+                var st = sm.AddState(name);
+                st.motion = clip;
+                if (name == "Idle") sm.defaultState = st;
+            }
+            EditorUtility.SetDirty(ctrl);
+            return ctrl;
+        }
+
+        // ---------------------------------------------------------------- UI icons
+
+        /// Maps game ids (spells, passives, weapons, defenses, buckets, armor, talents, power-ups, heroes) to the
+        /// Basic RPG Icons pack.
+        static void BuildIcons(SkinLibrary lib)
+        {
+            lib.icons = new List<SkinLibrary.NamedIcon>();
+            if (!AssetDatabase.IsValidFolder("Assets/Basic_RPG_Icons")) return;
+            const string Sk = Icons + "Skills/", Wp = Icons + "Items/Weapons/", Ar = Icons + "Items/Armor/", Rs = Icons + "Items/Resources/", Ch = Icons + "Char/";
+            void I(string name, string path)
+            {
+                var t = Load<Texture2D>(path);
+                if (t) lib.icons.Add(new SkinLibrary.NamedIcon { name = name, icon = t });
+            }
+            string fireball = Sk + "01_Fireball.png", fire = Sk + "02_Fire.png", fireRain = Sk + "03_Fire_rain.png", nova = Sk + "04_Ice_Nova.png",
+                shards = Sk + "05_Ice_shards.png", bolt = Sk + "06_Lightning_Bolt.png", strike = Sk + "07_Lightning_Strike.png", blink = Sk + "08_Blink.png",
+                slash = Sk + "09_Melee_slash.png", aoe = Sk + "10_Melee_AOE.png", cone = Sk + "11_Melee_Cone.png", heal = Sk + "12_Healing_spell.png",
+                heal2 = Sk + "13_Healing_spell_2.png", summon = Sk + "14_Summon.png", curse = Sk + "15_curse.png", drain = Sk + "16_life_drain.png";
+            // Abilities.
+            // The pack's "lightning bolt" is a golden hammer, so Chain Lightning gets its own icon: the lightning strike
+            // recolored electric blue-violet (written to a gitignored folder, since it is derived from the pack's art).
+            string chain = TintedIcon(strike, "chain_lightning", new Color(0.55f, 0.65f, 1f));
+            I("gravity_well", summon); I("frost_bolt", shards); I("chain_lightning", chain ?? strike); I("meteor", fireRain);
+            I("blood_aura", drain); I("lightning_storm", strike); I("bloodthirst", curse); I("spellblade", slash); I("windwalker", blink);
+            I("sword", Wp + "09_Longsword.png"); I("blood_lance", TintedIcon(cone, "blood_lance", new Color(0.95f, 0.08f, 0.15f)) ?? cone); I("staff", Wp + "08_Mage_Staff.png");
+            I("def_shield", Wp + "05_Shield.png"); I("def_evasion", blink); I("def_ward", fire);
+            I("dragonfire", fireball); I("ride", aoe);
+            // Stat buckets.
+            I("bucket_health", Rs + "15_Heal_potion.png"); I("bucket_mana", Rs + "06_blue_flower.png"); I("bucket_offense", Wp + "02_Sword.png");
+            I("bucket_defense", Wp + "05_Shield.png"); I("bucket_dragon", Rs + "11_Beast_Hide.png"); I("bucket_utility", Ar + "Common/05_leather_boots.png");
+            // Armor slots (common art for Common, epic art for Superior and Mythic).
+            var slotArt = new Dictionary<string, string> { ["helm"] = "03_plate_helm", ["chest"] = "01_plate_chest", ["gloves"] = "04_plate_gloves", ["legs"] = "06_plate_pants", ["boots"] = "05_plate_boots" };
+            foreach (var kv in slotArt)
+            {
+                I("armor_" + kv.Key, Ar + "Common/" + kv.Value + ".png");
+                I("armor_" + kv.Key + "_epic", Ar + "Epic/" + kv.Value + "_E.png");
+            }
+            // Power-ups and heroes.
+            I("pu_speed", blink); I("pu_damage", slash); I("pu_magnet", summon);
+            I("hero_knight", Ch + "Warrior_2.png"); I("hero_huntress", Ch + "Summoner_5.png"); I("hero_pyromancer", Ch + "Mage_3.png");
+            // Talents.
+            var talentArt = new Dictionary<string, string>
+            {
+                ["k_wyrmsteel"] = Wp + "09_Longsword.png", ["k_bulwark"] = Wp + "05_Shield.png", ["k_rally"] = heal2,
+                ["k_whirlwind"] = aoe, ["k_bash"] = Ar + "Epic/02_plate_shoulder_E.png", ["k_reach"] = cone,
+                ["k_aegis"] = Ar + "Epic/01_plate_chest_E.png", ["k_charge"] = fire, ["k_oath"] = fireball,
+                ["k_thunderclap"] = bolt, ["k_retribution"] = curse, ["k_sky"] = blink,
+                ["k_dragonform"] = fireRain, ["k_firewave"] = slash, ["k_vow"] = heal,
+                ["h_hemorrhage"] = drain, ["h_pact"] = curse, ["h_fleet"] = Ar + "Epic/05_leather_boots_E.png",
+                ["h_volley"] = cone, ["h_sanguine"] = heal2, ["h_orbs"] = Rs + "15_Heal_potion.png",
+                ["h_execute"] = slash, ["h_shadowstep"] = blink, ["h_wyrmbond"] = Rs + "14_Good_Beast_Hide.png",
+                ["h_lance"] = Wp + "03_Greataxe.png", ["h_thirst"] = drain, ["h_phantom"] = summon,
+                ["h_bloodmoon"] = curse, ["h_tempest"] = aoe, ["h_wings"] = Ar + "Epic/02_leather_cloak_E.png",
+                ["p_kindling"] = fire, ["p_emberward"] = heal2, ["p_font"] = Rs + "06_blue_flower.png",
+                ["p_twin"] = fireball, ["p_firewalk"] = Ar + "Epic/05_cloth_boots_E.png", ["p_combustion"] = fireRain,
+                ["p_phoenix"] = heal, ["p_blink"] = blink, ["p_dragonkin"] = Rs + "11_Beast_Hide.png",
+                ["p_inferno"] = fireball, ["p_molten"] = Ar + "Epic/01_cloth_chest_E.png", ["p_weaver"] = Wp + "07_Priest_Staff.png",
+                ["p_supernova"] = nova, ["p_sunorbs"] = fire, ["p_pillars"] = fireRain,
+            };
+            foreach (var kv in talentArt) I(kv.Key, kv.Value);
+        }
+
+        const string GeneratedIcons = "Assets/Skyfall/Generated/Icons";
+
+        /// Makes a recolored copy of an icon: every pixel's hue moves to the tint's (keeping its brightness), so a golden
+        /// spell icon becomes, say, electric blue. Returns the new asset's path, or null.
+        static string TintedIcon(string srcPath, string name, Color tint)
+        {
+            var src = AssetDatabase.LoadAssetAtPath<Texture2D>(srcPath);
+            if (src == null) return null;
+            // The pack's textures are not readable: copy through a render texture.
+            var rt = RenderTexture.GetTemporary(src.width, src.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            Graphics.Blit(src, rt);
+            var prev = RenderTexture.active;
+            RenderTexture.active = rt;
+            var tex = new Texture2D(src.width, src.height, TextureFormat.RGBA32, false);
+            tex.ReadPixels(new Rect(0, 0, src.width, src.height), 0, 0);
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+            Color.RGBToHSV(tint, out float th, out float ts, out _);
+            var px = tex.GetPixels();
+            for (int i = 0; i < px.Length; i++)
+            {
+                Color.RGBToHSV(px[i], out _, out float s, out float v);
+                var c = Color.HSVToRGB(th, Mathf.Lerp(s, ts, 0.5f), v);
+                c.a = px[i].a;
+                px[i] = c;
+            }
+            tex.SetPixels(px);
+            tex.Apply();
+            Directory.CreateDirectory(GeneratedIcons);
+            string path = GeneratedIcons + "/" + name + ".png";
+            File.WriteAllBytes(path, tex.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(tex);
+            AssetDatabase.ImportAsset(path);
+            if (AssetImporter.GetAtPath(path) is TextureImporter ti && ti.textureType != TextureImporterType.Sprite)
+            {
+                ti.textureType = TextureImporterType.Sprite;
+                ti.SaveAndReimport();
+            }
+            return path;
         }
 
         /// The skybox used by the game. Override with -skyfallSky "Assets/.../Some.mat".

@@ -9,7 +9,7 @@ namespace Skyfall
     {
         public static readonly Color GOLD = new Color(0.95f, 0.78f, 0.4f);
         public static readonly Color PARCHMENT = new Color(0.93f, 0.88f, 0.76f);
-        public static readonly Color INK = new Color(0.08f, 0.06f, 0.05f, 0.92f);
+        public static readonly Color INK = new Color(0.06f, 0.05f, 0.05f, 0.86f);
 
         public const float VIRTUAL_H = 900f;
         public static float Scale => Screen.height / VIRTUAL_H;
@@ -73,7 +73,11 @@ namespace Skyfall
         public static GUIStyle PanelStyle(Color? bg = null, Color? border = null, int radius = 6, int borderW = 2, int padding = 14)
         {
             var b = bg ?? INK;
-            var bd = border ?? GOLD;
+            // Minimal look: soft rounded corners and thin, slightly translucent borders everywhere.
+            var bd = border ?? M.WithA(GOLD, 0.55f);
+            radius = Mathf.Max(radius, 8);
+            borderW = Mathf.Min(borderW, 2);
+            if (border.HasValue && borderW > 0) bd.a *= 0.8f;
             string key = $"panel{ColorUtility.ToHtmlStringRGBA(b)}_{ColorUtility.ToHtmlStringRGBA(bd)}_{radius}_{borderW}_{padding}";
             if (styleCache.TryGetValue(key, out var st) && st.normal.background) return st;
             st = new GUIStyle
@@ -119,15 +123,16 @@ namespace Skyfall
                 padding = new RectOffset(16, 16, 10, 10),
                 margin = new RectOffset(0, 0, 0, 0),
             };
-            var edge = new Color(0.4f, 0.28f, 0.1f);
-            st.normal.background = PanelTex(GOLD, edge, 4, 2);
-            st.hover.background = PanelTex(new Color(1f, 0.88f, 0.55f), edge, 4, 2);
-            st.active.background = PanelTex(new Color(0.8f, 0.6f, 0.3f), edge, 4, 2);
+            // Minimal buttons: dark glass with a thin gold edge and gold text; they fill with gold on hover.
+            st.border = new RectOffset(10, 10, 10, 10);
+            st.normal.background = PanelTex(new Color(0.07f, 0.06f, 0.05f, 0.82f), M.WithA(GOLD, 0.8f), 8, 1);
+            st.hover.background = PanelTex(new Color(0.95f, 0.78f, 0.4f, 0.95f), GOLD, 8, 1);
+            st.active.background = PanelTex(new Color(0.75f, 0.58f, 0.28f, 0.95f), GOLD, 8, 1);
             st.focused.background = st.normal.background;
-            st.normal.textColor = INK;
-            st.hover.textColor = new Color(0.2f, 0.05f, 0f);
-            st.active.textColor = INK;
-            st.focused.textColor = INK;
+            st.normal.textColor = GOLD;
+            st.hover.textColor = new Color(0.12f, 0.07f, 0.03f);
+            st.active.textColor = new Color(0.12f, 0.07f, 0.03f);
+            st.focused.textColor = GOLD;
             styleCache[key] = st;
             return st;
         }
@@ -201,12 +206,95 @@ namespace Skyfall
             return r;
         }
 
-        public static bool Button(string text, int size = 22, float width = 0f)
+        /// A gold button. With enabled = false it is greyed out and never reports a click.
+        public static bool Button(string text, int size = 22, float width = 0f, bool enabled = true, System.Action act = null)
         {
             var st = ButtonStyle(size);
+            var prevEnabled = GUI.enabled;
+            var prevColor = GUI.color;
+            if (!enabled)
+            {
+                GUI.enabled = false;
+                GUI.color = new Color(0.6f, 0.6f, 0.6f, 0.75f);
+            }
             bool clicked = width > 0f ? GUILayout.Button(text, st, GUILayout.Width(width)) : GUILayout.Button(text, st);
-            if (clicked) Sfx.Play("click", -4f, 0f);
+            GUI.enabled = prevEnabled;
+            GUI.color = prevColor;
+            clicked &= enabled;
+            if (Event.current.type == EventType.Repaint) UiNav.Register(text, GUILayoutUtility.GetLastRect(), enabled, act);
+            if (clicked)
+            {
+                Sfx.Play("click", -4f, 0f);
+                act?.Invoke();
+            }
             return clicked;
+        }
+
+        /// A row of small squares showing a level or tier (filled / total).
+        public static void Pips(int filled, int total, Color c)
+        {
+            var r = GUILayoutUtility.GetRect(total * 20f, 16f, GUILayout.Width(total * 20f), GUILayout.Height(16f));
+            for (int i = 0; i < total; i++)
+            {
+                var q = new Rect(r.x + i * 20f, r.y + 1f, 15f, 14f);
+                if (i < filled) Panel(q, c, M.Lighten(c, 0.4f), 3, 1);
+                else Panel(q, new Color(0.1f, 0.08f, 0.07f, 0.9f), M.Darken(GOLD, 0.5f), 3, 1);
+            }
+        }
+
+        static Texture2D coinTex;
+
+        /// A small gold coin icon (a round texture made once).
+        public static void CoinIcon(Rect r)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            if (!coinTex)
+            {
+                const int N = 48;
+                coinTex = new Texture2D(N, N, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear, name = "Coin" };
+                var px = new Color[N * N];
+                for (int y = 0; y < N; y++)
+                    for (int x = 0; x < N; x++)
+                    {
+                        float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(N / 2f, N / 2f)) / (N / 2f);
+                        var c = d > 0.78f ? new Color(0.62f, 0.42f, 0.06f) : (d > 0.6f ? new Color(1f, 0.88f, 0.4f) : new Color(1f, 0.74f, 0.16f));
+                        c.a = Mathf.Clamp01((1f - d) * N * 0.5f);
+                        px[y * N + x] = c;
+                    }
+                coinTex.SetPixels(px);
+                coinTex.Apply();
+            }
+            GUI.DrawTexture(r, coinTex);
+        }
+
+        // ---------------------------------------------------------------- icons (Basic RPG Icons pack)
+
+        /// An icon texture from the skin library by name (null without the pack).
+        public static Texture2D IconTex(string name) => Skins.Lib && name != null ? Skins.Lib.Icon(name) : null;
+
+        /// An icon in a thin rounded frame; without the pack, a soft colored tile stands in.
+        public static void DrawIcon(Rect r, string name, Color accent, float alpha = 1f, bool dim = false)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            Panel(r, new Color(0.04f, 0.03f, 0.03f, 0.9f * alpha), M.WithA(accent, 0.85f * alpha), 8, 1);
+            var tex = IconTex(name);
+            var inner = new Rect(r.x + 3, r.y + 3, r.width - 6, r.height - 6);
+            var prev = GUI.color;
+            if (tex)
+            {
+                GUI.color = dim ? new Color(0.45f, 0.45f, 0.45f, alpha) : new Color(1f, 1f, 1f, alpha);
+                GUI.DrawTexture(inner, tex, ScaleMode.ScaleToFit);
+            }
+            else Panel(inner, M.WithA(M.Mul(accent, 0.6f), 0.8f * alpha), M.WithA(accent, 0f), 6, 0);
+            GUI.color = prev;
+        }
+
+        /// A framed icon in the layout.
+        public static Rect IconBox(string name, float size, Color accent, bool dim = false)
+        {
+            var r = GUILayoutUtility.GetRect(size, size, GUILayout.Width(size), GUILayout.Height(size));
+            DrawIcon(r, name, accent, 1f, dim);
+            return r;
         }
 
         public static void Space(float px) => GUILayout.Space(px);
@@ -237,17 +325,41 @@ namespace Skyfall
         }
 
         /// Hover tint and click detection for the last layout group (cards).
-        public static bool Clickable(Rect r)
+        public static bool Clickable(Rect r, string key = "card", System.Action act = null)
         {
             var e = Event.current;
-            if (e.type == EventType.Repaint && r.Contains(e.mousePosition)) Rect(r, new Color(1f, 0.95f, 0.8f, 0.08f));
+            if (e.type == EventType.Repaint)
+            {
+                if (r.Contains(e.mousePosition)) Rect(r, new Color(1f, 0.95f, 0.8f, 0.08f));
+                UiNav.Register(key, r, true, act);
+            }
             if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
             {
                 e.Use();
                 Sfx.Play("click", -4f, 0f);
+                act?.Invoke();
                 return true;
             }
             return false;
+        }
+
+        /// A settings slider row: focusable with the gamepad, where left/right calls adjust(-1 / +1). Call right after the row's layout group ends.
+        public static void SliderRow(string key, System.Action<int> adjust)
+        {
+            if (Event.current.type == EventType.Repaint) UiNav.Register(key, GUILayoutUtility.GetLastRect(), true, null, adjust);
+        }
+
+        /// The gamepad focus outline: a pulsing gold frame and a faint glow around the focused element (drawn last, on top of every screen).
+        public static void DrawFocus()
+        {
+            if (Event.current.type != EventType.Repaint || !UiNav.Visible || !GameInput.PadConnected) return;
+            if (!UiNav.FocusedRect(out var r)) return;
+            float pulse = 0.8f + 0.2f * Mathf.Sin(Time.unscaledTime * 6f);
+            var g = new Color(1f, 0.9f, 0.45f);
+            Rect(r, new Color(g.r, g.g, g.b, 0.10f * pulse));
+            var outer = new Rect(r.x - 5, r.y - 5, r.width + 10, r.height + 10);
+            Panel(outer, new Color(g.r, g.g, g.b, 0f), g, 8, 4, pulse);
+            Panel(new Rect(r.x - 9, r.y - 9, r.width + 18, r.height + 18), new Color(g.r, g.g, g.b, 0f), new Color(g.r, g.g, g.b, 0.35f), 10, 3, pulse);
         }
 
         public static void Overlay(float alpha) => Rect(new Rect(0, 0, W, H), new Color(0.02f, 0.01f, 0.01f, alpha));
