@@ -76,11 +76,12 @@ namespace Skyfall
             return m;
         }
 
-        /// A fresh (unshared) transparent unlit material, so it can be faded on its own.
-        public static Material FadeMat(Color color, bool additive = true)
+        /// A fresh (unshared) transparent unlit material, so it can be faded on its own (optionally textured).
+        public static Material FadeMat(Color color, bool additive = true, Texture2D tex = null)
         {
             var m = new Material(UnlitShader);
             SetLin(m, "_Color", color);
+            if (tex) m.SetTexture("_MainTex", tex);
             m.SetFloat("_Cull", (float)CullMode.Off);
             MakeTransparent(m, additive);
             return m;
@@ -117,14 +118,28 @@ namespace Skyfall
             }
         }
 
-        /// Particle material: soft round sprite, vertex colored, additive or alpha blended, with an HDR boost.
-        public static Material ParticleMat(bool additive = true, float boost = 1f)
+        static readonly Dictionary<string, Texture2D> fxTex = new Dictionary<string, Texture2D>();
+
+        /// An effect texture from Resources/Skyfall/FX (the Unity AI generated rings, flashes, sparks and decals), or null
+        /// when it is missing, in which case callers keep their plain look.
+        public static Texture2D Tex(string name)
         {
-            string key = $"p{additive}_{boost:F2}";
+            if (!fxTex.TryGetValue(name, out var t))
+            {
+                t = Resources.Load<Texture2D>("Skyfall/FX/" + name);
+                fxTex[name] = t;
+            }
+            return t;
+        }
+
+        /// Particle material: a sprite (soft round dot by default), vertex colored, additive or alpha blended, with an HDR boost.
+        public static Material ParticleMat(bool additive = true, float boost = 1f, Texture2D tex = null)
+        {
+            string key = $"p{additive}_{boost:F2}_{(tex ? tex.name : "dot")}";
             if (mats.TryGetValue(key, out var m) && m) return m;
             m = new Material(UnlitShader);
             m.SetVector("_Color", new Vector4(boost, boost, boost, 1f));
-            m.SetTexture("_MainTex", SoftDot);
+            m.SetTexture("_MainTex", tex ? tex : SoftDot);
             m.SetFloat("_Cull", (float)CullMode.Off);
             MakeTransparent(m, additive);
             mats[key] = m;
@@ -196,6 +211,9 @@ namespace Skyfall
             public float stretchScale = 0.04f;        // how long stretched particles get per unit of speed
             public float drag;                        // > 0: particles burst out fast and brake (the "punch" of an impact)
             public bool shrink;                       // particles shrink to nothing over their lifetime
+            public bool grow;                         // particles swell (fast, then easing) over their lifetime
+            public Texture2D tex;                     // sprite; null = soft round dot
+            public bool spin;                         // random start rotation and a slow spin (smoke, embers)
         }
 
         /// Creates a particle system emitting along the transform's local +Z.
@@ -283,13 +301,27 @@ namespace Skyfall
                 sol.enabled = true;
                 sol.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.6f, 0.75f), new Keyframe(1f, 0f)));
             }
+            else if (s.grow)
+            {
+                var sol = ps.sizeOverLifetime;
+                sol.enabled = true;
+                sol.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(new Keyframe(0f, 0.45f, 0f, 3f), new Keyframe(0.35f, 0.9f), new Keyframe(1f, 1.15f)));
+            }
+
+            if (s.spin)
+            {
+                main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+                var rol = ps.rotationOverLifetime;
+                rol.enabled = true;
+                rol.z = new ParticleSystem.MinMaxCurve(-0.6f, 0.6f);
+            }
 
             var col = ps.colorOverLifetime;
             col.enabled = true;
             col.color = new ParticleSystem.MinMaxGradient(MakeGradient(s));
 
             var r = go.GetComponent<ParticleSystemRenderer>();
-            r.material = ParticleMat(s.additive, s.boost);
+            r.material = ParticleMat(s.additive, s.boost, s.tex);
             r.shadowCastingMode = ShadowCastingMode.Off;
             r.receiveShadows = false;
             if (s.stretch)
@@ -342,9 +374,47 @@ namespace Skyfall
             return t;
         }
 
+        /// A flat textured quad lying on the ground plane at pos (size = full width), yawed by yaw degrees.
+        static MeshRenderer FlatQuad(Transform parent, Vector3 pos, float size, Material m, float yaw)
+        {
+            var r = Part(parent, MeshGen.Quad(), m, Vector3.zero, Vector3.one * size);
+            r.transform.position = pos;
+            r.transform.rotation = Quaternion.Euler(90f, yaw, 0f);
+            NoShadow(r);
+            return r;
+        }
+
+        /// Terrain height under pos when pos is within maxAbove of it (on the ground, not up on an island), else null.
+        static float? GroundUnder(Vector3 pos, float maxAbove = 2.5f)
+        {
+            var g = Game.I;
+            if (g == null || g.terrain == null) return null;
+            float h = g.terrain.Height(pos.x, pos.z);
+            return pos.y - h < maxAbove && pos.y - h > -1f ? h : (float?)null;
+        }
+
         public static void Flash(Vector3 pos, float radius, Color color, float dur = 0.3f)
         {
             if (root == null) return;
+            // A starburst sprite over a soft glow carries the flash; the plain sphere is only the fallback without it.
+            var star = Tex("fx_flash_star");
+            if (star)
+            {
+                var holder = FxNode("Flash", pos);
+                Particles(holder, new ParticleSpec
+                {
+                    amount = 1, lifetime = dur * 1.3f, size = radius * 2.2f, oneShot = true, grow = true,
+                    startColor = M.WithA(color, Mathf.Min(1f, color.a * 0.8f)), endColor = M.WithA(color, 0f), boost = 1.6f,
+                });
+                Particles(holder, new ParticleSpec
+                {
+                    amount = 1, lifetime = dur * 1.15f, size = radius * 2.6f, oneShot = true, grow = true, spin = true, tex = star,
+                    startColor = M.WithA(Color.Lerp(color, Color.white, 0.55f), Mathf.Min(1f, color.a * 1.2f)), midColor = color, midAt = 0.35f,
+                    endColor = M.WithA(color, 0f), boost = 2.2f,
+                });
+                Tw.After(dur * 1.3f + 0.3f, () => { if (holder) Object.Destroy(holder.gameObject); });
+                return;
+            }
             var m = FadeMat(color);
             var r = Part(root, MeshGen.Sphere(14), m, Vector3.zero, Vector3.one * radius * 0.5f);
             r.transform.position = pos;
@@ -364,6 +434,27 @@ namespace Skyfall
         public static void Shockwave(Vector3 pos, float radius, Color color, float dur = 0.4f, bool additive = true)
         {
             if (root == null) return;
+            // Ground waves kick up a ring of dust.
+            if (radius >= 3f && GroundUnder(pos) is float gh)
+                Vfx("dust_ground", new Vector3(pos.x, gh + 0.05f, pos.z), Mathf.Clamp(radius / 6f, 0.5f, 2.5f), 2f, null, 0.15f);
+            var ring = Tex("fx_shockwave_ring");
+            if (ring)
+            {
+                // A flat wispy energy ring (its band sits at 0.29 of the quad) that rips outward like the mesh ring did.
+                var qm = FadeMat(color, additive, ring);
+                var q = FlatQuad(root, pos, 1f, qm, M.RandRange(0f, 360f));
+                var qt = q.transform;
+                float qa = color.a;
+                Tw.Run(Tw.Seq(
+                    Tw.Lerp(dur * 0.85f, k =>
+                    {
+                        float e = Tw.Apply(Ease.OutQuint, k);
+                        qt.localScale = Vector3.one * Mathf.Lerp(1f, radius * 1.1f / 0.29f, e);
+                        SetAlpha(qm, Mathf.Min(1f, qa * 1.3f) * (1f - k * k));
+                    }, qt),
+                    Tw.Call(() => { if (qt) Object.Destroy(qt.gameObject); Object.Destroy(qm); })));
+                return;
+            }
             var m = FadeMat(color, additive);
             var r = Part(root, MeshGen.Ring(), m, Vector3.zero, new Vector3(0.3f, 2f, 0.3f));
             r.transform.position = pos;
@@ -381,9 +472,65 @@ namespace Skyfall
                 Tw.Call(() => { if (t) Object.Destroy(t.gameObject); Object.Destroy(m); })));
         }
 
+        static void JagLine(LineRenderer lr, Vector3 a, Vector3 b, int segs, float jag)
+        {
+            var d = b - a;
+            for (int i = 0; i <= segs; i++)
+            {
+                var p = a + d * ((float)i / segs);
+                if (i > 0 && i < segs)
+                    p += new Vector3(M.RandRange(-1f, 1f), M.RandRange(-1f, 1f), M.RandRange(-1f, 1f)) * d.magnitude * jag;
+                lr.SetPosition(i, p);
+            }
+        }
+
+        static LineRenderer BoltLine(Transform holder, Material m, float width, int segs)
+        {
+            var go = new GameObject("BoltLine");
+            go.transform.SetParent(holder, false);
+            var lr = go.AddComponent<LineRenderer>();
+            lr.sharedMaterial = m;
+            lr.positionCount = segs + 1;
+            lr.widthMultiplier = width;
+            lr.textureMode = LineTextureMode.Stretch;
+            lr.alignment = LineAlignment.View;
+            lr.numCapVertices = 2;
+            lr.shadowCastingMode = ShadowCastingMode.Off;
+            lr.receiveShadows = false;
+            return lr;
+        }
+
         public static void Bolt(Vector3 a, Vector3 b, Color color, float width = 0.18f, float dur = 0.18f, int segs = 7)
         {
             if (root == null) return;
+            var tex = Tex("fx_bolt");
+            if (tex)
+            {
+                // The LightningBolt pack's glow strip around a thin white-hot core, re-forking a few times while it fades.
+                var h = FxNode("Bolt", Vector3.zero);
+                int n = Mathf.Max(segs, 9);
+                var gm = FadeMat(color, true, tex);
+                var cm = FadeMat(Color.Lerp(color, Color.white, 0.75f));
+                var glow = BoltLine(h, gm, width * 3.2f, n);
+                var core = BoltLine(h, cm, width * 0.45f, n);
+                float ga = color.a;
+                int lastStep = -1;
+                Tw.Run(Tw.Seq(
+                    Tw.Lerp(dur * 1.3f, k =>
+                    {
+                        int step = (int)(k * 3f);
+                        if (step != lastStep)
+                        {
+                            lastStep = step;
+                            JagLine(glow, a, b, n, 0.07f);
+                            for (int i = 0; i <= n; i++) core.SetPosition(i, glow.GetPosition(i));
+                        }
+                        SetAlpha(gm, Mathf.Min(1f, ga * 1.3f) * (1f - k));
+                        SetAlpha(cm, (1f - k) * (1f - k));
+                    }, h),
+                    Tw.Call(() => { if (h) Object.Destroy(h.gameObject); Object.Destroy(gm); Object.Destroy(cm); })));
+                return;
+            }
             var holder = FxNode("Bolt", Vector3.zero);
             var m = FadeMat(color);
             var prev = a;
@@ -418,7 +565,7 @@ namespace Skyfall
                 amount = Mathf.Max(4, amount * 2 / 3), lifetime = 0.32f, size = size * 0.55f, scaleMin = 0.7f, scaleMax = 1.2f,
                 speedMin = speed * 1.6f, speedMax = speed * 3.2f, spread = 180f, drag = 7f, stretch = true, stretchScale = 0.06f,
                 startColor = Color.Lerp(color, Color.white, 0.7f), midColor = color, midAt = 0.3f, endColor = M.WithA(color, 0f),
-                boost = 2.4f, oneShot = true, shrink = true,
+                boost = 2.4f, oneShot = true, shrink = true, tex = Tex("fx_spark"),
             });
             Particles(holder, new ParticleSpec
             {
@@ -433,7 +580,103 @@ namespace Skyfall
             });
         }
 
+        static readonly Queue<Transform> scorches = new Queue<Transform>();
+
+        /// A burnt mark left on the ground by an explosion (only on the terrain, not up on islands), with a few embers and a
+        /// smoke puff rising from it. It lingers, then fades; the oldest marks go first once 20 are down.
+        public static void Scorch(Vector3 pos, float radius)
+        {
+            if (root == null || !(GroundUnder(pos) is float gh)) return;
+            var tex = Tex("fx_scorch_decal");
+            if (tex == null) return;
+            while (scorches.Count >= 20)
+            {
+                var old = scorches.Dequeue();
+                if (old) Object.Destroy(old.gameObject);
+            }
+            var at = new Vector3(pos.x, gh + 0.06f + scorches.Count * 0.002f, pos.z);
+            var holder = FxNode("Scorch", at);
+            scorches.Enqueue(holder);
+            var m = FadeMat(new Color(1f, 1f, 1f, 0f), false, tex);
+            FlatQuad(holder, at, radius * 2.4f, m, M.RandRange(0f, 360f));
+            var ember = Tex("fx_ember");
+            if (ember)
+                Particles(holder, new ParticleSpec
+                {
+                    amount = 7, lifetime = 1.4f, size = 0.32f, scaleMin = 0.5f, scaleMax = 1.2f, speedMin = 0.6f, speedMax = 2.2f, spread = 35f,
+                    sphereRadius = radius * 0.5f, gravity = new Vector3(0, 1.2f, 0), drag = 1f, tex = ember, boost = 2f, oneShot = true, shrink = true,
+                    startColor = new Color(1f, 0.75f, 0.35f), endColor = new Color(1f, 0.3f, 0.05f, 0f),
+                });
+            var smoke = Tex("fx_smoke_puff");
+            if (smoke)
+                Particles(holder, new ParticleSpec
+                {
+                    amount = 4, lifetime = 1.8f, size = radius * 0.9f, scaleMin = 0.7f, scaleMax = 1.2f, speedMin = 0.4f, speedMax = 1.2f, spread = 25f,
+                    sphereRadius = radius * 0.3f, gravity = new Vector3(0, 0.8f, 0), additive = false, tex = smoke, oneShot = true, grow = true, spin = true,
+                    startColor = new Color(0.25f, 0.23f, 0.22f, 0.55f), endColor = new Color(0.4f, 0.38f, 0.36f, 0f),
+                });
+            Tw.Run(Tw.Seq(
+                Tw.Lerp(0.15f, k => SetAlpha(m, 0.85f * k), holder),
+                Tw.Wait(6f),
+                Tw.Lerp(3f, k => SetAlpha(m, 0.85f * (1f - k)), holder),
+                Tw.Call(() => { if (holder) Object.Destroy(holder.gameObject); Object.Destroy(m); })));
+        }
+
+        /// A ring of ice crystals that bursts outward on the ground (Frost Bolt's impact).
+        public static void FrostRing(Vector3 pos, float radius, float dur = 0.6f)
+        {
+            if (root == null) return;
+            var tex = Tex("fx_frost_ring");
+            if (tex == null) return;
+            float y = GroundUnder(pos, 4f) is float gh ? gh + 0.1f : pos.y;
+            var m = FadeMat(new Color(0.8f, 0.95f, 1f, 1f), true, tex);
+            SetLin(m, "_Color", new Color(0.8f, 0.95f, 1f), 1.6f);
+            var t = FlatQuad(root, new Vector3(pos.x, y, pos.z), 1f, m, M.RandRange(0f, 360f)).transform;
+            Tw.Run(Tw.Seq(
+                Tw.Lerp(dur, k =>
+                {
+                    // The crystal band sits at 0.3 of the quad.
+                    t.localScale = Vector3.one * Mathf.Lerp(radius * 0.3f, radius, Tw.Apply(Ease.OutQuint, k)) / 0.3f;
+                    SetAlpha(m, k < 0.5f ? 1f : (1f - k) * 2f);
+                }, t),
+                Tw.Call(() => { if (t) Object.Destroy(t.gameObject); Object.Destroy(m); })));
+        }
+
         // ---------------------------------------------------------------- Asset Store effects
+
+        static readonly Dictionary<Material, Material> legacyFixed = new Dictionary<Material, Material>();
+
+        /// Some packs (Polygonal Particles) ship built-in particle shaders that URP draws pink: swap those for the game's own
+        /// unlit shader with the same texture, tint and blending.
+        static void FixLegacyMaterials(GameObject go)
+        {
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                var ms = r.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < ms.Length; i++)
+                {
+                    var src = ms[i];
+                    if (src == null || src.shader == null) continue;
+                    string sn = src.shader.name;
+                    if (!sn.StartsWith("Legacy Shaders/Particles") && !sn.StartsWith("Mobile/Particles")) continue;
+                    if (!legacyFixed.TryGetValue(src, out var m) || !m)
+                    {
+                        m = new Material(UnlitShader) { name = src.name + "_urp" };
+                        if (src.HasProperty("_MainTex")) m.SetTexture("_MainTex", src.GetTexture("_MainTex"));
+                        // Legacy particle tints are at half strength (the shaders double them).
+                        var tint = src.HasProperty("_TintColor") ? src.GetColor("_TintColor") * 2f : Color.white;
+                        m.SetVector("_Color", new Vector4(tint.r, tint.g, tint.b, Mathf.Min(1f, tint.a)));
+                        m.SetFloat("_Cull", (float)CullMode.Off);
+                        MakeTransparent(m, sn.Contains("Additive"));
+                        legacyFixed[src] = m;
+                    }
+                    ms[i] = m;
+                    changed = true;
+                }
+                if (changed) r.sharedMaterials = ms;
+            }
+        }
 
         /// Enemy-caused explosions, death puffs and impacts are always this red.
         public static readonly Color EnemyRed = new Color(0.9f, 0.1f, 0.08f);
@@ -456,6 +699,9 @@ namespace Skyfall
             vfxLast[name] = now;
             var go = Object.Instantiate(prefab, pos, rot ?? prefab.transform.rotation, root);
             go.transform.localScale = prefab.transform.localScale * scale;
+            FixLegacyMaterials(go);
+            // Explosions on the ground leave a scorch mark.
+            if (name.Contains("explosion")) Scorch(pos, Mathf.Clamp(scale * 2.2f, 1.2f, 7f));
             foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
             {
                 // Ground crater decals in these packs are very large and pile up across a busy battlefield.
@@ -566,6 +812,7 @@ namespace Skyfall
             var go = Object.Instantiate(prefab, parent, false);
             go.transform.localPosition = localPos;
             go.transform.localScale = prefab.transform.localScale * scale;
+            FixLegacyMaterials(go);
             foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
             {
                 var m = ps.main;
@@ -623,15 +870,27 @@ namespace Skyfall
             if (root == null) return;
             var color = colorIn ?? new Color(1f, 0.15f, 0.1f, 0.45f);
             var holder = FxNode("Telegraph", pos + new Vector3(0, 0.15f, 0));
-            var om = FadeMat(new Color(color.r, color.g, color.b, 0.8f), false);
-            var outer = Part(holder, MeshGen.Ring(), om, Vector3.zero, new Vector3(radius, 1f, radius));
-            NoShadow(outer);
+            // Outline: a turning rune circle (its outer edge sits at 0.317 of the quad), or the plain ring without it.
+            var runes = Tex("fx_telegraph_runes");
+            var om = FadeMat(new Color(color.r, color.g, color.b, runes ? 1f : 0.8f), runes != null, runes);
+            Transform spinner = null;
+            if (runes)
+            {
+                spinner = FlatQuad(holder, holder.position + new Vector3(0, 0.02f, 0), radius / 0.317f, om, M.RandRange(0f, 360f)).transform;
+                SetLin(om, "_Color", color, 1.5f);
+                SetAlpha(om, 1f);
+            }
+            else NoShadow(Part(holder, MeshGen.Ring(), om, Vector3.zero, new Vector3(radius, 1f, radius)));
             var fm = FadeMat(color, false);
             var fill = Part(holder, MeshGen.Disc(), fm, Vector3.zero, new Vector3(0.05f, 1f, 0.05f));
             NoShadow(fill);
             var ft = fill.transform;
             Tw.Run(Tw.Seq(
-                Tw.Lerp(dur, k => ft.localScale = Vector3.Lerp(new Vector3(0.05f, 1f, 0.05f), new Vector3(radius, 1f, radius), k), holder),
+                Tw.Lerp(dur, k =>
+                {
+                    ft.localScale = Vector3.Lerp(new Vector3(0.05f, 1f, 0.05f), new Vector3(radius, 1f, radius), k);
+                    if (spinner) spinner.Rotate(0f, 50f * Time.deltaTime, 0f, Space.World);
+                }, holder),
                 Tw.Call(() => { if (holder) Object.Destroy(holder.gameObject); Object.Destroy(om); Object.Destroy(fm); })));
         }
 

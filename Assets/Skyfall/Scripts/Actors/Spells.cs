@@ -629,6 +629,7 @@ namespace Skyfall
             var at = transform.position;
             if (!FX.Vfx("snow_hit", at, radius / 2f, 2f))
                 FX.Flash(at, radius, new Color(0.6f, 0.9f, 1f, 0.8f), 0.3f);
+            FX.FrostRing(at, radius);
             FX.Burst(at, new Color(0.85f, 0.97f, 1f), 16, 9f, 0.3f);
             Sfx.Play("frost", at, -2f, 0.1f);
             foreach (var e in g.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f))

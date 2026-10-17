@@ -35,9 +35,11 @@ namespace Skyfall
         readonly List<Chunk> live = new List<Chunk>();
         Material mat;
         Mesh blade;
+        /// The shader always reads the package's displacer list; left unbound, the GPU silently skips every draw.
+        ComputeBuffer noDisplacers;
         float height;
-        /// Chunks farther than this from the player are skipped; density thins out from the half-way mark.
-        public float drawRadius = 78f;
+        /// Chunks farther than this from the player are skipped; density thins out over the last 40%.
+        public float drawRadius = 95f;
         Camera cam;
         readonly Plane[] planes = new Plane[6];
 
@@ -58,7 +60,8 @@ namespace Skyfall
         {
             PointGrassCommon.FindPropertyIDs();
             if (!PointGrassCommon.BladeMeshesGenerated) PointGrassCommon.GenerateGrassMeshes();
-            blade = PointGrassCommon.grassMeshFlat;
+            // Round blades: flat cards vanish edge-on from the high gameplay camera.
+            blade = PointGrassCommon.grassMeshCyl;
             mat = new Material(template) { name = "GrassStage" };
             mat.SetColor("_BottomCol", style.bottom);
             mat.SetColor("_TopCol", style.top);
@@ -68,6 +71,7 @@ namespace Skyfall
             mat.SetFloat("_TopBright", style.bright);
             mat.SetFloat("_Smoothness", 0.05f);
             height = style.height;
+            noDisplacers = new ComputeBuffer(1, PointGrassCommon.ObjectData.stride);
             chunks = new Chunk[GRID * GRID];
             // The package's wind component feeds the shader's global wind parameters (a slow rolling breeze).
             var wind = gameObject.AddComponent<PointGrassWind>();
@@ -80,7 +84,7 @@ namespace Skyfall
 
         static int CellOf(float v) => Mathf.Clamp((int)((v - ORIGIN) / CHUNK), 0, GRID - 1);
 
-        /// Adds one blade at a world position; len scales the blade's height (about 0.6..1.2) and r is a 0..1 random value.
+        /// Adds one blade at a world position; len scales the blade's height (about 0.5..1.3) and r is a 0..1 random value.
         public void Add(Vector3 p, float len, float r)
         {
             int ix = CellOf(p.x), iz = CellOf(p.z);
@@ -122,6 +126,8 @@ namespace Skyfall
                 c.block.SetBuffer(PointGrassCommon.ID_PointBuff, c.buffer);
                 c.block.SetMatrix(PointGrassCommon.ID_MatrixL2W, Matrix4x4.identity);
                 c.block.SetMatrix(PointGrassCommon.ID_MatrixW2L, Matrix4x4.identity);
+                c.block.SetBuffer(PointGrassCommon.ID_ObjBuff, noDisplacers);
+                c.block.SetInt(PointGrassCommon.ID_ObjCount, 0);
                 c.points.Clear();
                 c.points.TrimExcess();
                 live.Add(c);
@@ -140,7 +146,7 @@ namespace Skyfall
             if (cam == null) return;
             var focus = Game.I != null && Game.I.player != null ? Game.I.player.Pos : cam.transform.position;
             GeometryUtility.CalculateFrustumPlanes(cam, planes);
-            float fadeFrom = drawRadius * 0.45f;
+            float fadeFrom = drawRadius * 0.6f;
             for (int i = 0; i < live.Count; i++)
             {
                 var c = live[i];
@@ -162,6 +168,7 @@ namespace Skyfall
         {
             foreach (var c in live) if (c.buffer != null) c.buffer.Release();
             live.Clear();
+            noDisplacers?.Release();
             if (mat) Destroy(mat);
         }
     }

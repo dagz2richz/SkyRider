@@ -60,7 +60,16 @@ namespace Skyfall
             var id = prefab;
             if (headHeights.TryGetValue(id, out float h)) return h;
             var head = rig.Bone(HumanBodyBones.Head);
-            if (head != null) h = head.position.y - rig.transform.position.y;
+            if (head != null)
+            {
+                // Measured from the feet when they hang below the model's origin (the Unity AI models are centred, and the
+                // humanoid animation stands them on the ground), else from the origin as the pack models are built.
+                float baseY = rig.transform.position.y;
+                var lf = rig.Bone(HumanBodyBones.LeftFoot);
+                var rf = rig.Bone(HumanBodyBones.RightFoot);
+                if (lf && rf) baseY = Mathf.Min(baseY, Mathf.Min(lf.position.y, rf.position.y));
+                h = head.position.y - baseY;
+            }
             else
             {
                 var b = rig.Bounds();

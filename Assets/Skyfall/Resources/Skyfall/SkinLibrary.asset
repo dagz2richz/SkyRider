@@ -26,25 +26,20 @@ MonoBehaviour:
   wyvern: {fileID: 8086867768170610240, guid: 8f5a575d356148f42a4f152c97e3da13, type: 3}
   wyvernFallback: 0
   ogres:
-  - {fileID: 5674075356657402348, guid: 7e38136a601fead4a9e3d91f1163ff27, type: 3}
-  - {fileID: 5674075356657402348, guid: e3b54a198a81ae947869418b3de8360d, type: 3}
-  - {fileID: 3490066330406847947, guid: b3150552364c03d4389a5eff5c4966a1, type: 3}
-  - {fileID: 5674075356657402348, guid: 8348dc9291b14eb45b981802e89559a1, type: 3}
+  - {fileID: 4889980068655756852, guid: 09d465ea47971bd4683e1d4a95401534, type: 3}
   bossOgres:
-  - {fileID: 5674075356657402348, guid: 5bf37a0727d14eb44b2a5435c908fcba, type: 3}
-  - {fileID: 4763784140287841885, guid: e2d7cbbebbef1a14a89bcfc31693f0a2, type: 3}
-  - {fileID: 5674075356657402348, guid: 8348dc9291b14eb45b981802e89559a1, type: 3}
+  - {fileID: 4889980068655756852, guid: 09d465ea47971bd4683e1d4a95401534, type: 3}
   ogreWeapon: {fileID: 5406128183402853294, guid: 1f7b1b9b5856ecd40b5c7743b6676c3b, type: 3}
   ogreController: {fileID: 9100000, guid: e58bf4525b7cc80459d6f7ff033ea067, type: 2}
-  archer: {fileID: 3155058319838657794, guid: 176299a76ecfc7544b22a66fae200ac7, type: 3}
+  archer: {fileID: 305539443414615738, guid: f439102e3355131488e56f9240e80ade, type: 3}
   shaman: {fileID: 388476414, guid: 7df524699deb44341b3693c8538df185, type: 3}
-  golem: {fileID: 1067925524328404, guid: 6bbfea6690ef7724ba495c866081f855, type: 3}
+  golem: {fileID: 341103327527591746, guid: e9277aeb32e583141b3d12533692d1c1, type: 3}
   golemKing: {fileID: 1077356408, guid: c6cfc32748fb5004aa11a1be074b5c58, type: 3}
   forestBoss: {fileID: 5674075356657402348, guid: 5bf37a0727d14eb44b2a5435c908fcba, type: 3}
   cryptBoss: {fileID: 971994670, guid: 0bdbbc31102770146858004072a8752a, type: 3}
-  skeleton: {fileID: 165424, guid: 9f4313a771e05c64d8da7ae6bd19a19f, type: 3}
+  skeleton: {fileID: 6848519264119774330, guid: 1eb26bc9712b5a8499cb29603f67d8f6, type: 3}
   skeletonController: {fileID: 9100000, guid: 101f2a0308156ab4a8b5521181b24337, type: 2}
-  humanSoldier: {fileID: 100050, guid: ba24e610e0a338545b447ff44a3cf1cc, type: 3}
+  humanSoldier: {fileID: 3524214561359139039, guid: 0e894a4b20469994e9385d7dc0d302e5, type: 3}
   humanController: {fileID: 9100000, guid: 875bc5f42caf6fa43b3c543cfee5b74b, type: 2}
   deadTrees:
   - {fileID: 1932841404346126693, guid: c7827efbbf7212f42803476ce3f9d082, type: 3}
@@ -180,6 +175,12 @@ MonoBehaviour:
     prefab: {fileID: 5607819269926399345, guid: 45e0f06c750176947862c10346226439, type: 3}
   - name: dust_puff
     prefab: {fileID: 5610010966355794069, guid: 803ecf87f61d9fb4f84ba6319ba95c9c, type: 3}
+  - name: dust_ground
+    prefab: {fileID: 8230022441722461589, guid: 41494896fc96c9748b81d3356632794e, type: 3}
+  - name: amb_fireflies
+    prefab: {fileID: 1335420742411268, guid: bfd029cf92085ea4a9842fae64ef7799, type: 3}
+  - name: amb_leaves
+    prefab: {fileID: 1056618600770638, guid: 3d42bbbe9fe446f41aa669ee01abd12d, type: 3}
   sounds:
   - name: hit
     clips:

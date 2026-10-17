@@ -54,6 +54,18 @@ namespace Skyfall.EditorTools
         const string PolytopeUrpPackage = "Assets/Polytope Studio/Lowpoly_Environments/URP/PT_Nature_Free_URP_17.unitypackage";
         const string PolytopeShader = "Assets/Polytope Studio/Lowpoly_Environments/Sources/Shaders/PT_Rock_Shader.shader";
 
+        /// Path of the prefab with exactly this file name anywhere under folder (pack subfolders vary), or "" when missing.
+        static string FindPrefab(string folder, string name)
+        {
+            if (!AssetDatabase.IsValidFolder(folder.TrimEnd('/'))) return "";
+            foreach (var g in AssetDatabase.FindAssets(name + " t:Prefab", new[] { folder.TrimEnd('/') }))
+            {
+                var p = AssetDatabase.GUIDToAssetPath(g);
+                if (Path.GetFileNameWithoutExtension(p) == name) return p;
+            }
+            return "";
+        }
+
         [MenuItem("Skyfall/Set Up Asset Packs")]
         public static void Run()
         {
@@ -258,6 +270,13 @@ namespace Skyfall.EditorTools
 
         static GameObject[] Prefabs(params string[] paths) => paths.Select(Load<GameObject>).Where(g => g != null).ToArray();
 
+        /// The single remade model at path when it exists, else the pack's set.
+        static GameObject[] AiOr(string path, GameObject[] fallback)
+        {
+            var p = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            return p != null ? new[] { p } : fallback;
+        }
+
         static AudioClip[] Clips(params string[] paths) => paths.Select(Load<AudioClip>).Where(c => c != null).ToArray();
 
         static void BuildLibrary()
@@ -334,15 +353,18 @@ namespace Skyfall.EditorTools
             BuildIcons(lib);
 
             // Ogres borrow the Grunt's humanoid animations (the ogre pack has a rig but no animations).
-            lib.ogres = Prefabs("Assets/Ogre/Prefabs/PBR/Ogre Generic.prefab", "Assets/Ogre/Prefabs/PBR/Ogre Green.prefab",
-                "Assets/Ogre/Prefabs/PBR/Ogre Blue.prefab", "Assets/Ogre/Prefabs/PBR/Ogre Generic Warpainted.prefab");
-            lib.bossOgres = Prefabs("Assets/Ogre/Prefabs/PBR/Ogre Green Warpainted.prefab", "Assets/Ogre/Prefabs/PBR/Ogre Blue Warpainted.prefab",
-                "Assets/Ogre/Prefabs/PBR/Ogre Generic Warpainted.prefab");
+            // The Unity AI remakes (Art/Enemies: the rigged, reduced models wrapped at the pack models' size) replace the
+            // regular ogres, the archer, the golem mini boss, the skeletons and the knights; each falls back to its pack model.
+            const string AiFoes = "Assets/Skyfall/Art/Enemies/";
+            lib.ogres = AiOr(AiFoes + "Ogre.prefab", Prefabs("Assets/Ogre/Prefabs/PBR/Ogre Generic.prefab", "Assets/Ogre/Prefabs/PBR/Ogre Green.prefab",
+                "Assets/Ogre/Prefabs/PBR/Ogre Blue.prefab", "Assets/Ogre/Prefabs/PBR/Ogre Generic Warpainted.prefab"));
+            lib.bossOgres = AiOr(AiFoes + "Ogre.prefab", Prefabs("Assets/Ogre/Prefabs/PBR/Ogre Green Warpainted.prefab", "Assets/Ogre/Prefabs/PBR/Ogre Blue Warpainted.prefab",
+                "Assets/Ogre/Prefabs/PBR/Ogre Generic Warpainted.prefab"));
             lib.ogreWeapon = Load<GameObject>("Assets/Ogre/Prefabs/PBR/Weapon.prefab");
             lib.ogreController = Load<RuntimeAnimatorController>("Assets/Mini Legion Grunt PBR HP Polyart/Animations/Grunt.controller");
-            lib.archer = Load<GameObject>("Assets/Mini Legion Grunt PBR HP Polyart/Prefab/GruntPBR.prefab");
+            lib.archer = Load<GameObject>(AiFoes + "Grunt.prefab") ?? Load<GameObject>("Assets/Mini Legion Grunt PBR HP Polyart/Prefab/GruntPBR.prefab");
             lib.shaman = Load<GameObject>("Assets/Mini Legion Grunt PBR HP Polyart/Prefab/GruntPolyart.prefab");
-            lib.golem = Load<GameObject>("Assets/Mini Legion Rock Golem PBR HP Polyart/Prefabs/PBR_Golem.prefab");
+            lib.golem = Load<GameObject>(AiFoes + "RockGolem.prefab") ?? Load<GameObject>("Assets/Mini Legion Rock Golem PBR HP Polyart/Prefabs/PBR_Golem.prefab");
             lib.golemKing = Load<GameObject>("Assets/Mini Legion Rock Golem PBR HP Polyart/Prefabs/Polyart_Golem.prefab");
             // Stage 2 and 3 final bosses: Ulgrim is a warpainted ogre, Skarnath a Soul Eater dragon (not the Usurper the player's dragons use).
             lib.forestBoss = Load<GameObject>("Assets/Ogre/Prefabs/PBR/Ogre Green Warpainted.prefab");
@@ -360,7 +382,7 @@ namespace Skyfall.EditorTools
             string m = KI + "Animations/Male/";
             MakeHumanoid(KnightFbx, WK + "WK_heavy_infantry_04_charge.FBX", WK + "WK_heavy_infantry_05_combat_idle.FBX",
                 WK + "WK_heavy_infantry_06_combat_walk.FBX", WK + "WK_heavy_infantry_08_attack_B.FBX");
-            lib.skeleton = Load<GameObject>("Assets/Toon_RTS/unded_Demo/prefab/UD_demo_character.prefab");
+            lib.skeleton = Load<GameObject>(AiFoes + "Skeleton.prefab") ?? Load<GameObject>("Assets/Toon_RTS/unded_Demo/prefab/UD_demo_character.prefab");
             lib.skeletonController = BuildController(SkeletonControllerPath, new (string, string)[]
             {
                 ("Idle", UD + "UD_infantry_05_combat_idle.FBX"),
@@ -371,7 +393,7 @@ namespace Skyfall.EditorTools
                 ("GetHit", m + "Combat/HumanM@CombatDamage01.fbx"),
                 ("Die", m + "Combat/HumanM@Death01.fbx"),
             });
-            lib.humanSoldier = Load<GameObject>(KnightFbx);
+            lib.humanSoldier = Load<GameObject>(AiFoes + "Knight.prefab") ?? Load<GameObject>(KnightFbx);
             lib.humanController = BuildController(HumanControllerPath, new (string, string)[]
             {
                 ("Idle", WK + "WK_heavy_infantry_05_combat_idle.FBX"),
@@ -436,6 +458,11 @@ namespace Skyfall.EditorTools
             V("portal_red", Hovl + "Portals/Portal red.prefab");
             V("portal_blue", Hovl + "Portals/Portal blue.prefab");
             V("dust_puff", Hovl + "Smoke effects/Dust puff.prefab");
+            V("dust_ground", Hovl + "Smoke effects/Dust ground.prefab");
+            // Stage ambience (Polygonal Particles; FX swaps its built-in particle shaders for URP ones at spawn).
+            const string Poly = "Assets/Polygonal Particles/Assets/Prefabs/";
+            V("amb_fireflies", FindPrefab(Poly, "Fireflies"));
+            V("amb_leaves", FindPrefab(Poly, "Leaves"));
 
             // Sounds (pickup and click keep their crisp synthesized blips).
             lib.sounds = new List<SkinLibrary.SoundSet>();
@@ -620,10 +647,27 @@ namespace Skyfall.EditorTools
             foreach (var a in anims)
             {
                 if (!(AssetImporter.GetAtPath(a) is ModelImporter ai)) continue;
-                if (ai.animationType == ModelImporterAnimationType.Human && ai.sourceAvatar == avatar) continue;
-                ai.animationType = ModelImporterAnimationType.Human;
-                ai.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
-                ai.sourceAvatar = avatar;
+                bool changed = false;
+                if (ai.animationType != ModelImporterAnimationType.Human || ai.sourceAvatar != avatar)
+                {
+                    ai.animationType = ModelImporterAnimationType.Human;
+                    ai.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
+                    ai.sourceAvatar = avatar;
+                    changed = true;
+                }
+                // Bake the root height into the pose, measured from the feet: this pack's root sits oddly, which only cancels
+                // out on its own model, so on others (the Unity AI remakes) the body sank below the ground.
+                var clips = ai.clipAnimations.Length > 0 ? ai.clipAnimations : ai.defaultClipAnimations;
+                foreach (var c in clips)
+                {
+                    if (c.lockRootHeightY && c.heightFromFeet && !c.keepOriginalPositionY) continue;
+                    c.lockRootHeightY = true;
+                    c.heightFromFeet = true;
+                    c.keepOriginalPositionY = false;
+                    changed = true;
+                }
+                if (!changed) continue;
+                ai.clipAnimations = clips;
                 ai.SaveAndReimport();
             }
         }

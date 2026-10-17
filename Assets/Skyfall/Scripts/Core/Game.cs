@@ -163,6 +163,7 @@ namespace Skyfall
             terrain = new GameObject("Terrain").AddComponent<WorldTerrain>();
             terrain.transform.SetParent(transform, false);
             terrain.Generate(worldSeed + stage * 7919, stage);
+            terrain.gameObject.AddComponent<WorldAmbient>().Init(stage);
         }
 
         Vector3 StartPos => new Vector3(0, terrain.Height(0, 0), 0);
