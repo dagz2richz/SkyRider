@@ -26,6 +26,13 @@ namespace Skyfall
             return false;
         }
 
+        // Fixed-arity forms of the two above: these are read every frame, and a params call allocates its array each time.
+        static bool Held(Key a) => K != null && K[a].isPressed;
+        static bool Held(Key a, Key b) => K != null && (K[a].isPressed || K[b].isPressed);
+        static bool Held(Key a, Key b, Key c) => K != null && (K[a].isPressed || K[b].isPressed || K[c].isPressed);
+        static bool Pressed(Key a) => K != null && K[a].wasPressedThisFrame;
+        static bool Pressed(Key a, Key b) => K != null && (K[a].wasPressedThisFrame || K[b].wasPressedThisFrame);
+
         /// Radial deadzone: nothing inside the zone, then rescaled so the output still reaches 1 at full tilt.
         public static Vector2 Deadzone(Vector2 v, float dz = STICK_DEADZONE)
         {

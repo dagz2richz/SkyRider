@@ -266,8 +266,9 @@ namespace Skyfall
             float flap = Mathf.Sin(t * flapSpeed) * 0.75f;
             var spreadRot = new Vector3(0, 0, flap + 0.1f);
             var foldedRot = new Vector3(0.12f, -1.3f, 0.02f + Mathf.Sin(t * 1.5f) * 0.03f);
-            foreach (var w in new[] { wingR, wingL })
+            for (int wi = 0; wi < 2; wi++)
             {
+                var w = wi == 0 ? wingR : wingL;
                 float sd = wingSide[w];
                 var rot = Vector3.Lerp(spreadRot, foldedRot, fold);
                 w.Rot = new Vector3(rot.x, rot.y * sd, rot.z * sd);
