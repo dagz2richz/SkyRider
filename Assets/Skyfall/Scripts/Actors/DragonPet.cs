@@ -8,7 +8,7 @@ namespace Skyfall
     /// (on the ground or in the air; from the air your hero also leaps down and slams the ground). It also looks after
     /// you: its wing stops shots meant for you, it scorches what hurts you, and it snatches you out of danger.
     /// Upgrades come from the dragon card on level-ups (player.spells) and the dragon's permanent tree (player.Mod).
-    public class DragonPet : MonoBehaviour
+    public partial class DragonPet : MonoBehaviour
     {
         const float PET_SCALE = 0.45f;
         const float MOUNT_SCALE = 0.6f;
@@ -263,7 +263,7 @@ namespace Skyfall
                 {
                     if (this == null) return;
                     FX.Flash(at + Vector3.up, 2.5f, new Color(fire.r, fire.g, fire.b, 0.7f), 0.2f);
-                    foreach (var o in game.EnemiesInRadius(at, 3.5f, 3f)) Hit(o, dmg, M.Flat(o.Pos - at).normalized, 6f, false);
+                    foreach (var o in game.EnemiesInRadius(at, 3.5f, 3f, asDragon: true)) Hit(o, dmg, M.Flat(o.Pos - at).normalized, 6f, false);
                 });
             }
         }
@@ -409,7 +409,7 @@ namespace Skyfall
             if (breathActive > 0f)
             {
                 breathActive -= delta;
-                var target = game.NearestEnemy(mouth, reach + 6f, 30f);
+                var target = PickBreathTarget(mouth, reach + 6f);
                 if (target)
                 {
                     var want = (target.Pos + new Vector3(0, 0.8f, 0) - mouth).normalized;
@@ -457,7 +457,7 @@ namespace Skyfall
             breathTimer -= delta;
             if (breathTimer <= 0f)
             {
-                var target = game.NearestEnemy(mouth, reach + 3f, 30f);
+                var target = PickBreathTarget(mouth, reach + 3f);
                 if (target == null)
                 {
                     breathTimer = 0.3f;
@@ -477,6 +477,7 @@ namespace Skyfall
 
         void AutoDive()
         {
+            if (WyvernHoldsDive()) { commandCd = Data.WYVERN_HARRY_DIVE_DELAY; return; }   // WYVERN: harried, the dive waits a moment
             var at = game.DensestPoint(player.Pos, 22f);
             if (M.IsInf(at))
             {
@@ -550,7 +551,7 @@ namespace Skyfall
             FX.Burst(at + new Vector3(0, 1f, 0), fire, 24, 10f, 0.5f);
             game.Shake(0.7f);
             Sfx.Play("boom", at, 4f, 0.05f);
-            foreach (var e in game.EnemiesInRadius(at, rad, 5f))
+            foreach (var e in game.EnemiesInRadius(at, rad, 5f, asDragon: true))
             {
                 var outDir = M.Flat(e.Pos - at);
                 Hit(e, dmg, outDir.normalized, 12f, true, Color.Lerp(fire, Color.white, 0.4f));
@@ -642,7 +643,7 @@ namespace Skyfall
             FX.Burst(at + new Vector3(0, 0.6f, 0), Color.Lerp(new Color(0.5f, 0.4f, 0.3f), fire, 0.6f), (int)(30 * big), 14f * big, 0.6f * big);
             Sfx.Play("boom", at, 4f * big, 0.05f);
             game.Shake(0.9f * big);
-            foreach (var e in game.EnemiesInRadius(at, rad, 6f))
+            foreach (var e in game.EnemiesInRadius(at, rad, 6f, asDragon: true))
             {
                 var outDir = M.Flat(e.Pos - at);
                 Hit(e, dmg, outDir.normalized, 14f * big, true, Color.Lerp(fire, Color.white, 0.4f));
@@ -705,7 +706,7 @@ namespace Skyfall
             FX.NoShadow(FX.Part(dome, MeshGen.Sphere(16), FX.Glow(M.WithA(col, 0.22f), 1.4f), Vector3.zero, Vector3.one * 4.2f));
             FX.NoShadow(FX.Part(dome, MeshGen.Ring(), FX.Glow(M.WithA(col, 0.8f), 2f), new Vector3(0, -1.1f, 0), new Vector3(2.4f, 0.3f, 2.4f)));
             Tw.After(Data.GUARDIAN_WINGS_SHIELD, () => { if (dome) Destroy(dome.gameObject); });
-            foreach (var e in game.EnemiesInRadius(at, 5f, 4f))
+            foreach (var e in game.EnemiesInRadius(at, 5f, 4f, asDragon: true))
                 if (!e.isBoss) e.knock += M.Flat(e.Pos - at).normalized * 14f;
             game.hud.Banner("Guardian Wings", "Your dragon shields you and heals your wounds");
         }
@@ -769,7 +770,7 @@ namespace Skyfall
             if (tick <= 0f)
             {
                 tick = 0.3f;
-                foreach (var e in g.EnemiesInRadius(transform.position, radius, 8f))
+                foreach (var e in g.EnemiesInRadius(transform.position, radius, 8f, asDragon: true))
                 {
                     pet.Hit(e, tickDamage, Vector3.zero, 0f, false);
                     e.Weaken(1f, Mathf.Min(0.4f + pet.player.Mod("weaken"), 0.8f));

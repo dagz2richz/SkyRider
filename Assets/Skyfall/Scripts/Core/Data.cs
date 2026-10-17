@@ -719,6 +719,65 @@ namespace Skyfall
         /// Harpooners take turns: no wind-up starts within this many seconds of another one's.
         public const float HARPOON_STAGGER = 2f;
 
+        // ---------------------------------------------------------------- WYVERN (flying harasser, world 2 onward)
+        // Only the dragon can hurt a wyvern (breath, dives, signature, guardian blasts), unless the hero is riding it
+        // (mounted or in a soaring dragon form): then the hero's own weapons and spells count too. See Wyvern.cs.
+
+        /// Regular-but-rare: a spawn director (not the wave table) adds one at a time, indexed by stage - 1 (world 1: none).
+        /// Most alive at once, first spawn after this many seconds into the stage, and seconds between spawns.
+        public static readonly int[] WYVERN_MAX_ALIVE = { 0, 2, 4 };
+        public static readonly float[] WYVERN_FIRST_SPAWN = { 0f, 50f, 30f };
+        public static readonly float[] WYVERN_SPAWN_EVERY = { 0f, 42f, 26f };
+        /// The spawn gap shrinks to this fraction of itself by the end of the run's clock.
+        public const float WYVERN_SPAWN_RAMP = 0.7f;
+        /// Body size feeds the usual health/damage formula (a brute is 1.45); multipliers on top of the shared stage/time scaling.
+        public const float WYVERN_SIZE = 1.5f;
+        public const float WYVERN_HP_MULT = 1.5f;
+        public const float WYVERN_DMG_MULT = 1.15f;
+        public const int WYVERN_XP = 6;
+        /// Hit radius for the dragon's breath/blasts (the model is about WYVERN_LENGTH long, nose to tail).
+        public const float WYVERN_RADIUS = 2.2f;
+        public const float WYVERN_LENGTH = 5.5f;
+        /// Cruise speed and the speed of a bombing run (the hero walks at ~9).
+        public const float WYVERN_SPEED = 13f;
+        public const float WYVERN_RUN_SPEED = 21f;
+        /// Cruise height above the higher of the ground and the hero, a bombing run's height, and the minimum above ground.
+        public const float WYVERN_ALTITUDE = 10f;
+        public const float WYVERN_BOMB_ALTITUDE = 8f;
+        public const float WYVERN_MIN_AGL = 6f;
+        /// Re-evaluate bomb vs distract this often (seconds), and never switch sooner than the commit time.
+        public const float WYVERN_THINK_EVERY = 3f;
+        public const float WYVERN_COMMIT = 5f;
+        /// Bombing: at most this many wyverns bomb at once (indexed by stage - 1), seconds between a wyvern's runs
+        /// (indexed by stage - 1), the blast radius, and the bomb's fall time (the ground marker shows for the whole run-up plus this).
+        public static readonly int[] WYVERN_MAX_BOMBERS = { 0, 1, 2 };
+        public static readonly float[] WYVERN_BOMB_COOLDOWN = { 0f, 6f, 4.5f };
+        public const float WYVERN_BOMB_RADIUS = 4.2f;
+        public const float WYVERN_BOMB_FALL = 0.45f;
+        /// The marker is placed where the hero will be this many seconds ahead; at least this long before the blast.
+        public const float WYVERN_BOMB_LEAD = 0.45f;
+        public const float WYVERN_BOMB_MIN_WARNING = 1.15f;
+        /// World 3 wyverns carpet the run: a second bomb this far further along the run line.
+        public const float WYVERN_BOMB_SECOND_GAP = 7f;
+        /// A bomb's damage is the wyvern's damage times this; it can't catch a hero flying higher than this above the ground.
+        public const float WYVERN_BOMB_DMG = 1.4f;
+        public const float WYVERN_BOMB_REACH_Y = 3.5f;
+        /// Decision weights: below this much hero health the wyverns press the bombing; the dragon counts as "close" to
+        /// the hero inside NEAR and "far" beyond FAR; a breath that is this many seconds from ready counts as "on cooldown".
+        public const float WYVERN_LOW_HERO_HP = 0.4f;
+        public const float WYVERN_DRAGON_NEAR = 9f;
+        public const float WYVERN_DRAGON_FAR = 18f;
+        public const float WYVERN_BREATH_COOLDOWN = 1.5f;
+        /// Harrying the dragon: a swoop at it every few seconds; each makes its breath prefer this wyvern for a while,
+        /// and (at most once per DIVE_LOCK seconds) holds off its next automatic dive for a moment.
+        public const float WYVERN_HARRY_EVERY = 2.6f;
+        public const float WYVERN_HARRY_TIME = 2.2f;
+        public const float WYVERN_HARRY_DIVE_DELAY = 1.5f;
+        public const float WYVERN_HARRY_DIVE_LOCK = 10f;
+        /// Hurt wyverns (below this health fraction) break off, flying away for a while before coming back.
+        public const float WYVERN_RETREAT_HP = 0.3f;
+        public const float WYVERN_RETREAT_TIME = 7f;
+
         public class BossDef
         {
             public string name;

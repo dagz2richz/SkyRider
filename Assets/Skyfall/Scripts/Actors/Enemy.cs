@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Skyfall
 {
     /// Ogres of every size, and the giant ogre bosses: model, movement, status effects, boss abilities.
-    public class Enemy : MonoBehaviour
+    public partial class Enemy : MonoBehaviour   // WYVERN logic lives in Wyvern.cs
     {
         static readonly Color[] SKINS =
         {
@@ -67,6 +67,7 @@ namespace Skyfall
 
         public static Enemy Make(Game g, string k, float hpMult, float dmgMult)
         {
+            if (k == "wyvern") return MakeWyvern(g, hpMult, dmgMult);
             var e = new GameObject("Ogre_" + k).AddComponent<Enemy>();
             e.game = g;
             e.kind = k;
@@ -438,7 +439,7 @@ namespace Skyfall
             flash = 1f;
             if (rig == null || isBoss || rig.InAction || Time.time < flinchCd) return;
             if (!knocked && amount < maxHp * 0.08f) return;
-            if (rig.Action(0.4f, "GetHit")) flinchCd = Time.time + 1.5f;
+            if (rig.Action(0.4f, "GetHit", "Get Hit")) flinchCd = Time.time + 1.5f;
         }
 
         /// On death, a pack model with a death animation is left behind to fall (it sinks into the ground and goes
@@ -446,6 +447,7 @@ namespace Skyfall
         /// cheap. Returns true if a corpse was left.
         public bool LeaveCorpse()
         {
+            if (IsWyvern) return LeaveWyvernCorpse();
             if (rig == null || model == null || !rig.Has("Die") || frozenT > 0f) return false;
             if (!isBoss && EnemyCorpse.Active >= EnemyCorpse.MAX_REGULAR) return false;
             var go = new GameObject("Corpse_" + displayName);
@@ -513,18 +515,18 @@ namespace Skyfall
             if (burnT > 0f)
             {
                 burnT -= delta;
-                game.DamageEnemy(this, burnDps * player.BurnMult * delta, Vector3.zero, 0f, false);
+                DotDamage(burnDps * player.BurnMult * delta);
             }
             if (bleedT > 0f)
             {
                 bleedT -= delta;
-                game.DamageEnemy(this, bleedDps * player.BleedMult * delta, Vector3.zero, 0f, false);
+                DotDamage(bleedDps * player.BleedMult * delta);
                 if (M.RandF() < delta * 6f) FX.Burst(Pos + new Vector3(0, size, 0), new Color(0.7f, 0f, 0.03f), 3, 2f, 0.12f);
             }
             if (poisonT > 0f)
             {
                 poisonT -= delta;
-                game.DamageEnemy(this, poisonDps * delta, Vector3.zero, 0f, false);
+                DotDamage(poisonDps * delta);
                 if (M.RandF() < delta * 5f) FX.Burst(Pos + new Vector3(0, size * 1.2f, 0), new Color(0.5f, 1f, 0.2f), 3, 1.5f, 0.15f);
             }
             if (dead) return;
@@ -543,7 +545,9 @@ namespace Skyfall
             else if (shockT > 0f) SetEmission(new Color(0.5f, 0.65f, 1f), 0.6f + M.RandF() * 0.8f);
             else if (burnT > 0f) SetEmission(new Color(1f, 0.45f, 0.1f), 0.35f + Mathf.Sin(animT * 18f) * 0.2f);
             else if (weakenT > 0f) SetEmission(new Color(0.6f, 0f, 0.05f), 0.5f);
+            else if (IsWyvern && WyvernShieldGlow()) { }   // WYVERN: violet shimmer while only the dragon can hurt it
             else SetEmission(Color.black, 0f);
+            if (IsWyvern) { WyvernTick(delta, player); return; }   // WYVERN: its own flight AI (Wyvern.cs)
             // Crouch before a jump, stretch in the air, squash on landing.
             squash = Mathf.MoveTowards(squash, jumpWind > 0f ? -0.25f : (airborne ? 0.15f : 0f), delta * 2.2f);
             model.localScale = Vector3.one * (1f + pop * 0.18f) + new Vector3(-squash * 0.5f, squash, -squash * 0.5f);
@@ -725,7 +729,7 @@ namespace Skyfall
 
         /// Big ogres and bosses are solid for the player; the small ones get shoved aside.
         public bool Solid => isBoss || kind == "brute" || kind == "hulk";
-        public bool Airborne => airborne;
+        public bool Airborne => airborne || IsWyvern;   // a wyvern flies: no ground separation
 
         /// How hard this foe's blows (and body) shove the hero: regular < brute < hulk < mini boss < final boss, growing per stage.
         public int KnockTier => isBoss ? (bossIdx == Data.FINAL_BOSS ? Data.KNOCK_FINAL_BOSS : Data.KNOCK_MINI_BOSS)

@@ -688,7 +688,7 @@ namespace Skyfall
             transform.position += velocity * delta;
             var pos = transform.position;
             Enemy first = null;
-            foreach (var e in game.EnemiesInRadius(pos - new Vector3(0, 1f, 0), 0.9f, 2.2f))
+            foreach (var e in game.EnemiesInRadius(pos - new Vector3(0, 1f, 0), 0.9f, 2.2f, ownerPlayer == null))   // WYVERN: the dragon's fireballs can hit wyverns
                 if (!passed.Contains(e)) { first = e; break; }
             if (first != null && pierce > 0)
             {
@@ -710,10 +710,12 @@ namespace Skyfall
             FX.Burst(at, custom ? fx : new Color(1f, 0.6f, 0.2f), small ? 8 : 18, 10f, small ? 0.3f : 0.45f);
             Sfx.Play(small ? "hit" : "boom", at, small ? -9f : -5f);
             int hits = 0;
-            foreach (var e in game.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f))
+            foreach (var e in game.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f, ownerPlayer == null))
             {
                 var outDir = M.Flat(e.Pos - at);
+                game.dragonSource = ownerPlayer == null && e.IsWyvern;   // WYVERN: a dragon-launched fireball counts as the dragon's hit
                 game.DamageEnemy(e, damage, outDir.normalized, small ? 2.5f : 6f, true, custom ? Color.Lerp(fx, Color.white, 0.4f) : new Color(1f, 0.7f, 0.3f));
+                game.dragonSource = false;
                 e.Ignite(3f, damage * burnMult);
                 hits++;
             }

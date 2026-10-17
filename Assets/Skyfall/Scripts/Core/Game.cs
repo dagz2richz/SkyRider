@@ -381,6 +381,7 @@ namespace Skyfall
         void Spawn(float delta)
         {
             if (finalStarted) return;
+            WyvernDirector.Tick(this, delta);   // WYVERN: world 2+ flying harasser spawns (Wyvern.cs)
             float t = timeElapsed;
             float rate = (1f + t * 0.045f) * Data.SPAWN_RATE_MULT * (1f + 0.15f * (stage - 1));
             int cap = Mathf.Min(MAX_ENEMIES, (int)((60 + t * 0.55f + 20 * (stage - 1)) * Data.SPAWN_CAP_MULT));
@@ -620,7 +621,7 @@ namespace Skyfall
                     enemies.RemoveAt(i);
                     Destroy(e.gameObject);
                 }
-                else if (!e.isBoss && Vector3.Distance(e.Pos, player.Pos) > 90f && !e.OnFloatingIsland())
+                else if (!e.isBoss && !e.IsWyvern && Vector3.Distance(e.Pos, player.Pos) > 90f && !e.OnFloatingIsland())
                 {
                     float a = M.RandF() * M.TAU;
                     var p = player.Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 45f;
@@ -640,14 +641,19 @@ namespace Skyfall
 
         // ---------------------------------------------------------------- queries
 
-        public Enemy NearestEnemy(Vector3 pos, float maxDist, float maxDy = 6f, Enemy exclude = null, List<Enemy> excludeList = null)
+        /// WYVERN: the hero can't hurt a wyvern on foot, so the hero's targeting (the default) skips it; the dragon's own
+        /// queries pass asDragon so it can find wyverns. See Wyvern.cs.
+        public bool HeroCanHitWyverns => player != null && (player.flying || player.SoaringForm);
+        public bool CanTarget(Enemy e, bool asDragon = false) => !e.IsWyvern || asDragon || HeroCanHitWyverns;
+
+        public Enemy NearestEnemy(Vector3 pos, float maxDist, float maxDy = 6f, Enemy exclude = null, List<Enemy> excludeList = null, bool asDragon = false)
         {
             Enemy best = null;
             float bd = maxDist * maxDist;
             for (int i = 0; i < enemies.Count; i++)
             {
                 var e = enemies[i];
-                if (e.dead || e == exclude) continue;
+                if (e.dead || e == exclude || !CanTarget(e, asDragon)) continue;
                 var v = e.Pos - pos;
                 if (Mathf.Abs(v.y + 1f) > maxDy + e.radius) continue;
                 v.y = 0f;
@@ -661,13 +667,13 @@ namespace Skyfall
             return best;
         }
 
-        public List<Enemy> EnemiesInRadius(Vector3 pos, float r, float maxDy = 4f)
+        public List<Enemy> EnemiesInRadius(Vector3 pos, float r, float maxDy = 4f, bool asDragon = false)
         {
             var result = new List<Enemy>();
             for (int i = 0; i < enemies.Count; i++)
             {
                 var e = enemies[i];
-                if (e.dead) continue;
+                if (e.dead || !CanTarget(e, asDragon)) continue;
                 var v = e.Pos - pos;
                 if (Mathf.Abs(v.y + 1f) > maxDy + e.radius) continue;
                 v.y = 0f;
@@ -685,7 +691,7 @@ namespace Skyfall
             for (int i = 0; i < 8; i++)
             {
                 var e = RandomEnemyNear(pos, range);
-                if (e == null) continue;
+                if (e == null || e.IsWyvern) continue;   // area spells and dives aim at the ground crowd, never at a flyer
                 if (avoid.HasValue && Vector3.Distance(e.Pos, avoid.Value) < avoidR) continue;
                 int n = EnemiesInRadius(e.Pos, 5f, 6f).Count;
                 if (n > bestN)
@@ -699,13 +705,13 @@ namespace Skyfall
 
         readonly List<Enemy> cands = new List<Enemy>();
 
-        public Enemy RandomEnemyNear(Vector3 pos, float r)
+        public Enemy RandomEnemyNear(Vector3 pos, float r, bool asDragon = false)
         {
             cands.Clear();
             for (int i = 0; i < enemies.Count; i++)
             {
                 var e = enemies[i];
-                if (!e.dead && (e.Pos - pos).sqrMagnitude < r * r)
+                if (!e.dead && CanTarget(e, asDragon) && (e.Pos - pos).sqrMagnitude < r * r)
                 {
                     cands.Add(e);
                     if (cands.Count > 40) break;
@@ -720,6 +726,12 @@ namespace Skyfall
         public void DamageEnemy(Enemy e, float amount, Vector3 knockDir = default, float knockForce = 0f, bool show = true, Color? color = null)
         {
             if (e == null || e.dead) return;
+            // WYVERN: only the dragon (or a mounted hero) can hurt it; everything else passes through.
+            if (e.IsWyvern && !dragonSource && !e.dotTick && !HeroCanHitWyverns)
+            {
+                if (show) e.ShowImmune();
+                return;
+            }
             bool crit = show && M.RandF() < player.CritChance;
             if (crit) amount *= 2f;
             e.hp -= amount;
@@ -770,6 +782,7 @@ namespace Skyfall
             else
             {
                 // Half as many gems, each worth twice as much.
+                if (e.IsWyvern) pos = e.GroundPos;   // WYVERN: it dies in the air; its loot lands on the ground below
                 if (M.RandF() < Data.GEM_DROP_CHANCE) DropGem(pos, e.xpValue * Data.GEM_VALUE_MULT);
                 // Random health orbs; bigger ogres drop them more often.
                 float orbChance = Data.ORB_CHANCE * (0.6f + e.size * 0.6f);

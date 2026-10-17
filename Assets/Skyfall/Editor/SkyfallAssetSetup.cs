@@ -19,6 +19,9 @@ namespace Skyfall.EditorTools
         const string Guz = "Assets/Matthew Guz/Hits Effects FREE/Prefab/";
         const string Nature = "Assets/Polytope Studio/Lowpoly_Environments/Prefabs/";
         const string Dragons = "Assets/FourEvilDragonsPBR/Prefab/";
+        /// The dedicated wyvern model (generated separately); the setup falls back to an evil dragon until it exists.
+        const string WyvernPath = "Assets/Skyfall/Art/Wyvern/Wyvern.prefab";
+        const string WyvernHighPolyPath = "Assets/Skyfall/Art/Wyvern/Wyvern_HighPoly.prefab";
 
         static readonly string[] CharacterFolders =
         {
@@ -273,6 +276,13 @@ namespace Skyfall.EditorTools
             lib.dragonRed = Load<GameObject>(Dragons + "DragonUsurper/Red.prefab");
             lib.dragonBlack = Load<GameObject>(Dragons + "DragonUsurper/Black.prefab");
             lib.dragonAlbino = Load<GameObject>(Dragons + "DragonUsurper/Albino.prefab");
+
+            // The wyvern enemy: the dedicated model when it has landed, otherwise a stand-in evil dragon (the Terror Bringer,
+            // NOT the Usurper that is the player's dragon) that the game scales down and tints.
+            lib.wyvern = AssetDatabase.LoadAssetAtPath<GameObject>(WyvernPath);
+            if (lib.wyvern == null) lib.wyvern = AssetDatabase.LoadAssetAtPath<GameObject>(WyvernHighPolyPath);   // until the rigged one lands
+            lib.wyvernFallback = lib.wyvern == null;
+            if (lib.wyvern == null) lib.wyvern = Load<GameObject>(Dragons + "DragonTerrorBringer/Grey.prefab");
 
             // Stage 2: Slavic villages among low-poly trees.
             lib.forestTrees = Prefabs(Trees + "Tree Type0 01.prefab", Trees + "Tree Type0 03.prefab", Trees + "Tree Type1 02.prefab", Trees + "Tree Type2 01.prefab",

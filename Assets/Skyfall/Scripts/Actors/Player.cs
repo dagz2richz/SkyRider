@@ -324,7 +324,7 @@ namespace Skyfall
             var c = Center;
             foreach (var e in game.enemies)
             {
-                if (e.dead) continue;
+                if (e.dead || !game.CanTarget(e)) continue;   // WYVERN: no aim-snap onto what you cannot hurt
                 var to = M.Flat(e.Pos - c);
                 float d = to.magnitude;
                 if (d > 40f || d < 0.5f) continue;
@@ -1079,7 +1079,7 @@ namespace Skyfall
             for (int i = 0; i < list.Count; i++)
             {
                 var e = list[i];
-                if (e.dead) continue;
+                if (e.dead || e.IsWyvern) continue;   // WYVERN: flies far above, never blocks you
                 var ep = e.transform.position;
                 float dx = pos.x - ep.x, dz = pos.z - ep.z;
                 float rr = pr + e.radius;
@@ -1265,7 +1265,7 @@ namespace Skyfall
             for (int i = 0; i < list.Count; i++)
             {
                 var e = list[i];
-                if (e.dead) continue;
+                if (e.dead || !game.CanTarget(e)) continue;   // WYVERN: the sword passes through it on foot
                 var to = e.Pos - Pos;
                 // Tall hitbox: anything whose body (feet to head) comes within reach above or below the blade.
                 if (c.y > e.Pos.y + 2f * e.size + SWORD_REACH_UP || c.y < e.Pos.y - SWORD_REACH_DOWN) continue;
@@ -1636,7 +1636,7 @@ namespace Skyfall
             for (int i = 0; i < list.Count; i++)
             {
                 var e = list[i];
-                if (e.dead || hit.Contains(e)) continue;
+                if (e.dead || hit.Contains(e) || !g.CanTarget(e)) continue;   // WYVERN
                 var c = e.Pos + new Vector3(0, e.size, 0);
                 if (Vector3.Distance(c, pos) < (e.radius + 0.6f + 0.5f * e.size) * reachK)
                 {

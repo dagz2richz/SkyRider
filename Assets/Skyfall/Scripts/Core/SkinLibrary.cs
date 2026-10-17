@@ -25,6 +25,12 @@ namespace Skyfall
         public GameObject dragonBlack;
         public GameObject dragonAlbino;
 
+        [Header("Wyvern (flying harasser)")]
+        /// Assets/Skyfall/Art/Wyvern/Wyvern.prefab when it exists, otherwise a recolored evil dragon (wyvernFallback).
+        public GameObject wyvern;
+        /// True when the wyvern slot holds the stand-in dragon (the game tints and scales it), false for the real model.
+        public bool wyvernFallback;
+
         [Header("Ogres")]
         public GameObject[] ogres;
         public GameObject[] bossOgres;
