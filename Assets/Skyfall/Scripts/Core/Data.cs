@@ -740,9 +740,10 @@ namespace Skyfall
 
         /// Regular-but-rare: a spawn director (not the wave table) adds one at a time, indexed by stage - 1 (world 1: none).
         /// Most alive at once, first spawn after this many seconds into the stage, and seconds between spawns.
-        public static readonly int[] WYVERN_MAX_ALIVE = { 0, 2, 4 };
-        public static readonly float[] WYVERN_FIRST_SPAWN = { 0f, 50f, 30f };
-        public static readonly float[] WYVERN_SPAWN_EVERY = { 0f, 42f, 26f };
+        /// World 2 meets them early; counts and spawn rate are +15% over the first tuning (max 2/4, every 42/26 s).
+        public static readonly int[] WYVERN_MAX_ALIVE = { 0, 3, 5 };
+        public static readonly float[] WYVERN_FIRST_SPAWN = { 0f, 25f, 26f };
+        public static readonly float[] WYVERN_SPAWN_EVERY = { 0f, 36.5f, 22.6f };
         /// The spawn gap shrinks to this fraction of itself by the end of the run's clock.
         public const float WYVERN_SPAWN_RAMP = 0.7f;
         /// Body size feeds the usual health/damage formula (a brute is 1.45); multipliers on top of the shared stage/time scaling.

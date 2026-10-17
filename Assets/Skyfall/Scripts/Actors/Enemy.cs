@@ -186,8 +186,10 @@ namespace Skyfall
 
             model = FX.Node(transform, "Model");
             // Skeletons and knights stand at human height (scaled with their size roll); ogres tower at 2 m per size.
-            // A dragon is sized by its body height, about half an ogre's head height.
-            float headHeight = !boss && ModelKind != "" && !isOgreModel ? 1.75f * size / Data.OGRES[kind].size : (isDragon ? 1.0f : 2.0f) * size;
+            // A dragon is sized by its body height: about as tall as an ogre's head and twice as long, so the stage 3
+            // final boss towers over the stage 2 ogre king instead of looking like a pet.
+            float headHeight = !boss && ModelKind != "" && !isOgreModel ? 1.75f * size / Data.OGRES[kind].size : 2.0f * size;
+            if (isDragon) radius *= 1.5f;   // its long body: breath and blades must connect along it, not only at its chest
             rig = Skins.SpawnCharacter(prefab, model, headHeight, ctrl);
             var hand = rig.Bone(HumanBodyBones.RightHand);
             var leftHand = rig.Bone(HumanBodyBones.LeftHand);
