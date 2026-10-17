@@ -49,6 +49,8 @@ namespace Skyfall
         public GameObject[] standingStones;
         public GameObject[] shrubs;
         public GameObject[] grass;
+        /// Point Grass Renderer blade material (the package's demo blade); the world copies it per stage. Empty = no ground grass.
+        public Material grassMaterial;
         /// The Ruins Creation Kit model; its child objects are the individual ruin pieces.
         public GameObject ruinsKit;
 

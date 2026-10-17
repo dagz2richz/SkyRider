@@ -49,6 +49,7 @@ namespace Skyfall
             }
             // Floating islands only from the world where the dragon can first carry you; world 1 fights on the ground.
             if (stage >= Data.FLIGHT_STAGE) BuildIslands();
+            BuildGrass(seed);
             // Merge the static scenery into big batches so thousands of small parts render cheaply.
             StaticBatchingUtility.Combine(propsRoot.gameObject);
         }

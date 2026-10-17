@@ -356,6 +356,7 @@ namespace Skyfall.EditorTools
                 Nature + "Shrubs/PT_Generic_Shrub_01_green.prefab");
             lib.grass = Prefabs(Nature + "Plants/PT_Grass_02.prefab", Nature + "Plants/PT_Grass_02.prefab", Nature + "Flowers/PT_Poppy_02.prefab");
 
+            lib.grassMaterial = Load<Material>("Assets/Packages/Point-Grass-Renderer/Runtime/Demo/Materials/PGDemo_Blade.mat");
             lib.ruinsKit = Load<GameObject>(KitModel);
 
             // Sky.
