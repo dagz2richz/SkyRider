@@ -445,6 +445,8 @@ namespace Skyfall
         /// On death, a pack model with a death animation is left behind to fall (it sinks into the ground and goes
         /// away); everything else just vanishes in the death burst. Regular foes' corpses are capped so big waves stay
         /// cheap. Returns true if a corpse was left.
+        public Transform corpse;   // the fallen model LeaveCorpse left behind (null if none); the feast still frames it
+
         public bool LeaveCorpse()
         {
             if (IsWyvern) return LeaveWyvernCorpse();
@@ -457,6 +459,7 @@ namespace Skyfall
             rig.SetEmission(Color.black);
             rig.Speed = 1f;
             rig.Action(10f, "Die");
+            corpse = go.transform;
             var c = go.AddComponent<EnemyCorpse>();
             c.Init(isBoss ? 4f : 1.4f, (isBoss ? 2.5f : 1.2f) * size, tintMats);
             tintMats.Clear();   // the corpse owns the boss tint materials now

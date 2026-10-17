@@ -183,6 +183,18 @@ namespace Skyfall
             return true;
         }
 
+        /// Snaps the first state of the list that exists to one frame of its clip and evaluates the pose right now
+        /// (for a still picture). Locomotion resumes with the next Loop call.
+        public bool Pose(float normalizedTime, params string[] states)
+        {
+            string s = PlayFirst(states, 0f, true);
+            if (s == null) return false;
+            anim.Play(s, 0, normalizedTime);
+            anim.Update(0f);
+            anim.Update(0f);
+            return true;
+        }
+
         public bool InAction => Time.time < actionUntil;
 
         public float Speed

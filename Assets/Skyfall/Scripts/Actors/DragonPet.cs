@@ -156,6 +156,43 @@ namespace Skyfall
             skin.Loop("Idle", "Idle01");
         }
 
+        static readonly string[] SK_BITE = { "Basic Attack", "Claw Attack", "Flame Attack", "Scream", "Idle" };
+
+        public bool Mounted => state == "mount";
+
+        /// Length of the dragon's body in the world right now (its age and size included).
+        public float BodyLength => DRAGON_LENGTH * transform.localScale.x;
+
+        /// Sets up the feast shot: the dragon stands on the ground beside the corpse (on the side of towards), head to it,
+        /// frozen on a frame of its bite. Returns the action that puts it back, or null if it cannot be staged.
+        public System.Action StageFeast(Vector3 corpseAt, float corpseRadius, Vector3 towards, WorldTerrain terrain)
+        {
+            if (skin == null || skin.anim == null) return null;
+            var savedPos = Pos;
+            var savedRot = transform.rotation;
+            var savedCull = skin.anim.cullingMode;
+            skin.anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;   // the pose must be evaluated even off-screen
+            var at = corpseAt + towards * (BodyLength * 0.5f + corpseRadius * 0.3f);
+            at.y = terrain.SurfaceHeight(at.x, at.z, corpseAt.y + 2f);
+            // The model's head points along -forward, so forward is the way back out from the corpse.
+            transform.SetPositionAndRotation(at, Quaternion.Euler(0f, Mathf.Atan2(towards.x, towards.z) * Mathf.Rad2Deg, 0f));
+            bool posed = skin.Pose(0.45f, SK_BITE);
+            System.Action restore = () =>
+            {
+                if (this == null) return;
+                Pos = savedPos;
+                transform.rotation = savedRot;
+                if (skin)
+                {
+                    skin.anim.cullingMode = savedCull;
+                    skin.Loop(SK_IDLE);
+                }
+            };
+            if (posed) return restore;
+            restore();
+            return null;
+        }
+
         /// The mouth the breath comes from.
         public Vector3 MouthPos
         {

@@ -64,7 +64,11 @@ namespace Skyfall
             UiNav.DefaultKeyFor = DefaultFocusKey;
         }
 
-        void OnDestroy() => GameInput.StopRumble();
+        void OnDestroy()
+        {
+            GameInput.StopRumble();
+            FreeStill();
+        }
 
         /// The topmost screen that takes menu input, or null during play.
         string TopScreen()
@@ -299,7 +303,7 @@ namespace Skyfall
         string stillCaption = "";
         float stillT;
         float stillEnd = -1f;       // stillT when the fade-out started (-1 while it is still showing)
-        bool stillHadPause;
+        bool stillHadPause, stillOwned;
         System.Action stillDone;
         const float STILL_FADE = 0.9f, STILL_HOLD = 6f;
 
@@ -308,9 +312,11 @@ namespace Skyfall
 
         /// A full-screen still with a caption: fades in, holds, fades out (any key, click or gamepad button skips to the
         /// fade-out). Gameplay is paused meanwhile; done() runs when it is gone.
-        public void ShowStill(Texture2D tex, string caption, System.Action done)
+        public void ShowStill(Texture2D tex, string caption, System.Action done, bool ownsTexture = false)
         {
+            FreeStill();
             stillTex = tex;
+            stillOwned = ownsTexture;
             stillCaption = caption;
             stillDone = done;
             stillT = 0f;
@@ -319,6 +325,14 @@ namespace Skyfall
             stillHadPause = game.Paused;
             game.SetPaused(true);
             Sfx.Play("roar", 0f, 0f);
+        }
+
+        /// Drops the picture; a captured one (owned by the HUD) is destroyed with it.
+        void FreeStill()
+        {
+            if (stillOwned && stillTex) Destroy(stillTex);
+            stillTex = null;
+            stillOwned = false;
         }
 
         void TickStill(float udt)
@@ -333,7 +347,7 @@ namespace Skyfall
             if (stillEnd >= 0f && stillT - stillEnd >= STILL_FADE)
             {
                 stillOpen = false;
-                stillTex = null;
+                FreeStill();
                 if (!stillHadPause) game.SetPaused(false);
                 var done = stillDone;
                 stillDone = null;

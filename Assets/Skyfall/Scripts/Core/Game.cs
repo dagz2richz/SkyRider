@@ -1210,21 +1210,120 @@ namespace Skyfall
         }
 
         /// Full-screen still of the hero's dragon eating the fallen warlord: this is how it grows into its next age.
-        /// Stills live in Resources/Skyfall/Stills (DragonFeast1 after world 1, DragonFeast2 after world 2); without the
-        /// picture the caption shows as a banner instead.
+        /// The picture is a screenshot of the real world (CaptureFeast); if that fails the caption shows as a banner instead.
         void ShowFeast(System.Action done)
         {
             string warlord = Stage.finalBoss.Split(',')[0];
             string age = Data.DRAGON_AGE[Mathf.Clamp(stage, 0, Data.DRAGON_AGE.Length - 1)];
             string caption = string.Format(Data.FEAST_CAPTION[Mathf.Clamp(stage - 1, 0, Data.FEAST_CAPTION.Length - 1)], warlord, age);
-            var tex = Resources.Load<Texture2D>("Skyfall/Stills/DragonFeast" + stage);
+            Texture2D tex = null;
+            try { tex = CaptureFeast(); }
+            catch (System.Exception ex) { Debug.LogWarning("Feast capture failed: " + ex.Message); }
             if (tex == null)
             {
                 hud.Banner("Your dragon feeds", caption);
                 Tw.After(4f, () => { if (this != null && !ended) done(); });
                 return;
             }
-            hud.ShowStill(tex, caption, () => { if (this != null && !ended) done(); });
+            hud.ShowStill(tex, caption, () => { if (this != null && !ended) done(); }, true);   // the HUD frees the picture
+        }
+
+        /// Stages the shot in the live world and photographs it, all inside one frame: the dragon (its current skin and
+        /// size) is set down beside the warlord's corpse with its head to it, frozen on a bite frame; the other foes are
+        /// hidden; a temporary camera frames both from a low three-quarter angle into a screen-sized RenderTexture, which
+        /// is read into a Texture2D. Everything is put back afterwards. Returns null if the shot cannot be taken.
+        Texture2D CaptureFeast()
+        {
+            if (finalBoss == null || finalBoss.corpse == null || pet == null || player == null || player.cam == null) return null;
+            Bounds b = default;
+            bool any = false;
+            foreach (var r in finalBoss.corpse.GetComponentsInChildren<Renderer>())
+            {
+                if (r is ParticleSystemRenderer) continue;
+                if (!any) { b = r.bounds; any = true; }
+                else b.Encapsulate(r.bounds);
+            }
+            if (!any) return null;
+            float radius = Mathf.Max(Mathf.Max(b.extents.x, b.extents.z), 1f);
+            var corpseAt = new Vector3(b.center.x, b.min.y, b.center.z);
+            // The dragon stands on the hero's side of the corpse.
+            var towards = player.Pos - corpseAt;
+            towards.y = 0f;
+            towards = towards.sqrMagnitude < 0.01f ? Vector3.back : towards.normalized;
+
+            // Nothing else may appear in the picture: hide every other foe (and the hero if he is seated on the dragon).
+            var hidden = new List<Renderer>();
+            foreach (var e in enemies)
+            {
+                if (e == null || !e.gameObject.activeInHierarchy) continue;
+                foreach (var r in e.GetComponentsInChildren<Renderer>()) if (r.enabled) { r.enabled = false; hidden.Add(r); }
+            }
+            if (pet.Mounted)
+                foreach (var r in player.GetComponentsInChildren<Renderer>()) if (r.enabled) { r.enabled = false; hidden.Add(r); }
+
+            System.Action putBack = null;
+            GameObject camGo = null;
+            RenderTexture rt = null;
+            Texture2D tex = null;
+            try
+            {
+                putBack = pet.StageFeast(corpseAt, radius, towards, terrain);
+                if (putBack == null) return null;
+                // Framing: the subject runs along the dragon-corpse axis (tail to the corpse's far edge); the camera sits
+                // beside it, a little toward the corpse's end so it sees the dragon's face, and low (14 degrees up).
+                float len = pet.BodyLength;
+                float span = len + 1.3f * radius;
+                float height = Mathf.Max(len * 0.4f, radius * 1.2f);
+                var mid = corpseAt + towards * ((len - 0.7f * radius) * 0.5f) + Vector3.up * (height * 0.4f);
+                var axis = -towards;
+                var side = Vector3.Cross(Vector3.up, axis).normalized;
+                var flat = (side * 0.9f + axis * 0.35f).normalized;
+                const float ELEV = 14f * Mathf.Deg2Rad;
+                int w = Mathf.Clamp(Screen.width, 16, 2560), h = Mathf.Clamp(Screen.height, 16, 1440);
+                float vFov = 40f;
+                float vHalf = vFov * 0.5f * Mathf.Deg2Rad;
+                float hHalf = Mathf.Atan(Mathf.Tan(vHalf) * w / h);
+                // Back off until the length fits the width and the height fits the height (10% margin).
+                float dist = Mathf.Max(span * 0.55f / Mathf.Tan(hHalf), height * 0.6f / Mathf.Tan(vHalf));
+                var camPos = mid + (flat * Mathf.Cos(ELEV) + Vector3.up * Mathf.Sin(ELEV)) * dist;
+                camPos.y = Mathf.Max(camPos.y, terrain.SurfaceHeight(camPos.x, camPos.z, camPos.y + 5f) + 1.2f);
+
+                camGo = new GameObject("FeastCamera");
+                var cam = camGo.AddComponent<Camera>();
+                cam.CopyFrom(player.cam);
+                cam.enabled = false;
+                cam.fieldOfView = vFov;
+                cam.nearClipPlane = 0.3f;
+                cam.layerCullDistances = player.cam.layerCullDistances;
+                camGo.transform.position = camPos;
+                camGo.transform.rotation = Quaternion.LookRotation(mid - camPos, Vector3.up);
+                var data = cam.GetUniversalAdditionalCameraData();
+                data.renderPostProcessing = true;
+                data.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+                rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
+                cam.targetTexture = rt;
+                cam.Render();
+
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                tex.Apply(false, false);
+                RenderTexture.active = prev;
+                return tex;
+            }
+            catch
+            {
+                if (tex) Destroy(tex);
+                throw;
+            }
+            finally
+            {
+                if (camGo) Destroy(camGo);
+                if (rt) { rt.Release(); Destroy(rt); }
+                foreach (var r in hidden) if (r) r.enabled = true;
+                putBack?.Invoke();
+            }
         }
 
         /// After the feast: free the captive dragon if there is one, otherwise the way onward opens.
