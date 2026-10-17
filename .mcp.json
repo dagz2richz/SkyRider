@@ -3,6 +3,16 @@
     "ai-game-developer": {
       "type": "http",
       "url": "http://localhost:28342"
+    },
+    "blender": {
+      "command": "${USERPROFILE}\\.local\\bin\\uvx.exe",
+      "args": ["--python", "3.12", "mcp-for-blender"],
+      "env": {
+        "UV_PYTHON_INSTALL_DIR": "${USERPROFILE}\\.uv\\python",
+        "UV_TOOL_DIR": "${USERPROFILE}\\.uv\\tools",
+        "UV_CACHE_DIR": "${USERPROFILE}\\.uv\\cache",
+        "DISABLE_TELEMETRY": "true"
+      }
     }
   }
 }
