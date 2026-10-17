@@ -163,7 +163,7 @@ namespace Skyfall
             if (total > 0f)
             {
                 // Life steal in a radius.
-                float heal = Mathf.Min(total * (0.08f + 0.02f * L), 4f + 2f * L) * player.HealMult;
+                float heal = Mathf.Min(total * (0.048f + 0.012f * L), 2.4f + 1.2f * L) * player.HealMult;
                 player.hp = Mathf.Min(player.maxHp, player.hp + heal);
                 player.AddMana(Mathf.Min(total * 0.05f, 2f + L));
                 auraDiscAlpha = 0.25f;

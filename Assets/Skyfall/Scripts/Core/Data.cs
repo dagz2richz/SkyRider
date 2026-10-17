@@ -35,7 +35,7 @@ namespace Skyfall
         public static readonly Dictionary<string, HeroDef> HEROES = new Dictionary<string, HeroDef>
         {
             ["knight"] = new HeroDef { name = "Dragonguard Knight", color = C(0.55f, 0.7f, 1.0f), weapon = "sword", defense = "shield",
-                desc = "Armored melee battlemage. Longsword sweeps around you; a shield blocks blows.", hp = 120f },
+                desc = "Armored melee battlemage. Longsword sweeps around you; a shield blocks blows. Riding his dragon he hurls piercing Skyblades instead.", hp = 120f },
             ["huntress"] = new HeroDef { name = "Blood Huntress", color = C(0.9f, 0.2f, 0.25f), weapon = "blood_lance", defense = "evasion",
                 desc = "Ranged blood mage. Hurls piercing Blood Javelins paid for in her own blood that make foes bleed; dodges instead of blocking.", hp = 90f },
             ["pyromancer"] = new HeroDef { name = "Ember Mage", color = C(1.0f, 0.55f, 0.15f), weapon = "staff", defense = "ward",
@@ -55,8 +55,8 @@ namespace Skyfall
         {
             ["sword"] = new WeaponDef { name = "Dragonguard Longsword", color = C(0.75f, 0.88f, 1.0f),
                 damage = 27.5f, cooldown = 0.6f, range = 5.0f, arc = 170f, knock = 5f,
-                desc = "Wide sweeping cuts that knock foes back.",
-                up = "+15% damage, faster swings, +6% reach, +1 defense level" },
+                desc = "Wide sweeping cuts that knock foes back. While riding your dragon you hurl piercing Skyblades instead (70% damage each, 32 m range).",
+                up = "+15% damage, faster swings, +6% reach, +1 defense level; +1 Skyblade at Lv 3 and 5 (mounted)" },
             ["blood_lance"] = new WeaponDef { name = "Blood Javelin", color = C(0.95f, 0.15f, 0.2f),
                 damage = 27.5f, cooldown = 0.75f, range = 28f, hp_cost = 0.02f, orb_bonus = 0.05f, bleed = 0.35f,
                 desc = "Blood Javelins that pierce through everything and cause bleeding. Costs 2% of current health per throw, no mana. +5% blood orb chance on kills.",
@@ -66,6 +66,12 @@ namespace Skyfall
                 desc = "Fire bolts from the staff's crystal that burst on impact and set foes alight.",
                 up = "+15% damage, faster casts, +1 defense level; +1 bolt at Lv 3 and 5; bigger bursts at Lv 5" },
         };
+
+        /// Dragonguard Knight, mounted only: Skyblades (thrown spectral swords) replace the sword swings. Each deals this
+        /// fraction of a sword hit to every ogre it pierces, flies at SKYBLADE_SPEED and reaches SKYBLADE_RANGE metres.
+        public const float SKYBLADE_DAMAGE = 0.7f;
+        public const float SKYBLADE_RANGE = 32f;
+        public const float SKYBLADE_SPEED = 50f;
 
         /// Weapon stats at a level (1..5), one line each; used by the level-up card and the stats screen.
         public static string[] WeaponStats(string id, int lvl)
@@ -77,7 +83,7 @@ namespace Skyfall
             switch (id)
             {
                 case "sword":
-                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} swings/s", $"Reach {w.range * (1f + 0.06f * (lvl - 1)):0.0} m" };
+                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} swings/s", $"Reach {w.range * (1f + 0.06f * (lvl - 1)):0.0} m  ·  mounted: {shots} Skyblade{(shots > 1 ? "s" : "")}" };
                 case "blood_lance":
                     return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} throws/s", $"{shots} javelin{(shots > 1 ? "s" : "")} per throw  ·  bleeds, 2% health cost" };
                 default:
@@ -101,7 +107,7 @@ namespace Skyfall
 
         public static readonly DefenseDef EVASION = new DefenseDef { name = "Evasion", color = C(0.95f, 0.4f, 0.45f), baseChance = 0.15f,
             desc = "A chance to dodge any blow entirely.",
-            ups = new[] { "", "+5% dodge chance", "+5% dodge; dodging heals 3% health", "+5% dodge chance", "+5% dodge; dodging hurls a counter-javelin" } };
+            ups = new[] { "", "+5% dodge chance", "+5% dodge; dodging heals 1.8% health", "+5% dodge chance", "+5% dodge; dodging hurls a counter-javelin" } };
 
         public static readonly DefenseDef SHIELD = new DefenseDef { name = "Dragonguard Shield", color = C(0.45f, 0.65f, 1.0f), baseChance = 0.25f,
             desc = "A chance to block any blow entirely.",
@@ -235,17 +241,23 @@ namespace Skyfall
         public const float GUARDIAN_WINGS_SHIELD = 3f;
         public const float GUARDIAN_WINGS_CD = 60f;
 
-        /// Dragon flight time in seconds: 10 s in worlds 1-2 (the hatchling of world 1 cannot fly at all), 60 s for the adult of world 3.
+        /// Nominal flight bar length in seconds. Flight itself is unlimited wherever the dragon can carry you (worlds 2-3);
+        /// this only scales the stamina bar and its refill (the hatchling of world 1 cannot fly at all).
         public const float FLIGHT_TIME = 10f;
-        public const float FLIGHT_TIME_ADULT = 60f;
         /// First world in which the dragon is an adult (longer flight, Guardian Wings).
         public const int ADULT_STAGE = 3;
 
         /// True when the dragon of this world can carry the hero: the young dragon (world 2) and the adult (world 3) both can.
         public static bool CanFlyAtStage(int stage) => stage >= FLIGHT_STAGE;
 
-        /// How long the dragon can carry the hero in this world.
-        public static float FlightTimeFor(int stage) => stage >= ADULT_STAGE ? FLIGHT_TIME_ADULT : FLIGHT_TIME;
+        /// Seconds Q (mount / dismount / summon) is locked after the E signature is used.
+        public const float Q_LOCKOUT_AFTER_E = 5f;
+
+        /// Flight never runs out in worlds 2 and 3 (no drain, no forced landing).
+        public static bool UnlimitedFlightAtStage(int stage) => CanFlyAtStage(stage);
+
+        /// Nominal flight bar length in this world (see FLIGHT_TIME).
+        public static float FlightTimeFor(int stage) => FLIGHT_TIME;
 
         /// Rescue: the stage's final boss held one of the dragons you don't own captive. The first rescue ever is guaranteed;
         /// after that it is a coin flip (while locked dragons remain).
@@ -358,7 +370,7 @@ namespace Skyfall
             ["knight"] = new[]
             {
                 new[] { T("k_wyrmsteel", "Wyrmsteel Edge", "Sword damage +30%; every swing sets foes ablaze."),
-                        T("k_bulwark", "Bulwark", "+12% block chance; each block heals 2% max health."),
+                        T("k_bulwark", "Bulwark", "+12% block chance; each block heals 1.2% max health."),
                         T("k_rally", "Rallying Cry", "+20% max health. Every 10 s gain a barrier that absorbs 15% of your max health.") },
                 new[] { T("k_whirlwind", "Whirlwind", "Every 5th swing becomes a full spin dealing double damage around you."),
                         T("k_bash", "Shield Bash", "Blocks send out a shockwave that stuns and hurls back nearby foes."),
@@ -376,7 +388,7 @@ namespace Skyfall
             ["pyromancer"] = new[]
             {
                 new[] { T("p_kindling", "Kindling", "Burns deal 60% more damage."),
-                        T("p_emberward", "Ember Ward", "+12% ward chance; each ward heals 3% max health."),
+                        T("p_emberward", "Ember Ward", "+12% ward chance; each ward heals 1.8% max health."),
                         T("p_font", "Mana Font", "+40 max mana and +2 mana regen per second.") },
                 new[] { T("p_twin", "Twin Embers", "+1 fire bolt per cast."),
                         T("p_firewalk", "Fire Walk", "You leave a trail of flames that burns foes who follow you."),
@@ -433,12 +445,12 @@ namespace Skyfall
                         T("h_quiver", "Deep Quiver", "+15% attack speed.", "atkspd%:15"),
                         T("h_hunter", "Wyrm Hunter", "+40% damage while riding your dragon.", "mountdmg%:40") },
                 new[] { T("h_lance", "Bloodstorm Lance", "Every 8th throw hurls a giant lance that explodes along its whole path."),
-                        T("h_thirst", "Thirst", "Every kill heals 1.5% of your max health."),
+                        T("h_thirst", "Thirst", "Every kill heals 0.9% of your max health."),
                         T("h_phantom", "Phantom Hunt", "While flying you throw twice as fast and take 25% less damage.") },
                 new[] { T("h_vital", "Vital Essence", "+20% max health and +1.5 health regen per second.", "hp%:20,regen:1.5"),
                         T("h_predator", "Apex Predator", "+18% damage.", "dmg%:18"),
                         T("h_skyblood", "Skyblood", "Your dragon's signature deals 35% more damage over a 20% larger area.", "sigdmg%:35,sigarea%:20") },
-                new[] { T("h_bloodmoon", "Blood Moon", "Every 30 s a blood moon rises for 8 s: triple javelins, 10% lifesteal and every foe near you bleeds."),
+                new[] { T("h_bloodmoon", "Blood Moon", "Every 30 s a blood moon rises for 8 s: triple javelins, 6% lifesteal and every foe near you bleeds."),
                         T("h_tempest", "Crimson Tempest", "Javelins split into three smaller javelins on their first hit."),
                         T("h_specter", "Crimson Specter", "Press F (gamepad LB) to become a blood wraith for 10 s: pass through foes, move 40% faster, triple javelins, heal from every hit and take 60% less damage. 45 s cooldown.") },
             },
@@ -505,13 +517,13 @@ namespace Skyfall
                         T("dr_bulwark", "Living Bulwark", "When you drop below 30% health your dragon erupts around you, blasting everything away (45 s cooldown)."),
                         T("dr_chain", "Chain Reaction", "Foes your dragon kills explode for 30% of their max health.") }),
             ["black"] = DragonTree(
-                new[] { T("dk_leech", "Sanguine Breath", "You heal for 3% of the damage your dragon deals.", "leech%:3"),
+                new[] { T("dk_leech", "Sanguine Breath", "You heal for 1.8% of the damage your dragon deals.", "leech%:1.8"),
                         T("dk_dread", "Dread", "Its weakening is 20% stronger (foes hit for 60% less).", "weaken:0.2"),
                         T("dk_veil", "Shadow Veil", "While riding you take 15% less damage.", "mountdr%:15") },
                 new[] { T("dk_monsoon", "Monsoon", "Blood Rain covers 40% more ground and lasts 2 s longer.", "rainarea%:40,raintime:2"),
-                        T("dk_hunger", "Hunger", "Every foe your dragon kills heals you for 1% of your max health.", "killheal%:1"),
+                        T("dk_hunger", "Hunger", "Every foe your dragon kills heals you for 0.6% of your max health.", "killheal%:0.6"),
                         T("dk_night", "Nightfall", "Your dragon's cooldowns are 15% shorter.", "dragoncd%:15") },
-                new[] { T("dk_tide", "Crimson Tide", "Standing in Blood Rain heals you 2% of your max health per second."),
+                new[] { T("dk_tide", "Crimson Tide", "Standing in Blood Rain heals you 1.2% of your max health per second."),
                         T("dk_pact", "Pact of Wings", "Once per stage, a killing blow instead has your dragon shield you, leaving you at 40% health."),
                         T("dk_vampire", "Vampire Wyrm", "Your dragon deals 40% more damage.", "dragondmg%:40") }),
         };
@@ -578,7 +590,7 @@ namespace Skyfall
                 desc = "20% chance per rank that your dragon scorches whatever hurts you" },
             new DragonCardDef { id = "d_blue", name = "Everburning", only = "blue", desc = "Its burns deal 30% more damage per rank" },
             new DragonCardDef { id = "d_red", name = "Shatterscale", only = "red", desc = "Its blasts and dives hit 10% wider per rank" },
-            new DragonCardDef { id = "d_black", name = "Blood Thirst", only = "black", desc = "You heal for 2% per rank of the damage your dragon deals" },
+            new DragonCardDef { id = "d_black", name = "Blood Thirst", only = "black", desc = "You heal for 1.2% per rank of the damage your dragon deals" },
         };
 
         public static DragonCardDef FindDragonCard(string id) => System.Array.Find(DRAGON_CARDS, c => c.id == id);

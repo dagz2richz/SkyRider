@@ -25,10 +25,11 @@ namespace Skyfall.EditorTools
             Check(Data.CanFlyAtStage(3), "world 3 adult dragon can fly");
             Check(Data.DRAGON_AGE.Length == Data.STAGE_COUNT, "one dragon age per world");
 
-            // Flight time: 10 s in worlds 1-2, 60 s in world 3.
-            Check(Mathf.Approximately(Data.FlightTimeFor(1), 10f), "world 1 flight time is 10 s");
-            Check(Mathf.Approximately(Data.FlightTimeFor(2), 10f), "world 2 flight time is 10 s");
-            Check(Mathf.Approximately(Data.FlightTimeFor(3), 60f), "world 3 flight time is 60 s");
+            // Flight never runs out in worlds 2 and 3 (world 1 cannot fly at all); Q locks for 5 s after E.
+            Check(!Data.UnlimitedFlightAtStage(1), "world 1 has no flight");
+            Check(Data.UnlimitedFlightAtStage(2), "world 2 flight is unlimited");
+            Check(Data.UnlimitedFlightAtStage(3), "world 3 flight is unlimited");
+            Check(Mathf.Approximately(Data.Q_LOCKOUT_AFTER_E, 5f), "Q locks for 5 s after E");
 
             // Talent cost curve: faster early, steeper late.
             var c = Data.TREE_ROW_COST;

@@ -283,7 +283,7 @@ namespace Skyfall
             game.dragonSource = true;
             game.DamageEnemy(e, dmg, dir, knock, show, col);
             game.dragonSource = false;
-            float leech = 0.02f * Card("d_black") + player.Pct("leech%");
+            float leech = 0.012f * Card("d_black") + player.Pct("leech%");
             if (leech > 0f) player.hp = Mathf.Min(player.maxHp, player.hp + dmg * leech * player.HealMult);
         }
 

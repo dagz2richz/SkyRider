@@ -257,7 +257,7 @@ namespace Skyfall
 
         void OnBlock()
         {
-            if (Has("k_bulwark")) Heal(maxHp * 0.02f);
+            if (Has("k_bulwark")) Heal(maxHp * 0.012f);
             if (Has("k_bash"))
             {
                 FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 5f, new Color(0.5f, 0.7f, 1f, 0.9f), 0.35f);
@@ -399,7 +399,7 @@ namespace Skyfall
             tideTick -= delta;
             if (tideTick > 0f) return;
             tideTick = 0.5f;
-            Heal(maxHp * 0.01f);
+            Heal(maxHp * 0.006f);
         }
 
         /// Wrathful Guardian: a chance that your dragon scorches whatever just hurt you.
@@ -616,7 +616,7 @@ namespace Skyfall
         /// A kill was made: Thirst heals, Combustion detonates burning ogres.
         public void OnKill(Enemy e)
         {
-            if (Has("h_thirst")) hp = Mathf.Min(maxHp, hp + maxHp * 0.015f * HealMult);
+            if (Has("h_thirst")) hp = Mathf.Min(maxHp, hp + maxHp * 0.009f * HealMult);
             if (Has("p_combustion") && e.Burning)
             {
                 var at = e.Pos;

@@ -1397,7 +1397,7 @@ namespace Skyfall
                 // It grew by devouring the last world's warlord (the still after his defeat).
                 string fed = Data.STAGES[Mathf.Clamp(stage - 2, 0, Data.STAGES.Length - 1)].finalBoss.Split(',')[0];
                 if (stage < Data.GUARDIAN_WINGS_STAGE) hud.Banner($"Your dragon has grown: {age}", $"Fed by {fed}'s fall, it can carry you now (Q)");
-                else hud.Banner($"Your dragon has grown: {age}", $"Fed by {fed}'s fall: Guardian Wings at 30% health, and {Data.FLIGHT_TIME_ADULT:0} s of flight (Q)");
+                else hud.Banner($"Your dragon has grown: {age}", $"Fed by {fed}'s fall: Guardian Wings at 30% health, and unlimited flight (Q)");
             }
         }
 

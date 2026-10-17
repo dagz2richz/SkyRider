@@ -183,7 +183,7 @@ namespace Skyfall
         public float SpellDamageMult => DamageMult * (1f + 0.08f * Plv("spellblade") + Pct("spelldmg%"));
         public float WeaponDamageMult => DamageMult * (1f + 0.05f * Plv("bloodthirst"));
         public float HealMult => 1f + 0.1f * S("health", 2) + Pct("heal%");
-        public float Lifesteal => (Plv("bloodthirst") == 0 ? 0f : (0.02f + 0.012f * Plv("bloodthirst")) * HealMult) + (BloodMoon ? 0.1f : 0f) + (SpecterActive ? 0.08f : 0f);
+        public float Lifesteal => (Plv("bloodthirst") == 0 ? 0f : (0.012f + 0.0072f * Plv("bloodthirst")) * HealMult) + (BloodMoon ? 0.06f : 0f) + (SpecterActive ? 0.05f : 0f);
 
         public float ManaPerHit =>
             3f * (1f + 0.15f * S("mana", 2)) * (1f + (Plv("spellblade") > 0 ? 0.6f + 0.25f * Plv("spellblade") : 0f));
@@ -234,18 +234,20 @@ namespace Skyfall
         const float GROUND_SNAP = 0.35f;
         public const float FLIGHT_REGEN_RATE = 1.2f;
         float remountWait;
+        /// Seconds Q (mount / dismount) stays locked after the E signature was used (Data.Q_LOCKOUT_AFTER_E).
+        public float qLockT;
         /// True once the hero has touched the ground since leaving the dragon (the remount timer is running).
         bool remountLanded = true;
         public float RemountWait => remountWait;
         public bool RemountLanded => remountLanded;
-        /// Dragon flight time: 10 s in worlds 1-2, 60 s with the adult dragon of world 3 (Data.FlightTimeFor; no upgrades lengthen it).
+        /// Nominal flight bar length (Data.FlightTimeFor); flight is unlimited in worlds 2-3, see UnlimitedFlight.
         public float MaxFlight => Data.FlightTimeFor(game != null ? game.stage : 1);
         /// Stamina refills at this rate, scaled so an empty bar takes the same time to refill whatever the flight time.
         float FlightRegen => FLIGHT_REGEN_RATE * MaxFlight / Data.FLIGHT_TIME;
         /// The hatchling (world 1) is too small to carry you; the young (world 2) and adult (world 3) dragons both can.
         public bool CanFly => game == null || Data.CanFlyAtStage(game.stage);
-        /// From 0:00 (the final battle) the dragon never tires.
-        public bool UnlimitedFlight => game != null && game.finalStarted;
+        /// The dragon never tires in worlds 2 and 3 (and in the final battle).
+        public bool UnlimitedFlight => game != null && (Data.UnlimitedFlightAtStage(game.stage) || game.finalStarted);
         /// True after jumping off the ground (until landing): flight recharges in a jump as well as on the ground,
         /// but not while falling after leaving the dragon.
         bool jumpedFromGround;
@@ -463,6 +465,7 @@ namespace Skyfall
             barrier = 0f;
             System.Array.Clear(powerT, 0, powerT.Length);
             remountWait = 0f;
+            qLockT = 0f;
             ResetTalentState();
             if (hero != heroId || weaponNode == null || weaponNode.childCount == 0)
             {
@@ -920,13 +923,17 @@ namespace Skyfall
             attackTimer -= delta;
             if (attackTimer <= 0f && !SoaringForm)
             {
-                bool attacked = IsKnight ? Attack() : (IsHuntress ? Throw() : CastBolts());
+                bool attacked = IsKnight ? (flying ? HurlSkyblades() : Attack()) : (IsHuntress ? Throw() : CastBolts());
                 attackTimer = attacked ? AttackInterval : 0.1f;
             }
             // Q: call the dragon and take flight (Q again to drop off). E: dragon signature (ground or air).
+            qLockT = Mathf.Max(0f, qLockT - delta);
             if (GameInput.FlyPressed && !leaping && !SoaringForm)
             {
-                if (flying) ReleaseDragon();
+                // Using E (the signature) locks Q for a few seconds, mounting and dismounting alike. Forced dismounts
+                // (harpoons, Guardian Wings, rescue swoops) don't go through Q and are unaffected.
+                if (qLockT > 0f) game.hud.Toast($"Q is recovering from your signature: {Mathf.CeilToInt(qLockT)} s");
+                else if (flying) ReleaseDragon();
                 else if (!CanFly) game.hud.Toast($"Your {Data.DRAGON_AGE[0].ToLower()} is too small to carry you yet: it grows in the next world");
                 else if (remountWait > 0f) game.hud.Toast(remountLanded ? "Your dragon is circling back..." : "Land first: your dragon can only pick you up from solid ground");
                 else if (flightStamina > 0.3f)
@@ -939,7 +946,11 @@ namespace Skyfall
                 else game.hud.Toast("Your dragon needs to rest...");
             }
             if (GameInput.AbilityPressed && !leaping && !SoaringForm)
-                if (pet.RideCommand()) CastAnim();
+                if (pet.RideCommand())
+                {
+                    qLockT = Data.Q_LOCKOUT_AFTER_E;
+                    CastAnim();
+                }
             if (GameInput.TalentPressed) TryDragonForm();
         }
 
@@ -1129,6 +1140,7 @@ namespace Skyfall
             onGround = true;
             flightStamina = MaxFlight;
             remountWait = 0f;
+            qLockT = 0f;
             SnapCamera();
         }
 
@@ -1290,6 +1302,42 @@ namespace Skyfall
             SwingFx(dir, reach, arc, col);
             SwingAnim();
             if (Has("k_firewave")) FireWave.Spawn(this, Pos + dir * 1.2f, dir, WeaponBaseDamage * WeaponDamageMult * 0.8f);
+            return true;
+        }
+
+        /// Dragonguard Knight, only while riding the dragon: the sword swings give way to Skyblades, spectral
+        /// blue-white blades hurled at the nearest ogres (wyverns too: a mounted hero can hit them). They pierce,
+        /// deal Data.SKYBLADE_DAMAGE of a sword hit each, and scale with weapon level (+1 blade at Lv 3 and 5),
+        /// weapon damage, attack speed, Dragon Reach (range) and Wyrmsteel (ignites).
+        bool HurlSkyblades()
+        {
+            var c = Center + new Vector3(0, 0.4f, 0);
+            float range = Data.SKYBLADE_RANGE * (1f + 0.06f * (weaponLevel - 1)) * (Has("k_reach") ? 1.35f : 1f);
+            int count = ShotCount;
+            var used = new List<Enemy>();
+            Enemy first = null;
+            float dmg = WeaponBaseDamage * WeaponDamageMult * Data.SKYBLADE_DAMAGE;
+            for (int i = 0; i < count; i++)
+            {
+                var t = game.NearestEnemy(c, range, 16f, null, used);
+                Vector3 aim;
+                if (t != null)
+                {
+                    used.Add(t);
+                    if (first == null) first = t;
+                    aim = t.Pos + new Vector3(0, t.size, 0);
+                }
+                else if (first != null)
+                {
+                    aim = first.Pos + new Vector3(0, first.size, 0) + CamRight * ((i % 2 == 0 ? 1f : -1f) * 1.4f * ((i + 1) / 2));
+                }
+                else break;
+                Skyblade.Spawn(this, c, (aim - c).normalized * Data.SKYBLADE_SPEED, dmg, range);
+            }
+            if (first == null) return false;
+            Sfx.Play("slash", -8f, 0.15f);
+            FX.Flash(c, 0.9f, new Color(0.6f, 0.85f, 1f, 0.6f), 0.12f);
+            SwingAnim();
             return true;
         }
 
@@ -1455,7 +1503,7 @@ namespace Skyfall
                 return;
             }
             hookedT = Data.HARPOON_HOOK_TIME;
-            flightStamina = Mathf.Max(0.5f, flightStamina - Data.HARPOON_FLIGHT_DRAIN);
+            if (!UnlimitedFlight) flightStamina = Mathf.Max(0.5f, flightStamina - Data.HARPOON_FLIGHT_DRAIN);
             game.hud.Splash("Harpooned!", "(One more and you're grounded!)", new Color(1f, 0.45f, 0.2f));
             game.hud.Toast("Your dragon is slowed: shake off the harpoon before another one hits");
         }
@@ -1471,7 +1519,7 @@ namespace Skyfall
                 FX.Text(at, "Dodge", IsHuntress ? new Color(1f, 0.5f, 0.55f) : new Color(0.7f, 1f, 0.75f));
                 if (IsHuntress)
                 {
-                    if (shieldLevel >= 3) hp = Mathf.Min(maxHp, hp + maxHp * 0.03f);
+                    if (shieldLevel >= 3) hp = Mathf.Min(maxHp, hp + maxHp * 0.018f);
                     if (shieldLevel >= 5)
                     {
                         var t = attackerAlive ? attacker : game.NearestEnemy(Center, 20f);
@@ -1510,7 +1558,7 @@ namespace Skyfall
                         game.DamageEnemy(e, amount * 1.5f, (e.Pos - Pos).normalized, 6f, true, new Color(1f, 0.6f, 0.2f));
                 }
                 if (shieldLevel >= 5) AddMana(5f);
-                if (Has("p_emberward")) Heal(maxHp * 0.03f);
+                if (Has("p_emberward")) Heal(maxHp * 0.018f);
                 return;
             }
             // Shield block (Knight only).
@@ -1680,6 +1728,68 @@ namespace Skyfall
                         }
                     }
                 }
+            }
+            if (life <= 0f || pos.y < g.terrain.Height(pos.x, pos.z)) Destroy(gameObject);
+        }
+    }
+
+    /// The mounted Dragonguard Knight's thrown blade: a spectral blue-white sword that pierces every ogre on its path.
+    public class Skyblade : MonoBehaviour
+    {
+        static readonly Color Ice = new Color(0.6f, 0.85f, 1f);
+
+        Player player;
+        Vector3 velocity;
+        float damage = 25f;
+        float life = 1f;
+        readonly HashSet<Enemy> hit = new HashSet<Enemy>();
+
+        public static void Spawn(Player p, Vector3 from, Vector3 velocity, float damage, float range)
+        {
+            var b = new GameObject("Skyblade").AddComponent<Skyblade>();
+            b.player = p;
+            b.velocity = velocity;
+            b.damage = damage;
+            b.life = range / velocity.magnitude;
+            b.transform.SetParent(FX.root, false);
+            b.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
+            // A blade with a crossguard and a pointed tip, glowing ice blue.
+            var blade = FX.Part(b.transform, MeshGen.Box(), FX.Glow(Ice, 2.2f), Vector3.zero, new Vector3(0.14f, 0.05f, 1.7f));
+            FX.NoShadow(blade);
+            var guard = FX.Part(b.transform, MeshGen.Box(), FX.Glow(new Color(0.85f, 0.95f, 1f), 2.6f), new Vector3(0, 0, 0.8f), new Vector3(0.75f, 0.07f, 0.12f));
+            FX.NoShadow(guard);
+            var tip = FX.Part(b.transform, MeshGen.Cylinder(0f, 0.5f, 4), FX.Glow(Color.white, 3f), new Vector3(0, 0, -1.0f),
+                new Vector3(0.16f, 0.4f, 0.05f), new Vector3(-M.PI * 0.5f, 0, 0));
+            FX.NoShadow(tip);
+            FX.Particles(b.transform, new FX.ParticleSpec
+            {
+                amount = 26, lifetime = 0.35f, size = 0.28f, speedMin = 0.5f, speedMax = 1.5f, spread = 20f, gravity = new Vector3(0, -2, 0),
+                startColor = new Color(0.6f, 0.85f, 1f, 1f), endColor = new Color(0.2f, 0.4f, 0.9f, 0f), additive = true,
+            });
+        }
+
+        void Update()
+        {
+            float delta = Time.deltaTime;
+            if (delta <= 0f) return;
+            var g = player.game;
+            life -= delta;
+            transform.position += velocity * delta;
+            transform.rotation = M.FaceNegZ(velocity);
+            var pos = transform.position;
+            var list = g.enemies;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var e = list[i];
+                if (e.dead || hit.Contains(e) || !g.CanTarget(e)) continue;   // WYVERN: mounted heroes can hit it
+                var c = e.Pos + new Vector3(0, e.size, 0);
+                if (Vector3.Distance(c, pos) >= e.radius + 0.7f + 0.5f * e.size) continue;
+                hit.Add(e);
+                g.DamageEnemy(e, damage, velocity.normalized, 3f, true, Ice);
+                if (player.Has("k_wyrmsteel")) e.Ignite(3f, damage * 0.12f);
+                player.WeaponHits(1, damage);
+                FX.Burst(pos, Ice, 8, 5f, 0.18f);
+                Sfx.Play("hit", pos, -6f, 0.2f);
             }
             if (life <= 0f || pos.y < g.terrain.Height(pos.x, pos.z)) Destroy(gameObject);
         }

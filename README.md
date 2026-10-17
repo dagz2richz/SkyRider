@@ -92,7 +92,7 @@ The game itself does not need the AI tools.
 | Mouse | Look around |
 | Space | Jump, double jump; hold to climb while flying |
 | Q | Call your dragon and take flight (Q again to drop off); after you leave it, Q is ready 1 s after you touch the ground |
-| E | Dragon signature ability (from the air you leap down and slam) |
+| E | Dragon signature ability (from the air you leap down and slam); locks Q for 5 s |
 | F | Capstone form (Dragon Form / Crimson Specter / Phoenix Form) |
 | Shift / C | Dive while flying (not Ctrl: in the editor Ctrl+S would save the scene) |
 | R | Reroll a level-up (5 per world) |
@@ -128,8 +128,9 @@ Any Xbox, PlayStation or generic controller works alongside the keyboard and mou
   Inferno Wave, Cataclysm, Blood Rain.
 - **Dragon card:** every level-up offers one dragon upgrade alongside two hero cards: breath, signature, size, cone,
   haste, and guardian instincts (rescue swoop, sheltering wing, wrath).
-- **Flight:** 10 s. It recharges on the ground and during a jump, and is unlimited from 0:00 (the final battle). Harpooners
-  hunt riders: one harpoon slows you, a second while you are still hooked drags you to the ground.
+- **Flight:** unlimited in worlds 2 and 3 (none in world 1). Harpooners hunt riders: one harpoon slows you, a second
+  while you are still hooked drags you to the ground. Using E locks Q for 5 s (shown on the flight bar).
+- **Dragonguard Knight, mounted:** his sword swings give way to piercing Skyblades hurled at the nearest ogres.
 
 ## Leveling
 

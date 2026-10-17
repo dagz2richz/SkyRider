@@ -614,13 +614,22 @@ namespace Skyfall
                 DrawText(new Rect(bx, by - 6, 80, 20), "No flight", Text(15), M.Darken(PARCHMENT, 0.35f), 5);
                 return;
             }
+            if (p.qLockT > 0f)
+            {
+                // E was just used: Q (mount / dismount) is locked. The bar refills as the lockout runs out.
+                var lockCol = new Color(1f, 0.55f, 0.35f);
+                Bar(new Rect(bx + 80, by, bw - 80, 10), 1f - p.qLockT / Data.Q_LOCKOUT_AFTER_E, lockCol);
+                DrawText(new Rect(bx, by - 6, 80, 20), "Q locked", Text(15), lockCol, 5);
+                DrawText(new Rect(bx + bw - 90, by - 6, 90, 20), $"{p.qLockT:0.0} s", Text(13, TextAnchor.MiddleRight), M.Darken(lockCol, 0.1f), 4);
+                return;
+            }
             bool landing = !p.flying && p.RemountWait > 0f;
-            var fill = landing ? new Color(0.22f, 0.4f, 0.6f) : p.UnlimitedFlight ? new Color(1f, 0.8f, 0.35f) : blue;
+            var fill =landing ? new Color(0.22f, 0.4f, 0.6f) : p.UnlimitedFlight ? new Color(1f, 0.8f, 0.35f) : blue;
             Bar(new Rect(bx + 80, by, bw - 80, 10), p.flightStamina / p.MaxFlight, fill);
             string label = landing ? (p.RemountLanded ? "Landing" : "Land!") : p.UnlimitedFlight ? "Unlimited" : "Flight (Q)";
             var labelCol = landing ? new Color(1f, 0.7f, 0.4f) : new Color(0.6f, 0.85f, 1f);
             DrawText(new Rect(bx, by - 6, 80, 20), label, Text(15), labelCol, 5);
-            // Seconds left of the world's flight time (10 s in worlds 1-2, 60 s with the adult dragon).
+            // Flight is unlimited in worlds 2-3 (no time readout); the bar only counts down in the (unreachable) limited case.
             if (!p.UnlimitedFlight)
                 DrawText(new Rect(bx + bw - 90, by - 6, 90, 20), $"{Mathf.CeilToInt(p.flightStamina)} / {p.MaxFlight:0} s", Text(13, TextAnchor.MiddleRight), M.Darken(labelCol, 0.1f), 4);
         }
