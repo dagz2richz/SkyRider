@@ -59,11 +59,24 @@ namespace Skyfall
         /// Frame in which a menu action consumed the gamepad's A button, so the hero does not also jump.
         public static int PadUiFrame = -1;
 
-        public static bool JumpPressed => Pressed(Key.Space) || (Pad != null && Pad.buttonSouth.wasPressedThisFrame && PadUiFrame != Time.frameCount);
-        public static bool JumpHeld => TestJumpHeld || Held(Key.Space) || (Pad != null && Pad.buttonSouth.isPressed);
+        /// Gameplay keys (jump, descend, Q, E, F) only work in active play: never on the title, hero select, talent, pause, stats,
+        /// level-up or end screens, nor during a cinematic still. Pure so it can be tested: the live check is GameplayBlocked.
+        public static bool IsBlocked(bool running, bool paused, bool menuOpen) => !running || paused || menuOpen;
+
+        public static bool GameplayBlocked
+        {
+            get
+            {
+                var g = Game.I;
+                return g == null || IsBlocked(g.running, g.Paused, g.hud != null && g.hud.MenuOpen);
+            }
+        }
+
+        public static bool JumpPressed => !GameplayBlocked && (Pressed(Key.Space) || (Pad != null && Pad.buttonSouth.wasPressedThisFrame && PadUiFrame != Time.frameCount));
+        public static bool JumpHeld => !GameplayBlocked && (TestJumpHeld || Held(Key.Space) || (Pad != null && Pad.buttonSouth.isPressed));
         /// Not Ctrl: in the editor Ctrl+S / Ctrl+D while diving would save the scene or duplicate objects.
-        public static bool DescendHeld => Held(Key.LeftShift, Key.RightShift, Key.C)
-            || (Pad != null && (Pad.buttonEast.isPressed || Pad.leftTrigger.ReadValue() > 0.4f));
+        public static bool DescendHeld => !GameplayBlocked && (Held(Key.LeftShift, Key.RightShift, Key.C)
+            || (Pad != null && (Pad.buttonEast.isPressed || Pad.leftTrigger.ReadValue() > 0.4f)));
         public static bool PausePressed => Pressed(Key.Escape, Key.P) || (Pad != null && Pad.startButton.wasPressedThisFrame);
         /// One-shot key presses injected by the automated tests (consumed when read).
         public static bool TestFlyPress, TestAbilityPress;
@@ -72,6 +85,7 @@ namespace Skyfall
         {
             get
             {
+                if (GameplayBlocked) { TestFlyPress = false; return false; }
                 if (TestFlyPress) { TestFlyPress = false; return true; }
                 return Pressed(Key.Q) || (Pad != null && Pad.buttonNorth.wasPressedThisFrame);
             }
@@ -81,6 +95,7 @@ namespace Skyfall
         {
             get
             {
+                if (GameplayBlocked) { TestAbilityPress = false; return false; }
                 if (TestAbilityPress) { TestAbilityPress = false; return true; }
                 return Pressed(Key.E) || (Pad != null && (Pad.rightShoulder.wasPressedThisFrame || Pad.buttonWest.wasPressedThisFrame));
             }
@@ -92,6 +107,7 @@ namespace Skyfall
         {
             get
             {
+                if (GameplayBlocked) { TestTalentPress = false; return false; }
                 if (TestTalentPress) { TestTalentPress = false; return true; }
                 return Pressed(Key.F) || (Pad != null && Pad.leftShoulder.wasPressedThisFrame);
             }
@@ -207,6 +223,12 @@ namespace Skyfall
                     || NavDirection != Vector2Int.zero;
             }
         }
+
+        /// Any key, mouse button or gamepad button pressed this frame (skips cinematic stills).
+        public static bool AnyPressed =>
+            (K != null && K.anyKey.wasPressedThisFrame)
+            || (Ms != null && (Ms.leftButton.wasPressedThisFrame || Ms.rightButton.wasPressedThisFrame || Ms.middleButton.wasPressedThisFrame))
+            || PadAnyButton;
 
         /// True when the mouse moved or clicked this frame (hides the menu focus highlight).
         public static bool MouseActive => Ms != null && (Ms.delta.ReadValue().sqrMagnitude > 4f || Ms.leftButton.wasPressedThisFrame);

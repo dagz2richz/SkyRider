@@ -684,7 +684,7 @@ namespace Skyfall.EditorTools
             I("pu_speed", T(blink, "pu_speed", new Color(0.25f, 0.9f, 1f)));
             I("pu_damage", T(slash, "pu_damage", new Color(1f, 0.2f, 0.18f)));
             I("pu_magnet", T(summon, "pu_magnet", new Color(0.78f, 0.45f, 1f)));
-            // Dragon portraits (the dragon picker and egg screens), rendered from each dragon's own model.
+            // Dragon portraits (the dragon picker and rescue screens), rendered from each dragon's own model.
             foreach (var (id, prefab) in new[] { ("blue", lib.dragonBlue), ("red", lib.dragonRed), ("black", lib.dragonBlack) })
             {
                 var def = Data.DRAGONS[id];

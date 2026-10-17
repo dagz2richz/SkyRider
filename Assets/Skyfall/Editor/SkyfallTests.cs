@@ -398,7 +398,7 @@ namespace Skyfall.EditorTools
         }
 
         /// -skyfallFinale 1 (use with -skyfallSaveFile test_save.json): mini boss at 4:00, the 0:00 clear-out, the island boss,
-        /// the egg drop and pickup, and the victory. Never touches the real save when a separate save file is given.
+        /// the captive dragon's rescue, and the victory. Never touches the real save when a separate save file is given.
         static void Finale(Game game)
         {
             var pl = game.player;
@@ -493,37 +493,44 @@ namespace Skyfall.EditorTools
                     b.hp = 1f;
                     game.DamageEnemy(b, 5f);
                     Debug.Log("SKYFALL_TEST boss killed");
-                    var e0 = Object.FindFirstObjectByType<DragonEgg>();
-                    if (e0) e0.hold = true;
                 }
             }
             if (frame >= 841)
             {
-                var egg = Object.FindFirstObjectByType<DragonEgg>();
-                if (egg != null && frame < 905 && frame % 10 == 2 && frame != 902)
+                // After the kill: 1.8 s, the feast (a banner here: no still is set up for the tests), then the captive dragon.
+                var cap = Object.FindFirstObjectByType<DragonCaptive>();
+                if (cap != null && capFound < 0)
                 {
-                    var rend = egg.GetComponentInChildren<MeshRenderer>();
-                    var mc = rend.sharedMaterial.GetVector("_BaseColor");
-                    var want = Data.DRAGONS[egg.dragonId].body;
-                    Debug.Log($"SKYFALL_TEST egg for {egg.dragonId} at {egg.transform.position} shellColor(lin)={mc} wantLin={FX.Lin(want)}");
+                    capFound = frame;
+                    cap.hold = true;
+                    Debug.Log($"SKYFALL_TEST captive {cap.dragonId} at {cap.transform.position} stillOpen={game.hud.MenuOpen}");
                 }
-                if (egg != null && frame == 902) egg.hold = false;
-                if (frame == 900 && egg != null)
+                if (cap != null && capFound >= 0)
                 {
-                    var ct = pl.cam.transform;
-                    ct.position = egg.transform.position + new Vector3(2.2f, 0.4f, 4.5f);
-                    ct.LookAt(egg.transform.position);
-                    Snap("finale_5_egg");
+                    if (frame == capFound + 5)
+                    {
+                        var ct = pl.cam.transform;
+                        ct.position = cap.transform.position + new Vector3(4f, 3f, 9f);
+                        ct.LookAt(cap.transform.position + Vector3.up * 1.5f);
+                        Snap("finale_5_captive");
+                    }
+                    if (frame == capFound + 20)
+                    {
+                        // Walk up to it: the chains break and it joins you.
+                        cap.hold = false;
+                        pl.Pos = cap.transform.position + new Vector3(2f, 0.5f, 0f);
+                    }
                 }
-                if (game.ended || frame > 1400)
+                if (game.ended || (capFound >= 0 && frame > capFound + 420) || frame > 2600)
                 {
-                    Debug.Log($"SKYFALL_TEST victory ended={game.ended} hatched=[{string.Join(",", game.hatched)}] stage={game.stage} unlocked=[{string.Join(",", Save.unlocked_dragons)}] wins={Save.wins} bossesSlain={game.bossesSlain}");
+                    Debug.Log($"SKYFALL_TEST victory ended={game.ended} rescued=[{string.Join(",", game.rescued)}] stage={game.stage} unlocked=[{string.Join(",", Save.unlocked_dragons)}] rescues_found={Save.rescues_found} wins={Save.wins} bossesSlain={game.bossesSlain}");
                     Debug.Log($"SKYFALL_TEST save file: {System.IO.File.ReadAllText(System.IO.Path.Combine(Application.persistentDataPath, Arg("-skyfallSaveFile", "skyfall_save.json"))).Replace("\n", " ")}");
                     Finish(0);
                 }
             }
         }
 
+        static int capFound = -1;
         static double perfMs, perfEnemies, perfLast;
         static int perfFrames;
 

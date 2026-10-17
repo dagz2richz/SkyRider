@@ -63,6 +63,7 @@ namespace Skyfall
             /// In-run talents only; permanent tree picks live in the slot.
             public List<string> talents = new List<string>();
             public List<ArmorPiece> armor = new List<ArmorPiece>();
+            /// Dragons rescued this run (the field keeps its old name so saved runs still load).
             public List<string> hatched = new List<string>();
             public string date;
         }
@@ -97,7 +98,9 @@ namespace Skyfall
             public string hero = "knight";
             public string dragon = "blue";
             public List<string> unlocked_dragons = new List<string> { "blue" };
+            /// Old saves counted dragon eggs here: read once into rescues_found, never written with a value again.
             public int eggs_found;
+            public int rescues_found;
             public RunState run = new RunState();
             public List<TreeState> trees = new List<TreeState>();
         }
@@ -169,10 +172,15 @@ namespace Skyfall
         public static string last_hero = "knight";
         public static string last_dragon = "blue";
         public static List<RunRecord> history = new List<RunRecord>();   // recent runs, newest first
-        /// Dragons the player owns. Blue is always unlocked; the others hatch from eggs dropped by stage bosses.
+        /// Dragons the player owns. Blue is always unlocked; the others are rescued from the stage warlords' captivity.
         public static List<string> unlocked_dragons = new List<string> { "blue" };
-        /// How many eggs have ever dropped (the first one is guaranteed).
-        public static int eggs_found;
+        /// How many captive dragons have ever been rescued (the first one is guaranteed). Migrated from the old eggs_found.
+        public static int rescues_found;
+
+        /// Rescue count for a loaded slot: the new counter, an old egg count, or (for saves from before either was counted)
+        /// every dragon owned beyond blue.
+        public static int MigrateRescues(int rescues, int legacyEggs, int unlockedCount) =>
+            Mathf.Max(rescues, legacyEggs, unlockedCount - 1, 0);
         /// The run in progress (active = false when there is none).
         public static RunState run = new RunState();
         /// The slot's permanent talent trees.
@@ -256,8 +264,8 @@ namespace Skyfall
             unlocked_dragons.RemoveAll(d => !Data.DRAGONS.ContainsKey(d));
             if (!unlocked_dragons.Contains("blue")) unlocked_dragons.Insert(0, "blue");
             last_dragon = IsDragonUnlocked(s.dragon ?? "") && Data.DRAGONS.ContainsKey(s.dragon ?? "") ? s.dragon : "blue";
-            // Saves from before eggs were counted: every dragon owned beyond blue came from an egg.
-            eggs_found = Mathf.Max(s.eggs_found, unlocked_dragons.Count - 1);
+            // Old saves counted eggs (eggs_found); every dragon owned beyond blue was rescued or hatched.
+            rescues_found = MigrateRescues(s.rescues_found, s.eggs_found, unlocked_dragons.Count);
             run = s.run ?? new RunState();
             trees = s.trees ?? new List<TreeState>();
             trees.RemoveAll(t => t == null || Data.Tree(t.key ?? "") == null);
@@ -279,7 +287,8 @@ namespace Skyfall
             s.hero = last_hero;
             s.dragon = last_dragon;
             s.unlocked_dragons = unlocked_dragons;
-            s.eggs_found = eggs_found;
+            s.rescues_found = rescues_found;
+            s.eggs_found = 0;
             s.run = run ?? new RunState();
             s.trees = trees;
         }
@@ -340,7 +349,7 @@ namespace Skyfall
                                 best_score = old.best_score, best_time = old.best_time, best_kills = old.best_kills, best_level = old.best_level,
                                 best_stage = old.best_stage, runs = old.runs, wins = old.wins, last_score = old.last_score,
                                 history = old.history ?? new List<RunRecord>(), spell = old.spell, passive = old.passive, hero = old.hero, dragon = old.dragon,
-                                unlocked_dragons = old.unlocked_dragons, eggs_found = old.eggs_found, run = old.run ?? new RunState(),
+                                unlocked_dragons = old.unlocked_dragons, rescues_found = old.eggs_found, run = old.run ?? new RunState(),
                             };
                         }
                     }

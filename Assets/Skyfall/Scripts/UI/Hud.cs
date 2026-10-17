@@ -169,6 +169,11 @@ namespace Skyfall
             if (game == null) return;
             UiNav.Tick(TestTop ?? TopScreen(), udt, GamepadBack, GamepadTab);
 
+            if (stillOpen)
+            {
+                TickStill(udt);
+                return;
+            }
             if (GameInput.StatsPressed && game.running && !game.leveling && menu == Menu.None)
             {
                 ToggleStats();
@@ -285,6 +290,76 @@ namespace Skyfall
             float y = H / 2f - 90f;
             DrawText(new Rect(W / 2 - 500, y, 1000, 80), splashTitle, Text(size, TextAnchor.MiddleCenter, false, true), splashColor, 10, a);
             DrawText(new Rect(W / 2 - 500, y + 78, 1000, 34), splashSub, Text(26, TextAnchor.UpperCenter), PARCHMENT, 6, a);
+        }
+
+        // ---------------------------------------------------------------- cinematic still
+
+        bool stillOpen;
+        Texture2D stillTex;
+        string stillCaption = "";
+        float stillT;
+        float stillEnd = -1f;       // stillT when the fade-out started (-1 while it is still showing)
+        bool stillHadPause;
+        System.Action stillDone;
+        const float STILL_FADE = 0.9f, STILL_HOLD = 6f;
+
+        /// True while any menu, title, pause, stats, level-up, end or still screen is up (gameplay keys do nothing then).
+        public bool MenuOpen => menu != Menu.None || controlsOpen || pauseOpen || statsOpen || endOpen || levelOptions != null || stillOpen;
+
+        /// A full-screen still with a caption: fades in, holds, fades out (any key, click or gamepad button skips to the
+        /// fade-out). Gameplay is paused meanwhile; done() runs when it is gone.
+        public void ShowStill(Texture2D tex, string caption, System.Action done)
+        {
+            stillTex = tex;
+            stillCaption = caption;
+            stillDone = done;
+            stillT = 0f;
+            stillEnd = -1f;
+            stillOpen = true;
+            stillHadPause = game.Paused;
+            game.SetPaused(true);
+            Sfx.Play("roar", 0f, 0f);
+        }
+
+        void TickStill(float udt)
+        {
+            stillT += udt;
+            if (stillEnd < 0f)
+            {
+                // Input is ignored for the first moment so a key held during the boss fight does not skip it at once.
+                if (stillT > 0.6f && GameInput.AnyPressed) stillEnd = Mathf.Min(stillT, STILL_FADE + STILL_HOLD);
+                else if (stillT >= STILL_FADE + STILL_HOLD) stillEnd = stillT;
+            }
+            if (stillEnd >= 0f && stillT - stillEnd >= STILL_FADE)
+            {
+                stillOpen = false;
+                stillTex = null;
+                if (!stillHadPause) game.SetPaused(false);
+                var done = stillDone;
+                stillDone = null;
+                done?.Invoke();
+            }
+        }
+
+        void DrawStill()
+        {
+            float a = Mathf.Clamp01(stillT / STILL_FADE);
+            if (stillEnd >= 0f) a = Mathf.Min(a, 1f - Mathf.Clamp01((stillT - stillEnd) / STILL_FADE));
+            UiKit.Rect(new Rect(0, 0, W, H), new Color(0f, 0f, 0f, a));
+            if (stillTex != null)
+            {
+                // Fill the screen without stretching: the picture is scaled to cover and the overflow is cropped.
+                float k = Mathf.Max(W / stillTex.width, H / stillTex.height);
+                float w = stillTex.width * k, h = stillTex.height * k;
+                var prev = GUI.color;
+                GUI.color = new Color(1f, 1f, 1f, a);
+                GUI.DrawTexture(new Rect((W - w) / 2f, (H - h) / 2f, w, h), stillTex, ScaleMode.StretchToFill);
+                GUI.color = prev;
+            }
+            // Caption on a dark band at the bottom.
+            UiKit.Rect(new Rect(0, H - 150, W, 150), new Color(0f, 0f, 0f, 0.55f * a));
+            DrawText(new Rect(W / 2 - 800, H - 130, 1600, 70), stillCaption, Text(34, TextAnchor.MiddleCenter, false, true), PARCHMENT, 8, a);
+            DrawText(new Rect(W / 2 - 400, H - 50, 800, 30), "Press any key to continue", Text(16, TextAnchor.MiddleCenter), M.Darken(PARCHMENT, 0.3f), 3, a * 0.8f);
         }
 
         public void Toast(string text)
@@ -407,6 +482,7 @@ namespace Skyfall
                 case Menu.Farewell: DrawFarewell(); break;
             }
             if (controlsOpen) { UiNav.Layer = "controls"; DrawControls(); }
+            if (stillOpen) DrawStill();
             if (fadeA > 0.001f) UiKit.Rect(new Rect(0, 0, W, H), new Color(0f, 0f, 0f, fadeA));
             if (repaint)
             {
@@ -529,6 +605,9 @@ namespace Skyfall
             string label = landing ? (p.RemountLanded ? "Landing" : "Land!") : p.UnlimitedFlight ? "Unlimited" : "Flight (Q)";
             var labelCol = landing ? new Color(1f, 0.7f, 0.4f) : new Color(0.6f, 0.85f, 1f);
             DrawText(new Rect(bx, by - 6, 80, 20), label, Text(15), labelCol, 5);
+            // Seconds left of the world's flight time (10 s in worlds 1-2, 60 s with the adult dragon).
+            if (!p.UnlimitedFlight)
+                DrawText(new Rect(bx + bw - 90, by - 6, 90, 20), $"{Mathf.CeilToInt(p.flightStamina)} / {p.MaxFlight:0} s", Text(13, TextAnchor.MiddleRight), M.Darken(labelCol, 0.1f), 4);
         }
 
         /// Active power-ups under the level: a glyph chip, the name and the seconds left, with a thin timer bar.
@@ -812,7 +891,7 @@ namespace Skyfall
             Centered(() =>
             {
                 Title();
-                Label("Cross three lands, slay their warlords, claim their dragon eggs.", 17, M.Darken(PARCHMENT, 0.15f), 4, TextAnchor.UpperCenter);
+                Label("Cross three lands, slay their warlords, free the dragons they hold captive.", 17, M.Darken(PARCHMENT, 0.15f), 4, TextAnchor.UpperCenter);
                 Space(26);
                 CenterRow(() =>
                 {
@@ -963,7 +1042,7 @@ namespace Skyfall
                             // Locked: dimmed, with the hint, and not selectable.
                             var prev = GUI.color;
                             GUI.color = new Color(1f, 1f, 1f, 0.45f);
-                            SelectCard(d.name, "LOCKED — stage warlords may drop its egg", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW, null, "dragon_" + id);
+                            SelectCard(d.name, "LOCKED — a stage warlord may hold it captive", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW, null, "dragon_" + id);
                             GUI.color = prev;
                         }
                         else
@@ -1102,7 +1181,7 @@ namespace Skyfall
                 Space(10);
                 Label($"{title}   ·   {state.xp} {xpName} to spend   ·   {state.earned} earned", 20, Color.Lerp(accent, PARCHMENT, 0.4f), 6, TextAnchor.UpperCenter);
                 if (!isHero && !Save.IsDragonUnlocked(id))
-                    Label("You don't own this dragon yet: its egg may drop from a stage warlord.", 14, M.Darken(PARCHMENT, 0.3f), 3, TextAnchor.UpperCenter);
+                    Label("You don't own this dragon yet: a stage warlord may hold it captive: defeat one to set it free.", 14, M.Darken(PARCHMENT, 0.3f), 3, TextAnchor.UpperCenter);
                 Space(10);
                 for (int r = 0; r < rows.Length; r++)
                 {
@@ -1509,12 +1588,12 @@ namespace Skyfall
                 Label(endWon ? "VICTORY" : "YOU HAVE FALLEN", 72, endWon ? GOLD : new Color(0.9f, 0.25f, 0.2f), 12, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
                 Label(endWon ? "All three warlords are slain. Dawn returns to the kingdom." : $"Your dragon cries out as the clans close in on {game.Stage.name}.", 22, PARCHMENT, 6, TextAnchor.UpperCenter);
-                foreach (var hid in game.hatched)
+                foreach (var hid in game.rescued)
                 {
                     if (!Data.DRAGONS.ContainsKey(hid)) continue;
                     var hd = Data.DRAGONS[hid];
                     Space(8);
-                    Label($"An egg hatched: the {hd.name} is yours!", 24, M.Lighten(hd.body, 0.35f), 8, TextAnchor.UpperCenter, 0, false, true);
+                    Label($"Rescued from the warlord's chains: the {hd.name} is yours!", 24, M.Lighten(hd.body, 0.35f), 8, TextAnchor.UpperCenter, 0, false, true);
                 }
                 Space(18);
                 Label($"Stage {game.stage} / {Data.STAGE_COUNT}   ·   {Clock(game.totalTime)}   ·   Level {p.level}   ·   {game.kills} foes slain", 24, PARCHMENT, 6, TextAnchor.UpperCenter);

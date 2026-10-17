@@ -238,10 +238,12 @@ namespace Skyfall
         bool remountLanded = true;
         public float RemountWait => remountWait;
         public bool RemountLanded => remountLanded;
-        /// Dragon flight time: a flat 10 s (no upgrades lengthen it).
-        public float MaxFlight => 10f;
-        /// The hatchling (world 1) is too small to carry you.
-        public bool CanFly => game == null || game.stage >= Data.FLIGHT_STAGE;
+        /// Dragon flight time: 10 s in worlds 1-2, 60 s with the adult dragon of world 3 (Data.FlightTimeFor; no upgrades lengthen it).
+        public float MaxFlight => Data.FlightTimeFor(game != null ? game.stage : 1);
+        /// Stamina refills at this rate, scaled so an empty bar takes the same time to refill whatever the flight time.
+        float FlightRegen => FLIGHT_REGEN_RATE * MaxFlight / Data.FLIGHT_TIME;
+        /// The hatchling (world 1) is too small to carry you; the young (world 2) and adult (world 3) dragons both can.
+        public bool CanFly => game == null || Data.CanFlyAtStage(game.stage);
         /// From 0:00 (the final battle) the dragon never tires.
         public bool UnlimitedFlight => game != null && game.finalStarted;
         /// True after jumping off the ground (until landing): flight recharges in a jump as well as on the ground,
@@ -1044,7 +1046,7 @@ namespace Skyfall
             }
             if (UnlimitedFlight) flightStamina = MaxFlight;
             else if (onGround || (jumpedFromGround && !flying && !SoaringForm))
-                flightStamina = Mathf.Min(MaxFlight, flightStamina + delta * FLIGHT_REGEN_RATE);
+                flightStamina = Mathf.Min(MaxFlight, flightStamina + delta * FlightRegen);
             if (remountLanded) remountWait = Mathf.Max(0f, remountWait - delta);
 
             float hspeed = new Vector2(velocity.x, velocity.z).magnitude;

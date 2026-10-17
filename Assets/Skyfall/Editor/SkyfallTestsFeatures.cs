@@ -305,8 +305,8 @@ namespace Skyfall.EditorTools
             if (f == 1495)
             {
                 foreach (var p in Object.FindObjectsByType<PowerUpPickup>(FindObjectsInactive.Exclude)) Object.Destroy(p.gameObject);
-                var egg = Object.FindFirstObjectByType<DragonEgg>();
-                if (egg) egg.hold = true;
+                var cap = Object.FindFirstObjectByType<DragonCaptive>();
+                if (cap) cap.hold = true;
                 ClearEnemies(game);
                 Tele(pl, OnGround(game, Vector3.zero));
                 pl.flightStamina = pl.MaxFlight;

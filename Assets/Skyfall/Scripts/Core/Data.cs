@@ -234,8 +234,29 @@ namespace Skyfall
         public const float GUARDIAN_WINGS_SHIELD = 3f;
         public const float GUARDIAN_WINGS_CD = 60f;
 
-        /// Eggs: the first final boss you ever slay always drops one (for a dragon you don't own); after that it's a coin flip.
-        public const float EGG_CHANCE = 0.5f;
+        /// Dragon flight time in seconds: 10 s in worlds 1-2 (the hatchling of world 1 cannot fly at all), 60 s for the adult of world 3.
+        public const float FLIGHT_TIME = 10f;
+        public const float FLIGHT_TIME_ADULT = 60f;
+        /// First world in which the dragon is an adult (longer flight, Guardian Wings).
+        public const int ADULT_STAGE = 3;
+
+        /// True when the dragon of this world can carry the hero: the young dragon (world 2) and the adult (world 3) both can.
+        public static bool CanFlyAtStage(int stage) => stage >= FLIGHT_STAGE;
+
+        /// How long the dragon can carry the hero in this world.
+        public static float FlightTimeFor(int stage) => stage >= ADULT_STAGE ? FLIGHT_TIME_ADULT : FLIGHT_TIME;
+
+        /// Rescue: the stage's final boss held one of the dragons you don't own captive. The first rescue ever is guaranteed;
+        /// after that it is a coin flip (while locked dragons remain).
+        public const float RESCUE_CHANCE = 0.5f;
+
+        /// The still shown after a world's final boss dies: the hero's dragon devours the warlord and grows into its next age.
+        /// Index by the world just finished (0 = world 1). Format args: {0} = the warlord, {1} = the new age.
+        public static readonly string[] FEAST_CAPTION =
+        {
+            "Your dragon devours {0}... it grows into a {1}",
+            "Your dragon devours {0}... it grows into an {1}",
+        };
 
         // ------------------------------------------------------------ stat buckets
 
@@ -364,8 +385,12 @@ namespace Skyfall
 
         // ---- permanent trees (main menu): six rows of three, one pick per row; rows are bought with hero or bond XP
 
-        /// XP needed to open each row of a permanent tree (hero XP for hero trees, bond XP for dragon trees).
-        public static readonly int[] TREE_ROW_COST = { 100, 200, 350, 500, 700, 900 };
+        /// XP needed to open each row of a permanent tree (hero XP for hero trees, bond XP for dragon trees; both share this curve).
+        /// "Faster early, steeper late": the first rows open after a single short run, the last rows take many wins.
+        /// Old curve: 100, 200, 350, 500, 700, 900 (total 2750). New curve: 40, 90, 200, 450, 900, 1700 (total 3380);
+        /// each of the last three rows costs about double the one before it. XP gain is unchanged
+        /// (hero: 0.25/kill + 0.1/s + 75 per world cleared + 150 for a win; a typical full win is roughly 800-900).
+        public static readonly int[] TREE_ROW_COST = { 40, 90, 200, 450, 900, 1700 };
         public const int TREE_ROWS = 6;
 
         /// Mod keys (all summed over the talents you have):

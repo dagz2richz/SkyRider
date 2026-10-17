@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 namespace Skyfall
 {
-    /// Run manager: world setup, three 8-minute stages joined by portals, spawning, bosses, eggs, XP, level-ups
+    /// Run manager: world setup, three 8-minute stages joined by portals, spawning, bosses, dragon rescues, XP, level-ups
     /// (abilities, stat buckets, talents, armor), the run save and the sky.
     /// Put this on one GameObject in an otherwise empty scene; it builds everything else from code.
     public class Game : MonoBehaviour
@@ -58,8 +58,8 @@ namespace Skyfall
         public bool miniSpawned;
         Enemy miniBoss;
         IslandBeacon beacon;
-        /// Dragons that hatched from eggs this run (for the end screen).
-        public readonly List<string> hatched = new List<string>();
+        /// Dragons rescued from captivity this run (for the end screen).
+        public readonly List<string> rescued = new List<string>();
         public int kills;
         /// Meta XP sources: kills by the hero and by the dragon, seconds ridden, dragon signatures and rescues.
         public int heroKills, dragonKills, signatures, rescues;
@@ -86,8 +86,8 @@ namespace Skyfall
 
         public Data.StageDef Stage => Data.STAGES[Mathf.Clamp(stage - 1, 0, Data.STAGES.Length - 1)];
 
-        /// Dragon hatched most recently this run, or empty.
-        public string hatchedDragon => hatched.Count > 0 ? hatched[hatched.Count - 1] : "";
+        /// Dragon rescued most recently this run, or empty.
+        public string rescuedDragon => rescued.Count > 0 ? rescued[rescued.Count - 1] : "";
 
         /// True while the game is paused (pause menu, stats screen, level-up choice).
         public bool Paused => paused;
@@ -277,8 +277,8 @@ namespace Skyfall
             totalTime = s.totalTime;
             damageDealt = s.damageDealt;
             biggestHit = s.biggestHit;
-            hatched.Clear();
-            hatched.AddRange(s.hatched);
+            rescued.Clear();
+            rescued.AddRange(s.hatched);
             int st = Mathf.Clamp(s.stage, 1, Data.STAGE_COUNT);
             if (st != stage) BuildStage(st);
             else player.Teleport(StartPos);
@@ -318,7 +318,7 @@ namespace Skyfall
             s.totalTime = totalTime;
             s.damageDealt = damageDealt;
             s.biggestHit = biggestHit;
-            s.hatched = new List<string>(hatched);
+            s.hatched = new List<string>(rescued);
             s.date = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm");
             player.WriteRunState(s);
             Save.run = s;
@@ -753,7 +753,7 @@ namespace Skyfall
                 bossesSlain++;
                 Shake(1f);
                 FX.Flash(pos + new Vector3(0, 3, 0), 10f, new Color(FX.EnemyRed.r, 0.25f, 0.12f, 0.8f), 0.8f);
-                // Bosses drop no experience (the final boss may drop an egg).
+                // Bosses drop no experience (the final boss may have held a dragon captive).
                 // Bosses always drop two random power-ups.
                 for (int i = 0; i < Data.BOSS_POWERUPS; i++)
                 {
@@ -1173,8 +1173,9 @@ namespace Skyfall
             hud.ShowEnd(false, Save.last_score, best);
         }
 
-        /// The stage's final boss has fallen. The first one ever always drops an egg for a dragon you don't own;
-        /// after that it is a 50% chance. Then the portal to the next stage opens.
+        /// The stage's final boss has fallen. Order: the dragon devours the warlord and grows (a still picture, worlds 1 and 2),
+        /// then the warlord's captive dragon is freed when the hero walks up to it (if it held one), then the portal opens.
+        /// The first rescue ever is guaranteed; after that it is a 50% chance, while dragons remain locked.
         void FinalBossDown(Vector3 pos)
         {
             finalDefeated = true;
@@ -1182,30 +1183,61 @@ namespace Skyfall
             var locked = new List<string>();
             foreach (var id in Data.DRAGON_ORDER)
                 if (!Save.IsDragonUnlocked(id)) locked.Add(id);
-            bool drop = locked.Count > 0 && (Save.eggs_found == 0 || M.RandF() < Data.EGG_CHANCE);
-            if (drop)
+            bool captive = locked.Count > 0 && (Save.rescues_found == 0 || M.RandF() < Data.RESCUE_CHANCE);
+            string pick = captive ? locked[Random.Range(0, locked.Count)] : "";
+            var at = pos;
+            at.y = terrain.SurfaceHeight(pos.x, pos.z, pos.y);
+            // A beat to watch the warlord fall, then the feast (worlds 1-2) or straight on to the rescue / portal.
+            Tw.After(1.8f, () =>
             {
-                Save.eggs_found++;
-                Save.Write();
-                string pick = locked[Random.Range(0, locked.Count)];
-                DragonEgg.Spawn(this, pick, pos + new Vector3(0, 0.2f, 0));
-                hud.Banner($"{Stage.finalBoss} has fallen!", "A dragon egg glows where he stood");
+                if (this == null || ended) return;
+                if (stage < Data.STAGE_COUNT) ShowFeast(() => AfterFinalBoss(pick, at, locked.Count > 0));
+                else AfterFinalBoss(pick, at, locked.Count > 0);
+            });
+        }
+
+        /// Full-screen still of the hero's dragon eating the fallen warlord: this is how it grows into its next age.
+        /// Stills live in Resources/Skyfall/Stills (DragonFeast1 after world 1, DragonFeast2 after world 2); without the
+        /// picture the caption shows as a banner instead.
+        void ShowFeast(System.Action done)
+        {
+            string warlord = Stage.finalBoss.Split(',')[0];
+            string age = Data.DRAGON_AGE[Mathf.Clamp(stage, 0, Data.DRAGON_AGE.Length - 1)];
+            string caption = string.Format(Data.FEAST_CAPTION[Mathf.Clamp(stage - 1, 0, Data.FEAST_CAPTION.Length - 1)], warlord, age);
+            var tex = Resources.Load<Texture2D>("Skyfall/Stills/DragonFeast" + stage);
+            if (tex == null)
+            {
+                hud.Banner("Your dragon feeds", caption);
+                Tw.After(4f, () => { if (this != null && !ended) done(); });
                 return;
             }
-            hud.Banner($"{Stage.finalBoss} has fallen!", locked.Count > 0 ? "No egg this time..." : "The way onward opens");
+            hud.ShowStill(tex, caption, () => { if (this != null && !ended) done(); });
+        }
+
+        /// After the feast: free the captive dragon if there is one, otherwise the way onward opens.
+        void AfterFinalBoss(string captiveId, Vector3 at, bool anyLocked)
+        {
+            if (captiveId != "")
+            {
+                DragonCaptive.Spawn(this, captiveId, at);
+                hud.Banner($"{Stage.finalBoss} held a dragon captive!", $"Walk up to the {Data.DRAGONS[captiveId].name} to break its chains");
+                return;
+            }
+            hud.Banner($"{Stage.finalBoss} has fallen!", anyLocked ? "No captive this time..." : "The way onward opens");
             Tw.After(4f, StageCleared);
         }
 
-        /// The egg was picked up: the dragon is unlocked and saved, then the stage ends.
-        public void CollectEgg(string dragonId)
+        /// The captive dragon broke free and joined you: it is unlocked and saved, then the stage ends.
+        public void FreeDragon(string dragonId)
         {
             if (ended) return;
-            Save.UnlockDragon(dragonId);
-            hatched.Add(dragonId);
+            if (Save.UnlockDragon(dragonId)) Save.rescues_found++;
+            Save.Write();
+            rescued.Add(dragonId);
             Sfx.Play("levelup", -2f, 0f);
             FX.Vfx("buff", player.Pos, 1.2f, 2f, null, 0f);
-            hud.Banner($"You found a {Data.DRAGONS[dragonId].name} egg!", "It hatches in your care");
-            Tw.After(2.5f, StageCleared);
+            hud.Banner($"The {Data.DRAGONS[dragonId].name} is free!", "Freed from the warlord's chains: it is yours to ride");
+            Tw.After(3f, StageCleared);
         }
 
         /// After a stage's final boss: on to the next stage through a portal, or victory after the last.
@@ -1248,8 +1280,13 @@ namespace Skyfall
             if (this == null || ended || !running) return;
             string age = Data.DRAGON_AGE[Mathf.Clamp(stage - 1, 0, Data.DRAGON_AGE.Length - 1)];
             if (stage < Data.FLIGHT_STAGE) hud.Banner($"Your dragon is a {age}", "It walks at your side and breathes fire; its wings come with the next world");
-            else if (stage < Data.GUARDIAN_WINGS_STAGE) hud.Banner($"Your dragon has grown: {age}", "It can carry you now (Q)");
-            else hud.Banner($"Your dragon is grown: {age}", "Guardian Wings: at 30% health it shields you and heals you");
+            else
+            {
+                // It grew by devouring the last world's warlord (the still after his defeat).
+                string fed = Data.STAGES[Mathf.Clamp(stage - 2, 0, Data.STAGES.Length - 1)].finalBoss.Split(',')[0];
+                if (stage < Data.GUARDIAN_WINGS_STAGE) hud.Banner($"Your dragon has grown: {age}", $"Fed by {fed}'s fall, it can carry you now (Q)");
+                else hud.Banner($"Your dragon is grown: {age}", $"Fed by {fed}'s fall: Guardian Wings at 30% health, and {Data.FLIGHT_TIME_ADULT:0} s of flight (Q)");
+            }
         }
 
         /// Replaces the world with a new stage's land (30% bigger maps, more islands, the stage's scenery) and puts the hero
@@ -1263,7 +1300,7 @@ namespace Skyfall
             foreach (var g in gems) if (g.node) Destroy(g.node.gameObject);
             gems.Clear();
             foreach (var p in FindObjectsByType<PowerUpPickup>(FindObjectsInactive.Include)) Destroy(p.gameObject);
-            foreach (var egg in FindObjectsByType<DragonEgg>(FindObjectsInactive.Include)) Destroy(egg.gameObject);
+            foreach (var cap in FindObjectsByType<DragonCaptive>(FindObjectsInactive.Include)) Destroy(cap.gameObject);
             if (beacon) Destroy(beacon.gameObject);
             beacon = null;
             if (FX.root)
