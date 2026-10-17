@@ -234,6 +234,8 @@ namespace Skyfall
         public static readonly float[] DRAGON_AGE_DAMAGE = { 0.7f, 1f, 1.3f };
         /// First world in which the dragon can carry you.
         public const int FLIGHT_STAGE = 2;
+        /// Extra size for the rigged Dragonguard Knight model (it is fitted to the same head height as the others).
+        public const float ART_KNIGHT_SCALE = 1.35f;
         /// Adult dragon (world 3) passive: below this health it shields you with its wings and heals you.
         public const int GUARDIAN_WINGS_STAGE = 3;
         public const float GUARDIAN_WINGS_HP = 0.3f;

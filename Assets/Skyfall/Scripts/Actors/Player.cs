@@ -554,6 +554,8 @@ namespace Skyfall
                     skinRoot = FX.Node(transform, "HeroSkin");
                     rig = Skins.SpawnCharacter(prefab, skinRoot, 1.8f, lib.HeroController(heroId));
                     if (IsHuntress && !lib.artHeroes) DressHuntress();
+                    // The rigged Dragonguard reads small beside the swarm: his plate and horned helm are scaled up.
+                    if (IsKnight && lib.artHeroes) skinRoot.localScale = Vector3.one * Data.ART_KNIGHT_SCALE;
                     rig.Loop(IDLE);
                 }
             }
