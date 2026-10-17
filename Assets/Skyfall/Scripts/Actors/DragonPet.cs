@@ -345,6 +345,23 @@ namespace Skyfall
             }
         }
 
+        /// A new stage begins: a dive or breath still in progress belongs to the old land (its target spot would be
+        /// somewhere random in the new one), so the dragon just settles beside the hero.
+        public void ResetForStage()
+        {
+            if (state == "dive") state = "pet";
+            diveT = 0f;
+            vel = Vector3.zero;
+            harryTarget = null;
+            commandCd = Mathf.Max(commandCd, 3f);
+            if (breathActive > 0f)
+            {
+                breathActive = 0f;
+                if (breathFx) breathFx.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+                if (breathLight) breathLight.intensity = 0f;
+            }
+        }
+
         // ---------------------------------------------------------------- update
 
         public void Tick(float delta, bool running)

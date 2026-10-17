@@ -442,6 +442,7 @@ namespace Skyfall
             FX.Burst(from + Vector3.up, new Color(0.6f, 0.02f, 0.06f), 20, 6f, 0.35f);
             Pos = to;
             velocity = Vector3.zero;
+            knockVel = Vector3.zero;   // a shove from before the blink must not carry on from the new spot
             FX.Burst(to + Vector3.up, new Color(0.6f, 0.02f, 0.06f), 14, 5f, 0.3f);
             Sfx.Play("whoosh", -2f, 0.1f);
             // The decoy: a crimson silhouette that bursts a moment later.
@@ -537,6 +538,7 @@ namespace Skyfall
             Explosion(from, 5f, (60f + 12f * level) * DamageMult, new Color(1f, 0.5f, 0.12f));
             Pos = best;
             velocity = Vector3.zero;
+            knockVel = Vector3.zero;
             FX.Flash(best + Vector3.up, 2.5f, new Color(1f, 0.6f, 0.2f, 0.7f), 0.25f);
             Sfx.Play("whoosh", 0f, 0.1f);
         }

@@ -48,6 +48,7 @@ namespace Skyfall
         /// Seconds across the whole run (for the score).
         public float totalTime;
         float spawnAccum;
+        float atmoT;
         public int wave = 1;
         /// Current stage (1..Data.STAGE_COUNT).
         public int stage = 1;
@@ -81,6 +82,8 @@ namespace Skyfall
         public static bool skipMenu, continueRun;
 
         Enemy finalBoss;
+        /// The final boss's fallen model. The boss object itself is destroyed a moment after it dies, so the feast still keeps this.
+        Transform finalCorpse;
         bool finalDefeated;
         bool paused;
 
@@ -109,7 +112,7 @@ namespace Skyfall
             fxRoot = new GameObject("FX").transform;
             fxRoot.SetParent(transform, false);
             FX.root = fxRoot;
-            FX.liveBursts = 0;
+            FX.liveBursts = 0; FX.liveVfx = 0;   // the tween runner died with the old scene, so its pending "one less effect" callbacks never ran
             FX.texts.Clear();
             worldSeed = Random.Range(0, int.MaxValue / 2);
             stage = continueRun && Save.HasRun ? Mathf.Clamp(Save.run.stage, 1, Data.STAGE_COUNT) : 1;
@@ -356,7 +359,13 @@ namespace Skyfall
             pet.Tick(delta, true);
             TickGems(delta);
             TickBeacon();
-            Atmosphere(Mathf.Clamp01(timeElapsed / Data.RUN_LENGTH));
+            // The sky drifts over minutes: five updates a second are plenty (each one rewrites the fog, ambient probe and sky material).
+            atmoT -= delta;
+            if (atmoT <= 0f)
+            {
+                atmoT = 0.2f;
+                Atmosphere(Mathf.Clamp01(timeElapsed / Data.RUN_LENGTH));
+            }
             if (player.pendingLevels > 0 && !leveling && !ended) LevelUp();
         }
 
@@ -683,6 +692,23 @@ namespace Skyfall
             return result;
         }
 
+        /// The first foe inside the same cylinder EnemiesInRadius searches that is not in skip, found without building a
+        /// list (for the per-frame hit checks of projectiles).
+        public Enemy FirstEnemyInRadius(Vector3 pos, float r, float maxDy = 4f, bool asDragon = false, HashSet<Enemy> skip = null)
+        {
+            for (int i = 0; i < enemies.Count; i++)
+            {
+                var e = enemies[i];
+                if (e.dead || !CanTarget(e, asDragon) || (skip != null && skip.Contains(e))) continue;
+                var v = e.Pos - pos;
+                if (Mathf.Abs(v.y + 1f) > maxDy + e.radius) continue;
+                v.y = 0f;
+                float rr = r + e.radius;
+                if (v.sqrMagnitude < rr * rr) return e;
+            }
+            return null;
+        }
+
         /// The spot with the most ogres around it (sampled), within range of pos. M.INF if none.
         public Vector3 DensestPoint(Vector3 pos, float range, Vector3? avoid = null, float avoidR = 0f)
         {
@@ -795,6 +821,7 @@ namespace Skyfall
             // Pack models fall with their death animation (up to a cap); the rest vanish in a dust puff.
             if (!e.LeaveCorpse())
                 FX.Vfx("dust_puff", pos + new Vector3(0, 0.3f, 0), 0.35f * Mathf.Max(0.7f, e.size), 1.6f, null, 0.25f, FX.EnemyRed);
+            if (e == finalBoss) finalCorpse = e.corpse;
             e.gameObject.SetActive(false);
         }
 
@@ -1234,10 +1261,10 @@ namespace Skyfall
         /// is read into a Texture2D. Everything is put back afterwards. Returns null if the shot cannot be taken.
         Texture2D CaptureFeast()
         {
-            if (finalBoss == null || finalBoss.corpse == null || pet == null || player == null || player.cam == null) return null;
+            if (finalCorpse == null || pet == null || player == null || player.cam == null) return null;
             Bounds b = default;
             bool any = false;
-            foreach (var r in finalBoss.corpse.GetComponentsInChildren<Renderer>())
+            foreach (var r in finalCorpse.GetComponentsInChildren<Renderer>())
             {
                 if (r is ParticleSystemRenderer) continue;
                 if (!any) { b = r.bounds; any = true; }
@@ -1432,9 +1459,11 @@ namespace Skyfall
             finalStarted = false;
             finalDefeated = false;
             finalBoss = null;
+            finalCorpse = null;
             miniBoss = null;
             player.Teleport(StartPos);
             pet.Pos = player.Pos + new Vector3(3, 3, -1);
+            pet.ResetForStage();
             SetSky();
             Atmosphere(0f);
         }

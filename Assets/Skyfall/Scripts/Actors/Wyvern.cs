@@ -220,6 +220,7 @@ namespace Skyfall
             var membrane = FX.NewLit(new Color(0.45f, 0.18f, 0.3f), 0.8f);
             tintMats.Add(skin);
             tintMats.Add(membrane);
+            skinMat = skin;   // Enemy.Tick drives the hit flash and status glow through skinMat when there is no pack rig
             membrane.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
             var sph = MeshGen.Sphere(10);
             var cone = MeshGen.Cylinder(0f, 0.5f, 6);
@@ -584,6 +585,7 @@ namespace Skyfall
             var fall = go.AddComponent<WyvernFall>();
             fall.Init(game, wVel, tintMats);
             tintMats.Clear();   // the corpse owns the tint materials now
+            skinMat = null;     // (the procedural wyvern's body material is one of them)
             model = null;
             rig = null;
             return true;

@@ -850,9 +850,18 @@ namespace Skyfall
             blockAnim = Mathf.MoveTowards(blockAnim, 0f, delta * 4f);
             if (blockAnim > 0f) armL.Rot = new Vector3(-1.3f * blockAnim, 0.4f * blockAnim, 0);
             float glow = 1.5f + Mathf.Round(Mathf.Clamp01(mana / MaxMana) * 2.5f / 0.5f) * 0.5f;
-            handGlow.sharedMaterial = FX.Glow(GlowColor, glow);
+            // The glow only steps with the mana; looking the material up builds cache-key strings, so only do it on a change.
+            if (glow != handGlowShown || handGlow != handGlowOwner)
+            {
+                handGlowShown = glow;
+                handGlowOwner = handGlow;
+                handGlow.sharedMaterial = FX.Glow(GlowColor, glow);
+            }
             AnimateDragonForm(delta, hspeed);
         }
+
+        float handGlowShown = -1f;
+        MeshRenderer handGlowOwner;
 
         // ---------------------------------------------------------------- dragon mount
 
@@ -1747,10 +1756,11 @@ namespace Skyfall
         public static void Spawn(Player p, Vector3 from, Vector3 velocity, float damage, float range)
         {
             var b = new GameObject("Skyblade").AddComponent<Skyblade>();
+            if (velocity.sqrMagnitude < 0.0001f) velocity = p.CamFwd * Data.SKYBLADE_SPEED;   // a target right on the hand would give no aim at all
             b.player = p;
             b.velocity = velocity;
             b.damage = damage;
-            b.life = range / velocity.magnitude;
+            b.life = range / Mathf.Max(velocity.magnitude, 0.01f);   // a zero aim vector must not make an immortal blade
             b.transform.SetParent(FX.root, false);
             b.transform.SetPositionAndRotation(from, M.FaceNegZ(velocity));
             // A blade with a crossguard and a pointed tip, glowing ice blue.

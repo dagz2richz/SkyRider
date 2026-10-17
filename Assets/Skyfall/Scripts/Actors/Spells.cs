@@ -466,7 +466,7 @@ namespace Skyfall
             transform.position += velocity * delta;
             if (velocity.magnitude > 0.1f) transform.rotation = M.FaceNegZ(velocity);
             var pos = transform.position;
-            bool hit = g.EnemiesInRadius(pos - new Vector3(0, 1f, 0), 0.9f, 2.5f).Count > 0;
+            bool hit = g.FirstEnemyInRadius(pos - new Vector3(0, 1f, 0), 0.9f, 2.5f) != null;
             if (hit || life <= 0f || pos.y < g.terrain.Height(pos.x, pos.z) + 0.2f) Burst();
         }
 
@@ -531,9 +531,9 @@ namespace Skyfall
             life -= delta;
             transform.position += velocity * delta;
             transform.rotation = M.FaceNegZ(velocity);
-            foreach (var e in g.EnemiesInRadius(transform.position - new Vector3(0, 1f, 0), 0.7f, 2.5f))
+            Enemy e;
+            while ((e = g.FirstEnemyInRadius(transform.position - new Vector3(0, 1f, 0), 0.7f, 2.5f, false, hit)) != null)
             {
-                if (hit.Contains(e)) continue;
                 hit.Add(e);
                 g.DamageEnemy(e, damage, velocity.normalized, 2f, true, new Color(0.7f, 0.95f, 1f));
                 if (M.RandF() < freezeChance) e.Freeze(1.5f);
@@ -687,9 +687,8 @@ namespace Skyfall
             life -= delta;
             transform.position += velocity * delta;
             var pos = transform.position;
-            Enemy first = null;
-            foreach (var e in game.EnemiesInRadius(pos - new Vector3(0, 1f, 0), 0.9f, 2.2f, ownerPlayer == null))   // WYVERN: the dragon's fireballs can hit wyverns
-                if (!passed.Contains(e)) { first = e; break; }
+            // WYVERN: the dragon's fireballs can hit wyverns
+            Enemy first = game.FirstEnemyInRadius(pos - new Vector3(0, 1f, 0), 0.9f, 2.2f, ownerPlayer == null, passed);
             if (first != null && pierce > 0)
             {
                 // Inferno Bolts: burst on the first ogre and keep flying.
@@ -715,7 +714,7 @@ namespace Skyfall
             foreach (var e in game.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f, ownerPlayer == null))
             {
                 var outDir = M.Flat(e.Pos - at);
-                game.dragonSource = ownerPlayer == null && e.IsWyvern;   // WYVERN: a dragon-launched fireball counts as the dragon's hit
+                game.dragonSource = ownerPlayer == null;   // a dragon-launched fireball (Inferno Wave) is the dragon's hit: bond XP, and it can hurt a wyvern
                 game.DamageEnemy(e, damage, outDir.normalized, small ? 2.5f : 6f, true, custom ? Color.Lerp(fx, Color.white, 0.4f) : new Color(1f, 0.7f, 0.3f));
                 game.dragonSource = false;
                 e.Ignite(3f, damage * burnMult);

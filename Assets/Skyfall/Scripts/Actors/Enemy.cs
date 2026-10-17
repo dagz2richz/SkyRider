@@ -1289,6 +1289,7 @@ namespace Skyfall
         public static void Spawn(Game g, Vector3 from, Vector3 to, float flightTime, float damage)
         {
             var b = new GameObject("Boulder").AddComponent<Boulder>();
+            if (FX.root) b.transform.SetParent(FX.root, false);   // cleared with the stage, like every other flying thing
             b.game = g;
             b.damage = damage;
             var d = to - from;
@@ -1336,6 +1337,7 @@ namespace Skyfall
         public static void Spawn(Game g, Enemy thrower, Vector3 from, Vector3 velocity, float damage)
         {
             var h = new GameObject("Harpoon").AddComponent<Harpoon>();
+            if (FX.root) h.transform.SetParent(FX.root, false);
             h.game = g;
             h.thrower = thrower;
             h.velocity = velocity;
@@ -1392,6 +1394,7 @@ namespace Skyfall
         public static void Spawn(Game g, Vector3 from, Vector3 to, float flightTime, float damage, bool telegraph)
         {
             var b = new GameObject("Potion").AddComponent<ThrownPotion>();
+            if (FX.root) b.transform.SetParent(FX.root, false);
             b.game = g;
             b.damage = damage;
             b.life = flightTime + 2f;
