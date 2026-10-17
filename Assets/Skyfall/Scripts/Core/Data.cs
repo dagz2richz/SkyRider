@@ -35,11 +35,11 @@ namespace Skyfall
         public static readonly Dictionary<string, HeroDef> HEROES = new Dictionary<string, HeroDef>
         {
             ["knight"] = new HeroDef { name = "Dragonguard Knight", color = C(0.55f, 0.7f, 1.0f), weapon = "sword", defense = "shield",
-                desc = "Armored melee battlemage. Longsword sweeps around you; a shield blocks blows. Riding his dragon he hurls piercing Skyblades instead.", hp = 120f },
+                desc = "Armored melee battlemage. His longsword cuts wide arcs and his shield blocks blows. While riding his dragon he hurls piercing Skyblades instead.", hp = 120f },
             ["huntress"] = new HeroDef { name = "Blood Huntress", color = C(0.9f, 0.2f, 0.25f), weapon = "blood_lance", defense = "evasion",
-                desc = "Ranged blood mage. Hurls piercing Blood Javelins paid for in her own blood that make foes bleed; dodges instead of blocking.", hp = 90f },
+                desc = "Ranged blood mage. She hurls piercing Blood Javelins that make foes bleed, paying for each throw with her own blood. She dodges blows instead of blocking them.", hp = 90f },
             ["pyromancer"] = new HeroDef { name = "Ember Mage", color = C(1.0f, 0.55f, 0.15f), weapon = "staff", defense = "ward",
-                desc = "Fire caster. His Ember Staff hurls bursting fire bolts that set foes alight; a Flame Ward turns blows aside and burns the attacker.", hp = 85f },
+                desc = "Fire caster. His Ember Staff hurls bursting fire bolts that set foes alight, and a Flame Ward turns blows aside and burns the attacker. He gains 5% damage per level instead of 2%.", hp = 85f },
         };
 
         // ------------------------------------------------------------ weapons (auto attacks, upgraded on level-up)
@@ -56,15 +56,15 @@ namespace Skyfall
             ["sword"] = new WeaponDef { name = "Dragonguard Longsword", color = C(0.75f, 0.88f, 1.0f),
                 damage = 27.5f, cooldown = 0.6f, range = 5.0f, arc = 170f, knock = 5f,
                 desc = "Wide sweeping cuts that knock foes back. While riding your dragon you hurl piercing Skyblades instead (70% damage each, 32 m range).",
-                up = "+15% damage, faster swings, +6% reach, +1 defense level; +1 Skyblade at Lv 3 and 5 (mounted)" },
+                up = "+15% damage, faster swings, +6% reach, +5% block; +1 Skyblade at Lv 3 and 5 (while mounted). Lv 3: blocks stun the attacker. Lv 5: blocks reflect double damage" },
             ["blood_lance"] = new WeaponDef { name = "Blood Javelin", color = C(0.95f, 0.15f, 0.2f),
                 damage = 27.5f, cooldown = 0.75f, range = 28f, hp_cost = 0.02f, orb_bonus = 0.05f, bleed = 0.35f,
-                desc = "Blood Javelins that pierce through everything and cause bleeding. Costs 2% of current health per throw, no mana. +5% blood orb chance on kills.",
-                up = "+15% damage, faster throws, +1 defense level; +1 javelin at Lv 3 and 5" },
+                desc = "Blood Javelins that pierce every foe in their path and make them bleed. Each throw costs 2% of your current health (never lethal) and no mana. Foes a javelin hit have +5% extra chance to drop a health orb.",
+                up = "+15% damage, faster throws, +5% dodge; +1 javelin at Lv 3 and 5. Lv 3: dodging heals 1.8% health. Lv 5: dodging hurls a counter-javelin" },
             ["staff"] = new WeaponDef { name = "Ember Staff", color = C(1.0f, 0.55f, 0.15f),
                 damage = 24f, cooldown = 0.5f, range = 30f, radius = 1.6f,
-                desc = "Fire bolts from the staff's crystal that burst on impact and set foes alight.",
-                up = "+15% damage, faster casts, +1 defense level; +1 bolt at Lv 3 and 5; bigger bursts at Lv 5" },
+                desc = "Fire bolts from the staff's crystal that burst on impact and set foes alight. They cost no mana.",
+                up = "+15% damage, faster casts, +5% ward; +1 bolt at Lv 3 and 5, bigger bursts at Lv 5. Lv 3: wards explode in fire. Lv 5: wards restore 5 mana" },
         };
 
         /// Dragonguard Knight, mounted only: Skyblades (thrown spectral swords) replace the sword swings. Each deals this
@@ -85,7 +85,7 @@ namespace Skyfall
                 case "sword":
                     return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} swings/s", $"Reach {w.range * (1f + 0.06f * (lvl - 1)):0.0} m  ·  mounted: {shots} Skyblade{(shots > 1 ? "s" : "")}" };
                 case "blood_lance":
-                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} throws/s", $"{shots} javelin{(shots > 1 ? "s" : "")} per throw  ·  bleeds, 2% health cost" };
+                    return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} throws/s", $"{shots} javelin{(shots > 1 ? "s" : "")} per throw  ·  bleeds, costs 2% health" };
                 default:
                     return new[] { $"Damage {dmg:0}   ·   {perSec:0.0} casts/s", $"{shots} bolt{(shots > 1 ? "s" : "")} per cast  ·  bursts, ignites" };
             }
@@ -102,18 +102,18 @@ namespace Skyfall
         }
 
         public static readonly DefenseDef WARD = new DefenseDef { name = "Flame Ward", color = C(1.0f, 0.5f, 0.15f), baseChance = 0.10f,
-            desc = "A chance to turn any blow aside; the attacker catches fire.",
-            ups = new[] { "", "+5% ward chance", "+5% ward; warded blows explode in fire", "+5% ward chance", "+5% ward; each ward restores 5 mana" } };
+            desc = "A chance to turn any blow aside; the attacker catches fire. It levels up with your weapon.",
+            ups = new[] { "", "+5% ward chance", "+5% ward chance; warded blows also explode in fire around you", "+5% ward chance", "+5% ward chance; each ward restores 5 mana" } };
 
         public static readonly DefenseDef EVASION = new DefenseDef { name = "Evasion", color = C(0.95f, 0.4f, 0.45f), baseChance = 0.15f,
-            desc = "A chance to dodge any blow entirely.",
-            ups = new[] { "", "+5% dodge chance", "+5% dodge; dodging heals 1.8% health", "+5% dodge chance", "+5% dodge; dodging hurls a counter-javelin" } };
+            desc = "A chance to dodge any blow entirely. It levels up with your weapon.",
+            ups = new[] { "", "+5% dodge chance", "+5% dodge chance; each dodge heals 1.8% of max health", "+5% dodge chance", "+5% dodge chance; each dodge hurls a counter-javelin" } };
 
         public static readonly DefenseDef SHIELD = new DefenseDef { name = "Dragonguard Shield", color = C(0.45f, 0.65f, 1.0f), baseChance = 0.25f,
-            desc = "A chance to block any blow entirely.",
-            ups = new[] { "", "+5% block chance", "+5% block; blocks stagger the attacker", "+5% block chance", "+5% block; blocks reflect double damage" } };
+            desc = "A chance to block any blow entirely. It levels up with your weapon.",
+            ups = new[] { "", "+5% block chance", "+5% block chance; blocks stun the attacker (not bosses)", "+5% block chance", "+5% block chance; blocks reflect double the blow's damage" } };
 
-        /// Health orb drop chance (bigger ogres drop them more often) and how much they heal.
+        /// Health orb drop chance (bigger foes drop them more often) and how much they heal.
         public const float ORB_CHANCE = 0.03f;
         public const float ORB_HEAL = 0.10f;
 
@@ -139,26 +139,26 @@ namespace Skyfall
                 evolved = "Event Horizon", evolvedColor = C(1f, 0.78f, 0.3f),
                 desc = "Opens a crushing vortex in the thickest crowd, dragging foes in before it implodes.",
                 ups = SpellUps("+pull, +damage", "+radius, longer vortex", "+pull, +damage",
-                    "EVOLVES into Event Horizon: a golden-ringed black hole that drags foes from far away, implodes twice and stuns everything it crushed",
+                    "EVOLVES into Event Horizon: a golden-ringed black hole with 1.5x the radius and double the pull. It implodes twice and stuns everything it crushes (not bosses)",
                     "+pull, +damage, cheaper to cast", "UNIQUE: opens a second well") },
             ["frost_bolt"] = new SpellDef { name = "Frost Bolt", color = C(0.6f, 0.9f, 1.0f), cost = 16f, cd = 0.8f,
                 evolved = "Glacial Comet", evolvedColor = C(0.85f, 1f, 1f),
-                desc = "A bolt of ice that bursts on contact, sending shards out from the center. Shards can freeze.",
+                desc = "A bolt of ice that bursts on contact, sending shards out from the center. The bolt and its shards can freeze foes (bosses are only slowed).",
                 ups = SpellUps("+2 shards, +damage", "+freeze chance", "+2 shards, +damage",
-                    "EVOLVES into Glacial Comet: a huge comet that always freezes what it hits and leaves a field of ice that freezes foes walking in",
+                    "EVOLVES into Glacial Comet: a huge comet that always freezes what it hits (bosses are slowed) and leaves a field of ice that freezes foes walking in",
                     "+damage, +freeze chance, cheaper to cast", "UNIQUE: shards pierce through foes") },
             ["chain_lightning"] = new SpellDef { name = "Chain Lightning", color = C(0.75f, 0.75f, 1.0f), cost = 24f, cd = 1.4f,
                 evolved = "Storm Lord", evolvedColor = C(0.85f, 0.55f, 1f),
-                desc = "Lightning leaps from foe to foe, with a chance to shock (1 s stun on all but bosses).",
+                desc = "Lightning leaps from foe to foe, with a chance to shock each one it hits (1 s stun, not on bosses).",
                 ups = SpellUps("+2 jumps, +damage", "+shock chance", "+2 jumps, +damage",
-                    "EVOLVES into Storm Lord: violet lightning that never weakens as it jumps and leaves a crackling storm orb that keeps zapping",
+                    "EVOLVES into Storm Lord: violet lightning with +40% damage that jumps farther, and leaves a crackling storm orb where the chain ends that keeps zapping",
                     "+damage, +shock chance, cheaper to cast", "UNIQUE: forks into two chains") },
             ["meteor"] = new SpellDef { name = "Meteor Storm", color = C(1.0f, 0.65f, 0.25f), cost = 48f, cd = 5f,
                 evolved = "Starfall", evolvedColor = C(0.6f, 0.8f, 1f),
-                desc = "Burning stars rain on the thickest crowd, with a chance to ignite what they hit.",
+                desc = "Burning stars rain on the thickest crowd, each with a chance to ignite what it hits.",
                 ups = SpellUps("+2 meteors, +damage", "+ignite chance, bigger impacts", "+2 meteors, +damage",
-                    "EVOLVES into Starfall: blue-white stars that hit twice as hard and leave pools of starfire burning on the ground",
-                    "+damage, +ignite chance, cheaper to cast", "UNIQUE: a giant final meteor") },
+                    "EVOLVES into Starfall: blue-white stars that hit twice as hard, always ignite and leave pools of starfire burning on the ground",
+                    "+damage, +ignite chance, cheaper to cast", "UNIQUE: every barrage ends with a giant meteor (3x damage)") },
         };
 
         // ------------------------------------------------------------ passives
@@ -173,17 +173,17 @@ namespace Skyfall
         public static readonly Dictionary<string, PassiveDef> PASSIVES = new Dictionary<string, PassiveDef>
         {
             ["blood_aura"] = new PassiveDef { name = "Blood Aura", color = C(0.85f, 0.1f, 0.15f),
-                desc = "A crimson ring drains every foe inside it, healing you for part of the damage.",
+                desc = "A crimson ring around you drains every foe inside it twice a second, healing you for part of the damage and restoring a little mana.",
                 up = "+damage, +radius, +lifesteal" },
             ["lightning_storm"] = new PassiveDef { name = "Lightning Storm", color = C(0.65f, 0.75f, 1.0f),
-                desc = "Lightning periodically strikes foes around you, with a high chance to shock. Hits feed your mana.",
-                up = "+1 bolt, +damage, strikes more often" },
+                desc = "Lightning strikes random foes within 16 m every couple of seconds, with a high chance to shock them (1 s stun, not on bosses). Each strike feeds your mana.",
+                up = "+1 bolt, +damage, +shock chance, strikes more often" },
             ["bloodthirst"] = new PassiveDef { name = "Bloodthirst", color = C(0.9f, 0.2f, 0.2f),
-                desc = "Your weapons drink life: heal for part of the damage they deal.",
-                up = "+lifesteal, +weapon damage" },
+                desc = "Your weapons drink life: you heal for a share of the damage each weapon hit deals.",
+                up = "+lifesteal, +5% weapon damage" },
             ["spellblade"] = new PassiveDef { name = "Spellblade", color = C(0.4f, 0.8f, 1.0f),
-                desc = "Weapon hits charge far more mana, and your spell hits harder.",
-                up = "+mana per hit, +spell damage" },
+                desc = "Weapon hits charge far more mana, and your spells hit harder.",
+                up = "+mana per hit, +8% spell damage" },
         };
 
         // ------------------------------------------------------------ dragons
@@ -208,27 +208,27 @@ namespace Skyfall
                 body = C(0.1f, 0.42f, 1.0f), edge = C(0.02f, 0.07f, 0.3f), belly = C(0.62f, 0.82f, 1.0f),
                 membrane = C(0.1f, 0.3f, 0.75f), horn = C(0.92f, 0.88f, 0.78f), eye = C(1.0f, 0.85f, 0.25f),
                 breath = C(0.25f, 0.6f, 1.0f),
-                desc = "Fire focus. Its blue flames leave a heavy, lasting burn.",
+                desc = "Fire focus. Its blue flames leave a heavy burn that lasts 4 s.",
                 sig = "Inferno Wave", sig_desc = "A torrent of fireballs sets the crowd ablaze." },
             ["red"] = new DragonDef { name = "Crimson Drake", focus = "Explosive", damage = 1.25f, skin = "red", skinTint = C(0.82f, 0.3f, 0.3f),
                 body = C(0.5f, 0.03f, 0.05f), edge = C(0.12f, 0.01f, 0.02f), belly = C(0.72f, 0.38f, 0.22f),
                 membrane = C(0.32f, 0.02f, 0.04f), horn = C(0.25f, 0.2f, 0.18f), eye = C(1.0f, 0.9f, 0.3f),
                 breath = C(0.85f, 0.08f, 0.06f),
-                desc = "Explosive and physical. Deals 1.25x the damage of other dragons; its breath bursts on impact.",
-                sig = "Cataclysm", sig_desc = "A massive blast at the heart of the crowd, then a ring of aftershocks." },
+                desc = "Explosive and physical. Deals 1.25x the damage of other dragons; its breath knocks foes back harder and its dives hit 20% wider.",
+                sig = "Cataclysm", sig_desc = "A massive blast at the heart of the crowd that stuns, then a ring of aftershocks." },
             ["black"] = new DragonDef { name = "Night Wyrm", focus = "Blood", damage = 1.0f, skin = "black", glowBreath = false,
                 body = C(0.08f, 0.07f, 0.08f), edge = C(0.45f, 0.02f, 0.04f), belly = C(0.3f, 0.05f, 0.07f),
                 membrane = C(0.18f, 0.02f, 0.03f), horn = C(0.6f, 0.55f, 0.5f), eye = C(1.0f, 0.15f, 0.1f),
                 breath = C(0.75f, 0.05f, 0.1f),
-                desc = "Rains blood. Its breath and rain weaken foes so they hit for less.",
-                sig = "Blood Rain", sig_desc = "A storm of blood over the crowd: steady damage and -40% foe attack." },
+                desc = "Blood focus. Its breath, dives and blood rain weaken foes so they hit for 40% less.",
+                sig = "Blood Rain", sig_desc = "A storm of blood over the crowd: steady damage, and foes inside hit for 40% less." },
         };
 
         /// The dragon's signature (E) cooldown before upgrades.
         public const float SIGNATURE_CD = 10f;
 
         /// The dragon grows with each world: a hatchling in world 1 (too small to carry you), a young dragon in world 2
-        /// (flight), an adult in world 3 (Guardian Wings). Index by stage - 1.
+        /// (unlimited flight), an adult in world 3 (flight and Guardian Wings). Index by stage - 1.
         public static readonly string[] DRAGON_AGE = { "Hatchling", "Young Dragon", "Adult Dragon" };
         public static readonly float[] DRAGON_AGE_SCALE = { 0.6f, 0.85f, 1f };
         public static readonly float[] DRAGON_AGE_DAMAGE = { 0.7f, 1f, 1.3f };
@@ -267,8 +267,8 @@ namespace Skyfall
         /// Index by the world just finished (0 = world 1). Format args: {0} = the warlord, {1} = the new age.
         public static readonly string[] FEAST_CAPTION =
         {
-            "Your dragon devours {0}... it grows into a {1}",
-            "Your dragon devours {0}... it grows into an {1}",
+            "Your dragon devours {0} and grows into a {1}",
+            "Your dragon devours {0} and grows into an {1}",
         };
 
         // ------------------------------------------------------------ stat buckets
@@ -369,30 +369,30 @@ namespace Skyfall
         {
             ["knight"] = new[]
             {
-                new[] { T("k_wyrmsteel", "Wyrmsteel Edge", "Sword damage +30%; every swing sets foes ablaze."),
-                        T("k_bulwark", "Bulwark", "+12% block chance; each block heals 1.2% max health."),
-                        T("k_rally", "Rallying Cry", "+20% max health. Every 10 s gain a barrier that absorbs 15% of your max health.") },
-                new[] { T("k_whirlwind", "Whirlwind", "Every 5th swing becomes a full spin dealing double damage around you."),
-                        T("k_bash", "Shield Bash", "Blocks send out a shockwave that stuns and hurls back nearby foes."),
-                        T("k_reach", "Dragon's Reach", "+35% sword reach and +50% knockback.") },
+                new[] { T("k_wyrmsteel", "Wyrmsteel Edge", "Weapon damage +30% (sword and Skyblades); every hit sets the foe ablaze."),
+                        T("k_bulwark", "Bulwark", "+12% block chance; each block heals you for 1.2% of your max health."),
+                        T("k_rally", "Rallying Cry", "+20% max health. Every 10 s your barrier refills to 15% of your max health (it does not stack).") },
+                new[] { T("k_whirlwind", "Whirlwind", "On foot, every 5th swing becomes a full 360-degree spin that deals double damage."),
+                        T("k_bash", "Shield Bash", "Each block sends out a 5 m shockwave that damages nearby foes, hurls them back and stuns them for 1 s (not bosses)."),
+                        T("k_reach", "Dragon's Reach", "+35% sword and Skyblade reach, and +50% sword knockback.") },
             },
             ["huntress"] = new[]
             {
-                new[] { T("h_hemorrhage", "Hemorrhage", "Bleeds deal 60% more damage and last longer."),
+                new[] { T("h_hemorrhage", "Hemorrhage", "All bleeds deal 60% more damage, and javelin bleeds last 4.5 s instead of 3 s."),
                         T("h_pact", "Blood Pact", "Javelins no longer cost health and deal 10% more damage."),
                         T("h_fleet", "Fleetfoot", "+15% dodge chance and +15% movement speed.") },
                 new[] { T("h_volley", "Crimson Volley", "+2 javelins per throw."),
-                        T("h_sanguine", "Sanguine Shield", "Dodging grants a blood barrier absorbing 10% of your max health (6 s cooldown)."),
-                        T("h_orbs", "Blood Harvest", "Health orbs drop twice as often and also restore 20 mana.") },
+                        T("h_sanguine", "Sanguine Shield", "Dodging grants a blood barrier that absorbs 10% of your max health (6 s cooldown)."),
+                        T("h_orbs", "Blood Harvest", "Foes drop health orbs twice as often, and each orb also restores 20 mana.") },
             },
             ["pyromancer"] = new[]
             {
-                new[] { T("p_kindling", "Kindling", "Burns deal 60% more damage."),
-                        T("p_emberward", "Ember Ward", "+12% ward chance; each ward heals 1.8% max health."),
+                new[] { T("p_kindling", "Kindling", "All burns deal 60% more damage."),
+                        T("p_emberward", "Ember Ward", "+12% ward chance; each ward heals you for 1.8% of your max health."),
                         T("p_font", "Mana Font", "+40 max mana and +2 mana regen per second.") },
                 new[] { T("p_twin", "Twin Embers", "+1 fire bolt per cast."),
-                        T("p_firewalk", "Fire Walk", "You leave a trail of flames that burns foes who follow you."),
-                        T("p_combustion", "Combustion", "Burning foes explode when they die, igniting their neighbors.") },
+                        T("p_firewalk", "Fire Walk", "While you run on the ground you leave a trail of flames that burns foes who follow you."),
+                        T("p_combustion", "Combustion", "Burning foes explode when they die, hurting and igniting foes within 4 m.") },
             },
         };
 
@@ -417,63 +417,63 @@ namespace Skyfall
                 new[] { T("k_iron", "Iron Hide", "+4 armor and +10% max health.", "armor:4,hp%:10"),
                         T("k_temper", "Tempered Blade", "+12% damage and +8% attack speed.", "dmg%:12,atkspd%:8"),
                         T("k_squire", "Dragonsworn", "Your dragon deals +20% damage and its cooldowns are 10% shorter.", "dragondmg%:20,dragoncd%:10") },
-                new[] { T("k_aegis", "Aegis of Scales", "Dropping below 30% health makes you invulnerable for 3 s and heals 20% (60 s cooldown)."),
-                        T("k_charge", "Ember Charge", "Every 8 s you charge into the thickest nearby crowd, burning and scattering it."),
-                        T("k_oath", "Oathbound", "Your dragon deals +40% damage and breathes 25% more often.") },
+                new[] { T("k_aegis", "Aegis of Scales", "When a hit drops you below 30% health you become invulnerable for 3 s and heal 20% of your max health (60 s cooldown)."),
+                        T("k_charge", "Ember Charge", "On foot, every 8 s you charge up to 18 m into the thickest crowd, hitting for 130% weapon damage, burning and scattering it."),
+                        T("k_oath", "Oathbound", "Your dragon deals +40% damage and all its cooldowns (breath, dives, signature) are 25% shorter.") },
                 new[] { T("k_guard", "Shield Wall", "+6% block chance and +1 health regen per second.", "block%:6,regen:1"),
                         T("k_cleave", "Cleave", "+20% weapon damage.", "wdmg%:20"),
                         T("k_rider", "Lancer", "+40% damage while riding your dragon.", "mountdmg%:40") },
-                new[] { T("k_thunderclap", "Thunderclap", "Landing after a double jump slams the ground for heavy damage."),
-                        T("k_retribution", "Retribution", "30% of the damage you take lashes out at every foe within 6 m (tripled)."),
-                        T("k_sky", "Sky Sovereign", "While riding you take 30% less damage and your dragon's breath deals 25% more.") },
+                new[] { T("k_thunderclap", "Thunderclap", "Landing from a double jump slams the ground: 250% weapon damage in 6 m, stunning foes for 0.8 s (not bosses)."),
+                        T("k_retribution", "Retribution", "Every hit that lands on you (not a block or dodge) lashes out at all foes within 6 m for 90% of its damage."),
+                        T("k_sky", "Sky Sovereign", "While riding your dragon you take 30% less damage, and its breath deals 25% more.") },
                 new[] { T("k_bastion", "Bastion", "You take 12% less damage.", "dmgtaken%:12"),
                         T("k_fervor", "Battle Fervor", "+25% healing received and +2 health regen per second.", "heal%:25,regen:2"),
                         T("k_wyrmcall", "Wyrmcaller", "Your dragon's signature deals 35% more damage over a 20% larger area.", "sigdmg%:35,sigarea%:20") },
-                new[] { T("k_dragonform", "Dragon Form", "Press F (gamepad LB) to become a dragon for 12 s: fly freely, breathe fire on everything, take 50% less damage. 45 s cooldown."),
-                        T("k_firewave", "Dragonfire Blade", "Every swing also launches a wave of dragonfire that rolls forward through the crowd."),
-                        T("k_vow", "Undying Vow", "Once per stage, a killing blow instead leaves you at 50% health in a nova of holy fire.") },
+                new[] { T("k_dragonform", "Dragon Form", "Press F (gamepad LB) to become a dragon for 12 s: fly freely, breathe fire at the nearest foes (your weapon rests) and take 50% less damage. 45 s cooldown."),
+                        T("k_firewave", "Dragonfire Blade", "Every sword swing also launches a wave of dragonfire (80% weapon damage) that rolls forward through the crowd. Not while riding."),
+                        T("k_vow", "Undying Vow", "Once per world, a killing blow instead leaves you at 50% health and invulnerable for 2 s, in a nova of holy fire.") },
             },
             ["huntress"] = new[]
             {
                 new[] { T("h_keen", "Keen Eye", "+10% damage and +6% attack speed.", "dmg%:10,atkspd%:6"),
                         T("h_lithe", "Lithe", "+8% dodge chance and +8% movement speed.", "block%:8,move%:8"),
                         T("h_bondblood", "Blood Bond", "Your dragon deals +20% damage and its cooldowns are 10% shorter.", "dragondmg%:20,dragoncd%:10") },
-                new[] { T("h_execute", "Exsanguinate", "Javelins execute bleeding foes below 25% health (not bosses)."),
-                        T("h_shadowstep", "Shadowstep", "When a foe gets close, blink 8 m away and leave a blood decoy that explodes (7 s cooldown)."),
-                        T("h_wyrmbond", "Wyrm Bond", "Your dragon's breath makes foes bleed; dragon damage +30%.") },
-                new[] { T("h_wings", "Wings of Blood", "Crimson wings: +2 air jumps, and holding jump in the air lets you glide."),
+                new[] { T("h_execute", "Exsanguinate", "Javelins instantly kill bleeding foes below 25% health (not bosses)."),
+                        T("h_shadowstep", "Shadowstep", "On foot, when a foe gets within 3 m you blink 8 m away and leave a blood decoy that explodes 0.7 s later for heavy damage and bleeding (7 s cooldown)."),
+                        T("h_wyrmbond", "Wyrm Bond", "Your dragon's breath and dives make foes bleed; dragon damage +30%.") },
+                new[] { T("h_wings", "Wings of Blood", "Crimson wings: +2 air jumps, and holding jump while falling lets you glide."),
                         T("h_quiver", "Deep Quiver", "+15% attack speed.", "atkspd%:15"),
                         T("h_hunter", "Wyrm Hunter", "+40% damage while riding your dragon.", "mountdmg%:40") },
-                new[] { T("h_lance", "Bloodstorm Lance", "Every 8th throw hurls a giant lance that explodes along its whole path."),
+                new[] { T("h_lance", "Bloodstorm Lance", "Every 8th throw also hurls a giant lance (3x damage) that bursts at every foe it pierces."),
                         T("h_thirst", "Thirst", "Every kill heals 0.9% of your max health."),
-                        T("h_phantom", "Phantom Hunt", "While flying you throw twice as fast and take 25% less damage.") },
+                        T("h_phantom", "Phantom Hunt", "While riding your dragon you throw twice as fast and take 25% less damage.") },
                 new[] { T("h_vital", "Vital Essence", "+20% max health and +1.5 health regen per second.", "hp%:20,regen:1.5"),
                         T("h_predator", "Apex Predator", "+18% damage.", "dmg%:18"),
                         T("h_skyblood", "Skyblood", "Your dragon's signature deals 35% more damage over a 20% larger area.", "sigdmg%:35,sigarea%:20") },
-                new[] { T("h_bloodmoon", "Blood Moon", "Every 30 s a blood moon rises for 8 s: triple javelins, 6% lifesteal and every foe near you bleeds."),
-                        T("h_tempest", "Crimson Tempest", "Javelins split into three smaller javelins on their first hit."),
-                        T("h_specter", "Crimson Specter", "Press F (gamepad LB) to become a blood wraith for 10 s: pass through foes, move 40% faster, triple javelins, heal from every hit and take 60% less damage. 45 s cooldown.") },
+                new[] { T("h_bloodmoon", "Blood Moon", "Every 30 s, once foes are near, a blood moon rises for 8 s: triple javelins, +6% lifesteal, and every foe within 12 m bleeds."),
+                        T("h_tempest", "Crimson Tempest", "When a javelin first hits a foe it splits into three smaller javelins (45% damage each)."),
+                        T("h_specter", "Crimson Specter", "Press F (gamepad LB) to become a blood wraith for 10 s: pass through foes, move 40% faster, throw triple javelins, gain +5% lifesteal and take 60% less damage. 45 s cooldown.") },
             },
             ["pyromancer"] = new[]
             {
                 new[] { T("p_focus", "Arcane Focus", "+12% spell damage and +1 mana regen per second.", "spelldmg%:12,manaregen:1"),
                         T("p_ember", "Emberskin", "+3 armor and +10% max health.", "armor:3,hp%:10"),
                         T("p_kinship", "Ember Kinship", "Your dragon deals +20% damage and its cooldowns are 10% shorter.", "dragondmg%:20,dragoncd%:10") },
-                new[] { T("p_phoenix", "Ember Rebirth", "Once per stage, death instead revives you at full health in a burst of fire."),
-                        T("p_blink", "Blink", "When 5+ foes surround you, teleport 10 m away leaving an explosion (6 s cooldown)."),
+                new[] { T("p_phoenix", "Ember Rebirth", "Once per world, a killing blow instead revives you at full health, invulnerable for 2 s, in a burst of fire that burns nearby foes."),
+                        T("p_blink", "Blink", "On foot, when 5 or more foes crowd within 4 m you teleport 10 m away to the emptiest spot, leaving an explosion behind (6 s cooldown)."),
                         T("p_dragonkin", "Dragon Kin", "Dragon damage +35% and its breath reaches 30% farther.") },
-                new[] { T("p_pillars", "Pillars of Flame", "Every 12 s a ring of fire pillars erupts around you."),
+                new[] { T("p_pillars", "Pillars of Flame", "Every 12 s, when foes are near, a ring of eight fire pillars erupts 7 m around you."),
                         T("p_haste", "Quickcast", "+12% attack speed and spells cool down 10% faster.", "atkspd%:12,spellcd%:10"),
                         T("p_skyfire", "Skyfire", "+40% damage while riding your dragon.", "mountdmg%:40") },
                 new[] { T("p_inferno", "Inferno Bolts", "Fire bolts burst 80% wider and pass through the first foe they hit."),
                         T("p_molten", "Molten Armor", "+6 armor; foes that hit you in melee catch fire."),
-                        T("p_weaver", "Spell Weaver", "Spells cool down 25% faster and cost 20% less mana.") },
+                        T("p_weaver", "Spell Weaver", "Spell cooldowns are 25% shorter and spells cost 20% less mana.") },
                 new[] { T("p_ascend", "Ascendance", "+15% damage.", "dmg%:15"),
                         T("p_warding", "Warding Flames", "You take 12% less damage and gain +5% ward chance.", "dmgtaken%:12,block%:5"),
                         T("p_flamecaller", "Flamecaller", "Your dragon's signature deals 35% more damage over a 20% larger area.", "sigdmg%:35,sigarea%:20") },
-                new[] { T("p_supernova", "Supernova", "Every 35 s you erupt in a supernova that scorches every foe within 18 m."),
-                        T("p_sunorbs", "Sunfire Orbs", "Three blazing orbs circle you, burning any foe they touch."),
-                        T("p_phoenixform", "Phoenix Form", "Press F (gamepad LB) to become a phoenix for 12 s: fly freely, rain fire on everything below and take 50% less damage. 45 s cooldown.") },
+                new[] { T("p_supernova", "Supernova", "Every 35 s, once foes are within 18 m, you erupt in a supernova that scorches every foe in range."),
+                        T("p_sunorbs", "Sunfire Orbs", "Three blazing orbs circle you at 3 m, burning any foe they touch."),
+                        T("p_phoenixform", "Phoenix Form", "Press F (gamepad LB) to become a phoenix for 12 s: fly freely, rain fire on the ground around you (your staff rests) and take 50% less damage. 45 s cooldown.") },
             },
         };
 
@@ -483,10 +483,10 @@ namespace Skyfall
             new[] { T("dt_fury", "Fury", "Your dragon deals 15% more damage.", "dragondmg%:15"),
                     T("dt_swift", "Swiftwing", "Your dragon's cooldowns are 12% shorter.", "dragoncd%:12"),
                     T("dt_vast", "Vast", "Your dragon grows 15% larger: its breath reaches farther and its dives hit wider.", "size%:15") },
-            new[] { T("dt_shelter", "Sheltering Wings", "+1 rank of Sheltering Wing: it shields you from potions, boulders and harpoons.", "wing:1"),
-                    T("dt_talons", "Watchful Talons", "+1 rank of Guardian's Talons: it swoops in and carries you out when you're nearly dead.", "rescue:1"),
-                    T("dt_wrath", "Wrathful", "+1 rank of Wrathful Guardian: it scorches anything that hurts you.", "wrath:1") },
-            new[] { T("dt_skyrider", "Skyrider", "While riding you take 25% less damage.", "mountdr%:25"),
+            new[] { T("dt_shelter", "Sheltering Wings", "+1 rank of Sheltering Wing (12% chance per rank): its wing stops a potion, boulder, harpoon or wyvern bomb meant for you.", "wing:1"),
+                    T("dt_talons", "Watchful Talons", "+1 rank of Guardian's Talons: below 35% health on foot, your dragon swoops in and carries you out (a hatchling crashes down beside you instead).", "rescue:1"),
+                    T("dt_wrath", "Wrathful", "+1 rank of Wrathful Guardian (20% chance per rank): your dragon scorches whatever hurts you.", "wrath:1") },
+            new[] { T("dt_skyrider", "Skyrider", "While riding your dragon you take 25% less damage.", "mountdr%:25"),
                     T("dt_unbound", "Unbound", "Your dragon's signature cools down 20% faster.", "sigcd%:20"),
                     T("dt_ancient", "Ancient Power", "Your dragon deals 30% more damage.", "dragondmg%:30") },
         };
@@ -499,32 +499,32 @@ namespace Skyfall
             ["blue"] = DragonTree(
                 new[] { T("db_kindle", "Blue Flame", "Its burns deal 40% more damage.", "burn%:40"),
                         T("db_maw", "Roaring Maw", "Its breath cone is 8° wider and reaches 15% farther.", "cone:8,reach%:15"),
-                        T("db_ash", "Ashfall", "Its dives leave the ground burning.") },
-                new[] { T("db_inferno", "Greater Inferno", "Inferno Wave hurls 4 more fireballs.", "fireballs:4"),
+                        T("db_ash", "Ashfall", "Its dives leave the ground burning for 4 s.") },
+                new[] { T("db_inferno", "Greater Inferno", "Inferno Wave hurls 4 more fireballs. Needs world 2 or later.", "fireballs:4"),
                         T("db_kiln", "Kiln Heart", "Each breath lasts 40% longer.", "breathtime%:40"),
                         T("db_cinder", "Cinder Guard", "+1 rank of Wrathful Guardian.", "wrath:1") },
-                new[] { T("db_azure", "Azure Inferno", "Its breath sets the ground ablaze along its path."),
-                        T("db_rekindle", "Rekindle", "Once per stage, a killing blow instead has your dragon pull you from the fire at 40% health."),
+                new[] { T("db_azure", "Azure Inferno", "Its breath sometimes (35% per pulse) sets the ground ablaze where it hits."),
+                        T("db_rekindle", "Rekindle", "Once per world, a killing blow instead has your dragon pull you from the fire, leaving you at 40% health and invulnerable for 2.5 s."),
                         T("db_sunburst", "Sunburst", "Its dives hit 30% wider and 40% harder.", "diverad%:30,divedmg%:40") }),
             ["red"] = DragonTree(
-                new[] { T("dr_volatile", "Volatile", "Breath hits have a 20% chance to burst in a small explosion."),
+                new[] { T("dr_volatile", "Volatile", "Breath hits have a 20% chance to burst in a small explosion for double damage."),
                         T("dr_crater", "Crater", "Its dives hit 25% wider.", "diverad%:25"),
                         T("dr_hide", "Molten Hide", "While riding you take 20% less damage.", "mountdr%:20") },
-                new[] { T("dr_aftershock", "Aftershocks", "Cataclysm sets off 3 more aftershocks.", "aftershocks:3"),
-                        T("dr_quake", "Quake", "Its dives stun 1.5 s longer.", "divestun:1.5"),
+                new[] { T("dr_aftershock", "Aftershocks", "Cataclysm sets off 3 more aftershocks (8 instead of 5). Needs world 2 or later.", "aftershocks:3"),
+                        T("dr_quake", "Quake", "Its dives stun 1.5 s longer (2.3 s in all; not bosses).", "divestun:1.5"),
                         T("dr_fuse", "Short Fuse", "Your dragon's cooldowns are 15% shorter.", "dragoncd%:15") },
                 new[] { T("dr_meteor", "Meteor Dive", "Its dives deal 60% more damage.", "divedmg%:60"),
-                        T("dr_bulwark", "Living Bulwark", "When you drop below 30% health your dragon erupts around you, blasting everything away (45 s cooldown)."),
-                        T("dr_chain", "Chain Reaction", "Foes your dragon kills explode for 30% of their max health.") }),
+                        T("dr_bulwark", "Living Bulwark", "When a hit drops you below 30% health your dragon erupts around you, blasting and stunning everything near (45 s cooldown)."),
+                        T("dr_chain", "Chain Reaction", "Foes your dragon kills explode, hurting nearby foes for 30% of their max health.") }),
             ["black"] = DragonTree(
                 new[] { T("dk_leech", "Sanguine Breath", "You heal for 1.8% of the damage your dragon deals.", "leech%:1.8"),
-                        T("dk_dread", "Dread", "Its weakening is 20% stronger (foes hit for 60% less).", "weaken:0.2"),
+                        T("dk_dread", "Dread", "Its weakening is stronger: weakened foes hit for 60% less instead of 40%.", "weaken:0.2"),
                         T("dk_veil", "Shadow Veil", "While riding you take 15% less damage.", "mountdr%:15") },
-                new[] { T("dk_monsoon", "Monsoon", "Blood Rain covers 40% more ground and lasts 2 s longer.", "rainarea%:40,raintime:2"),
+                new[] { T("dk_monsoon", "Monsoon", "Blood Rain covers 40% more ground and lasts 2 s longer. Needs world 2 or later.", "rainarea%:40,raintime:2"),
                         T("dk_hunger", "Hunger", "Every foe your dragon kills heals you for 0.6% of your max health.", "killheal%:0.6"),
                         T("dk_night", "Nightfall", "Your dragon's cooldowns are 15% shorter.", "dragoncd%:15") },
-                new[] { T("dk_tide", "Crimson Tide", "Standing in Blood Rain heals you 1.2% of your max health per second."),
-                        T("dk_pact", "Pact of Wings", "Once per stage, a killing blow instead has your dragon shield you, leaving you at 40% health."),
+                new[] { T("dk_tide", "Crimson Tide", "Standing in Blood Rain heals you for 1.2% of your max health per second. Needs world 2 or later."),
+                        T("dk_pact", "Pact of Wings", "Once per world, a killing blow instead has your dragon shield you, leaving you at 40% health and invulnerable for 2.5 s."),
                         T("dk_vampire", "Vampire Wyrm", "Your dragon deals 40% more damage.", "dragondmg%:40") }),
         };
 
@@ -577,19 +577,19 @@ namespace Skyfall
 
         public static readonly DragonCardDef[] DRAGON_CARDS =
         {
-            new DragonCardDef { id = "dragonfire", name = "Breath", start = 1, max = 10, desc = "+damage, +range, breathes and dives more often" },
-            new DragonCardDef { id = "ride", name = "Signature", start = 1, max = 10, desc = "+damage, bigger area, shorter cooldown" },
-            new DragonCardDef { id = "d_size", name = "Ancient Growth", desc = "Your dragon grows 12% larger: breath reaches 8% farther and dives hit 8% wider" },
-            new DragonCardDef { id = "d_cone", name = "Wide Maw", desc = "Breath cone 6° wider" },
-            new DragonCardDef { id = "d_haste", name = "Restless Wings", desc = "Breath, dives and signature cool down 8% faster" },
+            new DragonCardDef { id = "dragonfire", name = "Breath", start = 1, max = 10, desc = "+damage, +reach, longer breath; breathes and dives more often" },
+            new DragonCardDef { id = "ride", name = "Signature", start = 1, max = 10, desc = "+damage, bigger area and a shorter cooldown for your signature (E)" },
+            new DragonCardDef { id = "d_size", name = "Ancient Growth", desc = "Your dragon grows 12% larger: its breath reaches 8% farther and its dives hit 8% wider" },
+            new DragonCardDef { id = "d_cone", name = "Wide Maw", desc = "Its breath cone is 6° wider" },
+            new DragonCardDef { id = "d_haste", name = "Restless Wings", desc = "Its breath, dives and signature have 8% shorter cooldowns" },
             new DragonCardDef { id = "d_rescue", name = "Guardian's Talons", guardian = true,
-                desc = "When you fall below 35% health on foot, your dragon swoops in and carries you off (90 s cooldown, -10 s per rank)" },
+                desc = "When a hit drops you below 35% health on foot, your dragon swoops in and carries you off (a hatchling crashes down beside you instead). 90 s cooldown, 10 s shorter per rank" },
             new DragonCardDef { id = "d_wing", name = "Sheltering Wing", guardian = true,
-                desc = "12% chance per rank that your dragon's wing stops a potion, boulder or harpoon meant for you" },
+                desc = "12% chance per rank that your dragon's wing stops a potion, boulder, harpoon or wyvern bomb meant for you" },
             new DragonCardDef { id = "d_wrath", name = "Wrathful Guardian", guardian = true,
                 desc = "20% chance per rank that your dragon scorches whatever hurts you" },
             new DragonCardDef { id = "d_blue", name = "Everburning", only = "blue", desc = "Its burns deal 30% more damage per rank" },
-            new DragonCardDef { id = "d_red", name = "Shatterscale", only = "red", desc = "Its blasts and dives hit 10% wider per rank" },
+            new DragonCardDef { id = "d_red", name = "Shatterscale", only = "red", desc = "Its signature and dives hit 10% wider per rank" },
             new DragonCardDef { id = "d_black", name = "Blood Thirst", only = "black", desc = "You heal for 1.2% per rank of the damage your dragon deals" },
         };
 
@@ -627,7 +627,7 @@ namespace Skyfall
         {
             ["speed"] = new PowerUpDef { name = "Swiftness", glyph = "»", color = C(0.25f, 0.9f, 1f), desc = "+40% movement speed" },
             ["damage"] = new PowerUpDef { name = "Fury", glyph = "†", color = C(1f, 0.2f, 0.18f), desc = "+50% damage" },
-            ["magnet"] = new PowerUpDef { name = "Lodestone", glyph = "U", color = C(0.78f, 0.45f, 1f), desc = "Every gem and orb on the field flies to you; huge pickup range" },
+            ["magnet"] = new PowerUpDef { name = "Lodestone", glyph = "U", color = C(0.78f, 0.45f, 1f), desc = "Every gem and orb on the field flies to you, and your pickup range is huge" },
         };
 
         /// XP: half as many ogres drop a gem, but each gem is worth twice as much.
@@ -868,7 +868,7 @@ namespace Skyfall
                 rock = C(0.45f, 0.45f, 0.42f), ash = C(0.2f, 0.22f, 0.12f), mud = C(0.24f, 0.22f, 0.14f), scorch = 0.15f,
                 fog = C(0.55f, 0.66f, 0.6f), skyTop = C(0.3f, 0.48f, 0.66f), skyHorizon = C(0.72f, 0.78f, 0.7f), sunColor = C(1f, 0.96f, 0.85f),
                 skyTint = C(0.75f, 0.95f, 0.85f), fogDensity = 0.004f, sunPitch = -48f, bossTint = C(0.55f, 0.85f, 0.5f) },
-            new StageDef { name = "The Sunken Crypts", intro = "A land of buried halls and torchlight. Their warlord waits at the end.",
+            new StageDef { name = "The Sunken Crypts", intro = "A land of buried halls and torchlight. The crypt warlord waits at the end.",
                 waves = new[] { "Crypt Gate", "Halls of Bone", "The Drowned Chapel", "Last Torch" },
                 miniBoss = "Mordak the Gravecaller", finalBoss = "Skarnath, the Crypt Warlord", islandName = "Crypt Warlord's Island", enemyMult = 4.2f,
                 finalBossHpMult = 3f, finalBossModel = "dragon", finalBossAbility = "gravehands",

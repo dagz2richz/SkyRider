@@ -341,7 +341,7 @@ namespace Skyfall
                 game.DamageEnemy(e, (200f + 30f * level) * DamageMult, M.Flat(e.Pos - Pos).normalized, 16f, true, col);
                 e.Ignite(5f, 20f * BurnMult);
             }
-            game.hud.Banner(phoenix ? "Ember Rebirth" : "Undying Vow", "Death is refused, once.");
+            game.hud.Banner(phoenix ? "Ember Rebirth" : "Undying Vow", "Death is refused, once per world.");
             return true;
         }
 
@@ -357,7 +357,7 @@ namespace Skyfall
             FX.Shockwave(Pos + new Vector3(0, 0.4f, 0), 9f, M.WithA(col, 0.9f), 0.6f, Data.DRAGONS[dragonId].glowBreath);
             Sfx.Play("roar", 2f, 0f);
             pet.GuardianSwoop(Pos);
-            game.hud.Banner("Your dragon will not let you fall", "Once per stage");
+            game.hud.Banner("Your Dragon Will Not Let You Fall", "Once per world");
             return true;
         }
 
@@ -489,7 +489,7 @@ namespace Skyfall
             if (moonCd > 0f || game.NearestEnemy(Pos, 20f, 10f) == null) return;
             moonCd = 30f;
             moonT = 8f;
-            game.hud.Banner("Blood Moon", "Triple javelins · lifesteal · everything bleeds");
+            game.hud.Banner("Blood Moon", "Triple javelins · +6% lifesteal · nearby foes bleed");
             Sfx.Play("roar", -4f, 0f);
             FX.Flash(Center, 10f, new Color(0.9f, 0.05f, 0.1f, 0.5f), 0.8f);
             moonLight = new GameObject("BloodMoonLight").AddComponent<Light>();
@@ -708,8 +708,8 @@ namespace Skyfall
             FX.Flash(Center, 6f, new Color(1f, 0.8f, 0.4f, 0.8f), 0.5f);
             FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 8f, new Color(1f, 0.75f, 0.3f, 0.9f), 0.5f);
             Sfx.Play("roar", 2f, 0f);
-            if (phoenix) game.hud.Banner("PHOENIX FORM", "Rise and rain fire on them all");
-            else game.hud.Banner("DRAGON FORM", "Fly freely and burn them all");
+            if (phoenix) game.hud.Banner("Phoenix Form", "Rise and rain fire on them all");
+            else game.hud.Banner("Dragon Form", "Fly freely and burn them all");
         }
 
         void StartSpecter()
@@ -731,7 +731,7 @@ namespace Skyfall
             FX.Flash(Center, 5f, M.WithA(col, 0.7f), 0.5f);
             FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 7f, M.WithA(col, 0.9f), 0.5f, false);
             Sfx.Play("roar", 0f, 0.1f);
-            game.hud.Banner("CRIMSON SPECTER", "Through them, and drink deep");
+            game.hud.Banner("Crimson Specter", "Through them, and drink deep");
         }
 
         void TickDragonForm(float delta)

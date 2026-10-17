@@ -524,18 +524,18 @@ namespace Skyfall
             // XP bar along the top.
             Bar(new Rect(10, 8, W - 20, 14), p.xp / p.xpNext, new Color(0.3f, 0.75f, 1f));
             DrawText(new Rect(14, 26, 200, 26), $"Lv {p.level}", Text(20), GOLD);
-            DrawText(new Rect(88, 26, 300, 26), $"Stage {game.stage} / {Data.STAGE_COUNT}", Text(18, TextAnchor.UpperLeft, false, true), new Color(0.75f, 0.85f, 1f));
+            DrawText(new Rect(88, 26, 300, 26), $"World {game.stage} / {Data.STAGE_COUNT}", Text(18, TextAnchor.UpperLeft, false, true), new Color(0.75f, 0.85f, 1f));
 
             // Timer + wave at top center.
             float left = Mathf.Max(0f, Data.RUN_LENGTH - game.timeElapsed);
             var center = Text(44, TextAnchor.UpperCenter, false, true);
             var st = game.Stage;
-            if (game.traveling) DrawText(new Rect(W / 2 - 300, 26, 600, 52), "THE PORTAL", center, new Color(0.6f, 0.8f, 1f), 8);
-            else if (game.finalStarted) DrawText(new Rect(W / 2 - 300, 26, 600, 52), "FINAL BATTLE", center, new Color(1f, 0.45f, 0.3f), 8);
+            if (game.traveling) DrawText(new Rect(W / 2 - 300, 26, 600, 52), "The Portal", center, new Color(0.6f, 0.8f, 1f), 8);
+            else if (game.finalStarted) DrawText(new Rect(W / 2 - 300, 26, 600, 52), "Final Battle", center, new Color(1f, 0.45f, 0.3f), 8);
             else DrawText(new Rect(W / 2 - 300, 26, 600, 52), Clock(left), center, PARCHMENT, 8);
             string waveText;
             string bossShort = st.finalBoss.Split(',')[0];
-            if (game.traveling) waveText = "Traveling to the next land...";
+            if (game.traveling) waveText = "Traveling to the next world...";
             else if (game.finalStarted) waveText = $"Defeat {st.finalBoss}";
             else if (!game.miniSpawned) waveText = $"Wave {game.wave} / {st.waves.Length} · Boss in {Mathf.CeilToInt(Data.MINI_BOSS_TIME - game.timeElapsed)} s";
             else waveText = $"Wave {game.wave} / {st.waves.Length} · {bossShort} in {Mathf.CeilToInt(left)} s";
@@ -598,7 +598,7 @@ namespace Skyfall
                 UiKit.Rect(new Rect(r.x + 3, r.y + 3 + (sz - 6) * (1f - frac), sz - 6, (sz - 6) * frac), new Color(0, 0, 0, 0.62f));
                 DrawText(r, Mathf.CeilToInt(p.dragonFormCd).ToString(), Text(22, TextAnchor.MiddleCenter, false, true), PARCHMENT, 6);
             }
-            if (active) DrawText(r, Mathf.CeilToInt(p.dragonFormT) + "s", Text(22, TextAnchor.MiddleCenter, false, true), Color.white, 6);
+            if (active) DrawText(r, Mathf.CeilToInt(p.dragonFormT) + " s",Text(22, TextAnchor.MiddleCenter, false, true), Color.white, 6);
             DrawText(new Rect(r.x, r.y - 16, sz, 14), GameInput.PadConnected ? "F / LB" : "F", Text(11, TextAnchor.UpperCenter, false, true), M.WithA(GOLD, 0.9f), 3);
             DrawText(new Rect(r.x - 20, r.yMax + 4, sz + 40, 16), name, Text(12, TextAnchor.UpperCenter), ready || active ? new Color(1f, 0.85f, 0.45f) : M.Darken(PARCHMENT, 0.1f), 3);
         }
@@ -653,7 +653,7 @@ namespace Skyfall
                     DrawText(new Rect(r.x + 3, r.y + 3, 24, 24), d.glyph, Text(d.glyph.Length > 1 ? 15 : 22, TextAnchor.MiddleCenter, false, true), Color.Lerp(d.color, Color.white, 0.4f), 3, a);
                 }
                 DrawText(new Rect(r.x + 34, r.y + 2, 110, 18), d.name, Text(15, TextAnchor.UpperLeft, false, true), Color.Lerp(d.color, PARCHMENT, 0.4f), 4, a);
-                DrawText(new Rect(r.x + 120, r.y + 2, 64, 18), $"{Mathf.CeilToInt(left)}s", Text(16, TextAnchor.UpperRight, false, true), PARCHMENT, 4, a);
+                DrawText(new Rect(r.x + 120, r.y + 2, 64, 18), $"{Mathf.CeilToInt(left)} s", Text(16, TextAnchor.UpperRight, false, true), PARCHMENT, 4, a);
                 UiKit.Rect(new Rect(r.x + 34, r.y + 22, 150 * Mathf.Clamp01(left / Data.POWERUP_TIME), 3), M.WithA(d.color, 0.9f * a));
                 y += 34f;
             }
@@ -858,7 +858,7 @@ namespace Skyfall
                     var dd = Data.DRAGONS[p.dragonId];
                     title = dd.sig; color = dd.breath; lvl = Lv("ride"); extra = "ground/air";
                     cdFrac = game.pet.RideFrac;
-                    if (game.pet.Grounded) { extra = "world 2"; cdFrac = 1f; }   // the hatchling has no signature yet
+                    if (game.pet.Grounded) { extra = "World 2"; cdFrac = 1f; }   // the hatchling has no signature yet
                     return;
                 }
             }
@@ -925,7 +925,7 @@ namespace Skyfall
                         var r = Save.run;
                         Button("Continue Run", 24, colW, true, () => game.Restart(false, true));
                         Space(4);
-                        Label($"{Data.HEROES[r.hero].name}  ·  Lv {r.level}  ·  Stage {r.stage}", 13, new Color(0.75f, 0.85f, 1f), 3, TextAnchor.UpperCenter, colW);
+                        Label($"{Data.HEROES[r.hero].name}  ·  Lv {r.level}  ·  World {r.stage}", 13, new Color(0.75f, 0.85f, 1f), 3, TextAnchor.UpperCenter, colW);
                         Space(10);
                     }
                     Button("New Run", 22, colW, true, ShowHeroSelect);
@@ -948,7 +948,7 @@ namespace Skyfall
                     Space(8);
                     Kv("High score", Save.best_score.ToString(), 16);
                     Kv("Highest level", Save.best_level.ToString(), 16);
-                    Kv("Furthest stage", $"{Mathf.Max(1, Save.best_stage)} / {Data.STAGE_COUNT}", 16);
+                    Kv("Furthest world",$"{Mathf.Max(1, Save.best_stage)} / {Data.STAGE_COUNT}", 16);
                     Kv("Runs  ·  Victories", $"{Save.runs}  ·  {Save.wins}", 16);
                     Space(8);
                     // Dragons owned: one swatch per dragon, dim when still locked.
@@ -972,13 +972,13 @@ namespace Skyfall
                         foreach (var h in Save.history)
                         {
                             if (n++ >= 3) break;
-                            Label($"{h.score,7}   Lv {h.level}   Stage {Mathf.Max(1, h.stage)}   {(h.won ? "Victory" : Clock(h.time))}", 13, M.Darken(PARCHMENT, 0.2f), 3);
+                            Label($"{h.score,7}   Lv {h.level}   World {Mathf.Max(1, h.stage)}{(h.won ? "Victory" : Clock(h.time))}", 13, M.Darken(PARCHMENT, 0.2f), 3);
                         }
                     }
                     GUILayout.EndVertical();
                 });
                 Space(28);
-                Label("Everything attacks on its own   ·   Q fly   ·   E dragon ability   ·   F talent power   ·   TAB stats", 14, M.Darken(PARCHMENT, 0.35f), 3, TextAnchor.UpperCenter);
+                Label("Everything attacks on its own   ·   Q fly   ·   E dragon signature   ·   F capstone talent   ·   Tab stats", 14, M.Darken(PARCHMENT, 0.35f), 3, TextAnchor.UpperCenter);
             });
         }
 
@@ -1066,7 +1066,7 @@ namespace Skyfall
                             // Locked: dimmed, with the hint, and not selectable.
                             var prev = GUI.color;
                             GUI.color = new Color(1f, 1f, 1f, 0.45f);
-                            SelectCard(d.name, "LOCKED — a stage warlord may hold it captive", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW, null, "dragon_" + id);
+                            SelectCard(d.name, "Locked. A world's final boss may hold it captive: defeat one to set it free.", new List<string>(), Color.Lerp(d.body, Color.gray, 0.6f), false, dragonW, null, "dragon_" + id);
                             GUI.color = prev;
                         }
                         else
@@ -1099,7 +1099,8 @@ namespace Skyfall
                 Label("Choose Your Abilities", 44, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
                 Label($"{Data.HEROES[pickHero].name} with the {Data.DRAGONS[pickDragon].name}.  Everything fights on its own; your spell casts whenever you have the mana.\n" +
-                      "Q (gamepad Y) takes flight on your dragon for up to 10 s. E (RB / X) unleashes your dragon's signature, on the ground or in the air (from the air you leap down and slam).\n" +
+                      "In world 1 your dragon is a hatchling: it walks beside you and breathes fire. From world 2 it is big enough to ride and its signature awakens.\n" +
+                      "Q (gamepad Y) calls your dragon to carry you: flight is unlimited in worlds 2 and 3. E (RB / X) unleashes the dragon's signature, on the ground or in the air (from the air you leap down and slam; Q is locked for 5 s after).\n" +
                       "After leaving your dragon, it can carry you again 1 s after you first touch solid ground.\n" +
                       "Every level-up offers a card for your dragon. Talents open at levels 3 and 7; armor every 5 levels. Permanent talent trees grow between runs.",
                     16, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperCenter);
@@ -1205,7 +1206,7 @@ namespace Skyfall
                 Space(10);
                 Label($"{title}   ·   {state.xp} {xpName} to spend   ·   {state.earned} earned", 20, Color.Lerp(accent, PARCHMENT, 0.4f), 6, TextAnchor.UpperCenter);
                 if (!isHero && !Save.IsDragonUnlocked(id))
-                    Label("You don't own this dragon yet: a stage warlord may hold it captive; defeat one to set it free.", 14, M.Darken(PARCHMENT, 0.3f), 3, TextAnchor.UpperCenter);
+                    Label("You don't own this dragon yet: a world's final boss may hold it captive. Defeat one to set it free.", 14, M.Darken(PARCHMENT, 0.3f), 3, TextAnchor.UpperCenter);
                 Space(10);
                 for (int r = 0; r < rows.Length; r++)
                 {
@@ -1420,13 +1421,13 @@ namespace Skyfall
             { "Mouse", "Look around; orbits all the way, stopping at the ground" },
             { "Scroll wheel", "Zoom in and out" },
             { "Space", "Jump; press again in the air to double jump; hold to climb while flying" },
-            { "Q", "Call your dragon and take flight (again to drop off); after you leave it, Q is ready 1 s after you touch the ground" },
-            { "E", "Dragon signature ability (from the air you leap down and slam; Q is locked for 3 s after)" },
-            { "F", "Capstone form (Dragon Form / Crimson Specter / Phoenix Form)" },
+            { "Q", "Call your dragon and take flight (press again to drop off). Flight is unlimited in worlds 2 and 3; the hatchling of world 1 is too small to ride. After you leave it, Q works again 1 s after you touch the ground" },
+            { "E", "Dragon signature (from world 2). Riding, you leap down and slam; Q is locked for 5 s after E" },
+            { "F", "Capstone form once you learn its talent (Dragon Form / Crimson Specter / Phoenix Form)" },
             { "Shift / C", "Dive while flying" },
             { "Tab", "Stats screen" },
             { "Esc / P", "Pause" },
-            { "1 / 2 / 3", "Pick a level-up card" },
+            { "1 / 2 / 3", "Pick a level-up card; R rerolls the cards" },
             { "(automatic)", "Your attacks, spell, passive, defense and dragon breath all fire on their own" },
         };
 
@@ -1435,9 +1436,9 @@ namespace Skyfall
             { "Left stick", "Move" },
             { "Right stick", "Look around (R-stick click resets the zoom)" },
             { "A / Cross", "Jump, double jump; hold to climb while flying" },
-            { "Y / Triangle", "Call your dragon and take flight (again to drop off)" },
-            { "RB / X", "Dragon signature ability" },
-            { "LB", "Capstone form (Dragon Form / Crimson Specter / Phoenix Form)" },
+            { "Y / Triangle", "Call your dragon and take flight (press again to drop off); rerolls the level-up cards" },
+            { "RB / X", "Dragon signature (from world 2)" },
+            { "LB", "Capstone form once you learn its talent (Dragon Form / Crimson Specter / Phoenix Form)" },
             { "LT / B", "Dive while flying" },
             { "D-pad up / down", "Zoom in and out" },
             { "Start / Select", "Pause / Stats screen" },
@@ -1507,13 +1508,13 @@ namespace Skyfall
             var options = levelOptions;
             Centered(() =>
             {
-                Label($"LEVEL {levelShown}", 56, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
+                Label($"Level {levelShown}", 56, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
                 string sub;
                 switch (levelKind)
                 {
                     case "talent": sub = "A talent row opens: choose one. It lasts the whole run."; break;
-                    case "armor": sub = "Armor! Choose a piece: it fills its slot, replacing what you wear there."; break;
+                    case "armor": sub = "Choose an armor piece: it fills its slot, replacing what you wear there."; break;
                     case "ability": sub = "Choose an ability to upgrade, or feed your dragon."; break;
                     default: sub = "Choose a stat bucket (you gain all of its stats), or feed your dragon."; break;
                 }
@@ -1535,8 +1536,8 @@ namespace Skyfall
                         GUILayout.EndVertical();
                         GUILayout.EndHorizontal();
                         Space(8);
-                        string lvlText = o.type == "bucket" ? $"Rank {o.level}" : o.type == "talent" ? $"Row {o.level} of {Data.TALENT_LEVELS.Length}"
-                            : o.type == "armor" ? $"{Data.ARMOR_TIER_STATS[o.armor.tier]} stats · tier {o.armor.tier + 1} of 3"
+                        string lvlText = o.type == "bucket" ? $"Rank {o.level}" : o.type == "talent" ? $"Row {o.level} / {Data.TALENT_LEVELS.Length}"
+                            : o.type == "armor" ? $"{Data.ARMOR_TIER_STATS[o.armor.tier]} stats · tier {o.armor.tier + 1} / {Data.ARMOR_TIER_NAMES.Length}"
                             : o.type == "dragon" ? $"Rank {o.level} / {Data.FindDragonCard(o.id).max}"
                             : $"Level {o.level} / {(Data.SPELLS.ContainsKey(o.id) ? Data.SPELL_MAX_LEVEL : Data.MAX_LEVEL)}";
                         Label(lvlText, 16, GOLD, 5);
@@ -1558,7 +1559,7 @@ namespace Skyfall
                 // Rerolls: a fresh set of the same kind of cards, five per world.
                 Space(18);
                 bool canReroll = game.CanReroll(levelKind);
-                string rerollText = levelKind == "talent" ? "Talent rows can't be rerolled" : $"Reroll  [R / Y]   ·   {game.rerolls} left this world";
+                string rerollText = levelKind == "talent" ? "Talent rows can't be rerolled" : $"Reroll  [R / Y]   ·   {game.rerolls} left in this world";
                 CenterRow(() =>
                 {
                     bool rr = Button(rerollText, 18, 0, canReroll, () => { if (levelOptions == options) game.Reroll(levelShown, levelKind); });
@@ -1575,8 +1576,8 @@ namespace Skyfall
             const float bw = 260f;
             Centered(() =>
             {
-                Label("PAUSED", 56, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
-                Label($"Stage {game.stage}  ·  {game.Stage.name}", 16, M.Darken(PARCHMENT, 0.2f), 3, TextAnchor.UpperCenter);
+                Label("Paused", 56, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
+                Label($"World {game.stage}  ·  {game.Stage.name}", 16, M.Darken(PARCHMENT, 0.2f), 3, TextAnchor.UpperCenter);
                 Space(20);
                 CenterRow(() => Button("Resume", 24, bw, true, TogglePause));
                 Space(16);
@@ -1599,7 +1600,7 @@ namespace Skyfall
                 Space(8);
                 CenterRow(() => Button("Quit", 20, bw, true, () => { game.WriteRunSave(); ShowQuit(); }));
                 Space(10);
-                Label("Your run is saved: Continue resumes it at the start of this stage.", 13, M.Darken(PARCHMENT, 0.35f), 3, TextAnchor.UpperCenter);
+                Label("Your run is saved: Continue resumes it at the start of this world.", 13, M.Darken(PARCHMENT, 0.35f), 3, TextAnchor.UpperCenter);
             });
         }
 
@@ -1609,7 +1610,7 @@ namespace Skyfall
             var p = game.player;
             Centered(() =>
             {
-                Label(endWon ? "VICTORY" : "YOU HAVE FALLEN", 72, endWon ? GOLD : new Color(0.9f, 0.25f, 0.2f), 12, TextAnchor.UpperCenter, 0, false, true);
+                Label(endWon ? "Victory" : "You Have Fallen", 72, endWon ? GOLD : new Color(0.9f, 0.25f, 0.2f), 12, TextAnchor.UpperCenter, 0, false, true);
                 Space(18);
                 Label(endWon ? "All three warlords are slain. Dawn returns to the kingdom." : $"Your dragon cries out as the clans close in on {game.Stage.name}.", 22, PARCHMENT, 6, TextAnchor.UpperCenter);
                 foreach (var hid in game.rescued)
@@ -1620,7 +1621,7 @@ namespace Skyfall
                     Label($"Rescued from the warlord's chains: the {hd.name} is yours!", 24, M.Lighten(hd.body, 0.35f), 8, TextAnchor.UpperCenter, 0, false, true);
                 }
                 Space(18);
-                Label($"Stage {game.stage} / {Data.STAGE_COUNT}   ·   {Clock(game.totalTime)}   ·   Level {p.level}   ·   {game.kills} foes slain", 24, PARCHMENT, 6, TextAnchor.UpperCenter);
+                Label($"World {game.stage} / {Data.STAGE_COUNT}   ·   {Clock(game.totalTime)}   ·   Level {p.level}   ·   {game.kills} foes slain", 24, PARCHMENT, 6, TextAnchor.UpperCenter);
                 Space(18);
                 Label($"Score  {endScore}", 48, GOLD, 10, TextAnchor.UpperCenter, 0, false, true);
                 Space(10);
@@ -1628,7 +1629,7 @@ namespace Skyfall
                     20, new Color(0.75f, 0.88f, 1f), 6, TextAnchor.UpperCenter);
                 Label("Spend it on their talent trees from the main menu.", 15, M.Darken(PARCHMENT, 0.25f), 4, TextAnchor.UpperCenter);
                 Space(18);
-                if (endBest) Label("NEW HIGH SCORE!", 26, new Color(1f, 0.85f, 0.3f), 8, TextAnchor.UpperCenter, 0, false, true);
+                if (endBest) Label("New High Score!", 26, new Color(1f, 0.85f, 0.3f), 8, TextAnchor.UpperCenter, 0, false, true);
                 else Label($"Best  {Save.best_score}", 20, M.Darken(PARCHMENT, 0.2f), 8, TextAnchor.UpperCenter);
                 Space(18);
                 CenterRow(() =>
@@ -1663,22 +1664,22 @@ namespace Skyfall
                         Kv("Level", p.level.ToString(), 16);
                         Kv("Health", $"{Mathf.CeilToInt(p.hp)} / {(int)p.maxHp}", 16);
                         Kv("Mana", $"{(int)p.mana} / {(int)p.MaxMana}", 16);
-                        Kv("Mana regen", $"{p.ManaRegen:0.0} / s", 16);
+                        Kv("Mana regen",$"{p.ManaRegen:0.0} / s", 16);
                         Kv("Damage bonus", $"+{Mathf.RoundToInt((p.DamageMult - 1f) * 100)}%", 16);
                         Kv("Spell damage", $"+{Mathf.RoundToInt((p.SpellDamageMult - 1f) * 100)}%", 16);
                         Kv("Critical chance", $"{Mathf.RoundToInt(p.CritChance * 100)}%", 16);
                         Kv("Attack speed", $"+{Mathf.RoundToInt((1f / p.AttackSpeedMult - 1f) * 100)}%", 16);
                         Kv("Dragon damage", $"+{Mathf.RoundToInt((p.DragonDamageMult - 1f) * 100)}%", 16);
                         Kv("Healing received", $"{Mathf.RoundToInt(p.HealMult * 100)}%", 16);
-                        Kv("Block chance", $"{Mathf.RoundToInt(p.BlockChance * 100)}%", 16);
+                        if (p.IsHuntress) Kv("Dodge chance", $"{Mathf.RoundToInt(p.DodgeChance * 100)}%", 16);
+                        else Kv(p.IsPyro ? "Ward chance" : "Block chance", $"{Mathf.RoundToInt(p.BlockChance * 100)}%", 16);
                         Kv("Parry chance", $"{p.ParryChance * 100f:0.0}%", 16);
-                        Kv("Dodge chance", $"{Mathf.RoundToInt(p.DodgeChance * 100)}%", 16);
                         Kv("Armor", $"-{(int)p.Armor} per hit", 16);
                         Kv("Health regen", $"{p.Regen:0.0} / s", 16);
                         Kv("Lifesteal", $"{p.Lifesteal * 100f:0.0}%", 16);
                         Kv("Move speed", $"{Mathf.RoundToInt(p.MoveMult * 100)}%", 16);
                         Kv("Dragon cooldowns", $"{Mathf.RoundToInt(p.DragonCdMult * 100)}%", 16);
-                        Kv("Dragon flight", $"{p.MaxFlight:0.0} s", 16);
+                        Kv("Dragon flight", !p.CanFly ? "None (hatchling)" : p.UnlimitedFlight ? "Unlimited" : $"{p.MaxFlight:0.0} s", 16);
                         Kv("Power-up drop chance", $"{p.PowerUpDropChance * 100f:0.0}%", 16);
                     });
                     Space(18);
@@ -1718,8 +1719,8 @@ namespace Skyfall
                     StatColumn("This Run", () =>
                     {
                         Kv("Time", Clock(game.totalTime), 16);
-                        Kv("Stage", $"{game.stage} / {Data.STAGE_COUNT}", 16);
-                        Kv("Wave", game.finalStarted ? "Final battle" : $"{game.wave} / {game.Stage.waves.Length}", 16);
+                        Kv("World", $"{game.stage} / {Data.STAGE_COUNT}", 16);
+                        Kv("Wave", game.finalStarted ? "Final Battle" : $"{game.wave} / {game.Stage.waves.Length}", 16);
                         Kv("Foes slain", game.kills.ToString(), 16);
                         Kv("Damage dealt", ((int)game.damageDealt).ToString(), 16);
                         Kv("Biggest hit", ((int)game.biggestHit).ToString(), 16);
@@ -1731,7 +1732,7 @@ namespace Skyfall
                 Space(18);
                 CenterRow(() => Button("Close", 22, 0, true, ToggleStats));
                 Space(6);
-                Label("TAB or ESC to close  (gamepad: Select, Start or B)", 16, M.Darken(PARCHMENT, 0.3f), 4, TextAnchor.UpperCenter);
+                Label("Tab or Esc to close  (gamepad: Select, Start or B)", 16, M.Darken(PARCHMENT, 0.3f), 4, TextAnchor.UpperCenter);
             });
         }
 

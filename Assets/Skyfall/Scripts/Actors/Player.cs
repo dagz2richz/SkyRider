@@ -1493,7 +1493,7 @@ namespace Skyfall
                 ReleaseDragon();
                 velocity.y = Mathf.Min(velocity.y, -8f);
                 // Make the dismount unmistakable: banner, red flash, a heavy shake and the chain yanking you down.
-                game.hud.Banner("DRAGGED FROM THE SKY", "A second harpoon pulled you off your dragon");
+                game.hud.Banner("Dragged From the Sky", "A second harpoon pulled you off your dragon");
                 game.hud.HurtFlash();
                 game.Shake(0.9f);
                 Sfx.Play("roar", -2f, 0f);

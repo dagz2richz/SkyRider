@@ -255,7 +255,7 @@ namespace Skyfall
             BeginPlay();
             player.OnStageStart();
             WriteRunSave();
-            hud.Banner($"Stage 1 — {Stage.name}", Stage.intro);
+            hud.Banner($"World 1 — {Stage.name}", Stage.intro);
             Tw.After(3.8f, DragonGrowthBanner);
         }
 
@@ -283,7 +283,7 @@ namespace Skyfall
             if (st != stage) BuildStage(st);
             else player.Teleport(StartPos);
             BeginPlay();
-            hud.Banner($"Stage {stage} — {Stage.name}", "Your journey continues.");
+            hud.Banner($"World {stage} — {Stage.name}", "Your journey continues.");
         }
 
         void BeginPlay()
@@ -446,7 +446,7 @@ namespace Skyfall
             bossesSpawned++;
             miniBoss = e;
             Sfx.Play("roar", 2f, 0f);
-            hud.Banner("BOSS — " + e.displayName, $"It approaches from the {Compass(p - player.Pos)}.");
+            hud.Banner("Boss — " + e.displayName, $"It approaches from the {Compass(p - player.Pos)}.");
             Shake(0.5f);
             FX.Vfx("portal_red", e.Pos + new Vector3(0, e.size, 0), e.size / 2f, 2.5f, null, 0f);
         }
@@ -495,7 +495,7 @@ namespace Skyfall
             finalBoss = b;
             Sfx.Play("roar", 3f, 0f);
             Shake(0.9f);
-            hud.Banner("FINAL BATTLE", isl != null ? $"{Stage.finalBoss} awaits on the floating island" : $"{Stage.finalBoss} comes for you");
+            hud.Banner("Final Battle", isl != null ? $"{Stage.finalBoss} awaits on the floating island" : $"{Stage.finalBoss} comes for you");
             FX.Vfx("portal_red", b.Pos + new Vector3(0, b.size, 0), b.size / 2f, 2.5f, null, 0f);
             FX.Flash(b.Pos + new Vector3(0, b.size, 0), 14f, new Color(1f, 0.5f, 0.2f, 0.7f), 0.8f);
         }
@@ -775,7 +775,7 @@ namespace Skyfall
                     bossPowerUps++;
                 }
                 player.Heal(player.maxHp * 0.4f);
-                hud.Banner($"{e.displayName} has fallen!", "");
+                hud.Banner($"{e.displayName} Has Fallen!", "");
                 Sfx.Play("roar", 0f, 0f);
                 if (e == finalBoss) FinalBossDown(pos);
             }
@@ -1155,7 +1155,7 @@ namespace Skyfall
                 case "armor": player.EquipArmor(o.armor); break;
             }
             if (o.type == "spell" && o.id == player.spellId && o.level == Data.EVOLVE_LEVEL)
-                hud.Banner($"{Data.SPELLS[o.id].name} evolves!", Data.SPELLS[o.id].evolved);
+                hud.Banner($"{Data.SPELLS[o.id].name} Evolves!", Data.SPELLS[o.id].evolved);
             Sfx.Play("click", -4f, 0f);
             SetPaused(false);
             GameInput.MouseCaptured = true;
@@ -1221,7 +1221,7 @@ namespace Skyfall
             catch (System.Exception ex) { Debug.LogWarning("Feast capture failed: " + ex.Message); }
             if (tex == null)
             {
-                hud.Banner("Your dragon feeds", caption);
+                hud.Banner("Your Dragon Feeds", caption);
                 Tw.After(4f, () => { if (this != null && !ended) done(); });
                 return;
             }
@@ -1332,10 +1332,10 @@ namespace Skyfall
             if (captiveId != "")
             {
                 DragonCaptive.Spawn(this, captiveId, at);
-                hud.Banner($"{Stage.finalBoss} held a dragon captive!", $"Walk up to the {Data.DRAGONS[captiveId].name} to break its chains");
+                hud.Banner($"{Stage.finalBoss} Held a Dragon Captive!", $"Walk up to the {Data.DRAGONS[captiveId].name} to break its chains");
                 return;
             }
-            hud.Banner($"{Stage.finalBoss} has fallen!", anyLocked ? "No captive this time..." : "The way onward opens");
+            hud.Banner($"{Stage.finalBoss} Has Fallen!", anyLocked ? "No captive this time..." : "The way onward opens");
             Tw.After(4f, StageCleared);
         }
 
@@ -1348,7 +1348,7 @@ namespace Skyfall
             rescued.Add(dragonId);
             Sfx.Play("levelup", -2f, 0f);
             FX.Vfx("buff", player.Pos, 1.2f, 2f, null, 0f);
-            hud.Banner($"The {Data.DRAGONS[dragonId].name} is free!", "Freed from the warlord's chains: it is yours to ride");
+            hud.Banner($"The {Data.DRAGONS[dragonId].name} Is Free!", "Freed from the warlord's chains: it is yours to ride");
             Tw.After(3f, StageCleared);
         }
 
@@ -1363,7 +1363,7 @@ namespace Skyfall
             }
             traveling = true;
             var next = Data.STAGES[stage];
-            hud.Banner("A portal opens", $"Onward to {next.name}");
+            hud.Banner("A Portal Opens", $"Onward to {next.name}");
             FX.Vfx("portal_blue", player.Pos + new Vector3(0, 1.5f, 0), 2.2f, 3f, null, 0f);
             FX.Vfx("buff", player.Pos, 1.5f, 2.5f, null, 0f);
             Sfx.Play("whoosh", 2f, 0f);
@@ -1379,7 +1379,7 @@ namespace Skyfall
                     WriteRunSave();
                     hud.FadeTo(0f, 0.8f);
                     FX.Vfx("portal_blue", player.Pos + new Vector3(0, 1.5f, 0), 2.2f, 2.5f, null, 0f);
-                    hud.Banner($"Stage {stage} — {Stage.name}", Stage.intro);
+                    hud.Banner($"World {stage} — {Stage.name}", Stage.intro);
                     traveling = false;
                     Tw.After(3.8f, DragonGrowthBanner);
                 });
@@ -1391,13 +1391,13 @@ namespace Skyfall
         {
             if (this == null || ended || !running) return;
             string age = Data.DRAGON_AGE[Mathf.Clamp(stage - 1, 0, Data.DRAGON_AGE.Length - 1)];
-            if (stage < Data.FLIGHT_STAGE) hud.Banner($"Your dragon is a {age}", "It walks at your side and breathes fire; its wings come with the next world");
+            if (stage < Data.FLIGHT_STAGE) hud.Banner($"Your Dragon Is a {age}", "It walks at your side and breathes fire; its wings and signature come with the next world");
             else
             {
                 // It grew by devouring the last world's warlord (the still after his defeat).
                 string fed = Data.STAGES[Mathf.Clamp(stage - 2, 0, Data.STAGES.Length - 1)].finalBoss.Split(',')[0];
-                if (stage < Data.GUARDIAN_WINGS_STAGE) hud.Banner($"Your dragon has grown: {age}", $"Fed by {fed}'s fall, it can carry you now (Q)");
-                else hud.Banner($"Your dragon has grown: {age}", $"Fed by {fed}'s fall: Guardian Wings at 30% health, and unlimited flight (Q)");
+                if (stage < Data.GUARDIAN_WINGS_STAGE) hud.Banner($"Your Dragon Has Grown: {age}", $"Fed by {fed}'s fall, it can carry you now with unlimited flight (Q), and its signature (E) awakens");
+                else hud.Banner($"Your Dragon Has Grown: {age}", $"Fed by {fed}'s fall: Guardian Wings at 30% health, plus unlimited flight (Q)");
             }
         }
 
