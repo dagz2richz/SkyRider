@@ -269,6 +269,24 @@ namespace Skyfall
             run = s.run ?? new RunState();
             trees = s.trees ?? new List<TreeState>();
             trees.RemoveAll(t => t == null || Data.Tree(t.key ?? "") == null);
+            foreach (var t in trees) MigrateTree(t);
+        }
+
+        /// The hero trees were cut from six rows to four (new talents, no dragon picks): a tree saved with rows or picks the
+        /// current tree no longer has is closed and every XP it ever earned is handed back to spend again.
+        static void MigrateTree(TreeState t)
+        {
+            var tree = Data.Tree(t.key);
+            bool stale = t.rows > tree.Length;
+            for (int r = 0; r < t.rows && r < t.picks.Count && !stale; r++)
+            {
+                if (string.IsNullOrEmpty(t.picks[r])) continue;
+                stale = System.Array.FindIndex(tree[r], x => x.id == t.picks[r]) < 0;
+            }
+            if (!stale) return;
+            t.rows = 0;
+            for (int r = 0; r < t.picks.Count; r++) t.picks[r] = "";
+            t.xp = Mathf.Max(t.xp, t.earned);
         }
 
         static void Store(SlotData s)
@@ -399,9 +417,10 @@ namespace Skyfall
         public static bool BuyRow(string key)
         {
             var t = Tree(key);
-            if (DevMenu.FreeTalents && t.rows < Data.TREE_ROWS) { t.rows++; Write(); return true; }   // DEV
-            if (t.rows >= Data.TREE_ROWS || t.xp < Data.TREE_ROW_COST[t.rows]) return false;
-            t.xp -= Data.TREE_ROW_COST[t.rows];
+            int rows = Data.RowCount(key);
+            if (DevMenu.FreeTalents && t.rows < rows) { t.rows++; Write(); return true; }   // DEV
+            if (t.rows >= rows || t.xp < Data.RowCost(key, t.rows)) return false;
+            t.xp -= Data.RowCost(key, t.rows);
             t.rows++;
             Write();
             return true;
@@ -420,7 +439,7 @@ namespace Skyfall
         public static void Respec(string key)
         {
             var t = Tree(key);
-            for (int r = 0; r < t.rows; r++) t.xp += Data.TREE_ROW_COST[r];
+            for (int r = 0; r < t.rows; r++) t.xp += Data.RowCost(key, r);
             t.rows = 0;
             for (int r = 0; r < t.picks.Count; r++) t.picks[r] = "";
             Write();

@@ -323,7 +323,6 @@ namespace Skyfall
                     e.Weaken(2.5f, Mathf.Min(0.4f + player.Mod("weaken"), 0.8f));
                     break;
             }
-            if (player.Has("h_wyrmbond")) e.Bleed(3f, (4f + 2f * Lvl("dragonfire")) * strength);
         }
 
         // ---------------------------------------------------------------- mount
@@ -477,7 +476,7 @@ namespace Skyfall
                 if (breathTick <= 0f)
                 {
                     breathTick = 0.18f;
-                    float dmg = (6f + 4f * L) * DmgMult * (player.flying && player.Has("k_sky") ? 1.25f : 1f);
+                    float dmg = (6f + 4f * L) * DmgMult;
                     float cosA = Mathf.Cos(Mathf.Min(20f + L + 6f * Card("d_cone") + player.Mod("cone"), 70f) * Mathf.Deg2Rad);
                     bool scorchGround = player.Has("db_azure") && M.RandF() < 0.35f;
                     var list = game.enemies;

@@ -124,7 +124,7 @@ namespace Skyfall
         {
             get
             {
-                if (IsKnight) return Mathf.Min(Data.SHIELD.baseChance + 0.05f * (shieldLevel - 1) + DefenseExtra + (Has("k_bulwark") ? 0.12f : 0f) + Pct("block%"), 0.7f);
+                if (IsKnight) return Mathf.Min(Data.SHIELD.baseChance + 0.05f * (shieldLevel - 1) + DefenseExtra + (Has("k_bulwark") ? 0.12f : 0f) + (StanceActive ? 0.15f : 0f) + Pct("block%"), 0.7f);
                 if (IsPyro) return Mathf.Min(Data.WARD.baseChance + 0.05f * (shieldLevel - 1) + DefenseExtra + (Has("p_emberward") ? 0.12f : 0f) + Pct("block%"), 0.7f);
                 return 0f;
             }
@@ -132,14 +132,15 @@ namespace Skyfall
 
         public float JumpMult => 1f + 0.1f * S("utility", 0);
         public float DamageMult => (1f + 0.08f * S("offense", 0)) * (1f + LevelDamageBonus) * (PowerActive("damage") ? 1f + Data.POWERUP_DAMAGE : 1f)
-            * (1f + Pct("dmg%") + (flying ? Pct("mountdmg%") : 0f));
+            * (1f + Pct("dmg%") + (flying ? Pct("mountdmg%") : 0f)) * (1f + EssenceBonus);
         public float AttackSpeedMult => Mathf.Pow(0.94f, S("offense", 2)) / (1f + Pct("atkspd%"));
 
         /// Weapon damage per hit before the shared multipliers: base x weapon level (+15% per level) x talents.
-        public float WeaponBaseDamage => Weapon.damage * (1f + 0.15f * (weaponLevel - 1)) * (Has("k_wyrmsteel") ? 1.3f : 1f) * (Has("h_pact") ? 1.1f : 1f) * (1f + Pct("wdmg%"));
+        public float WeaponBaseDamage => Weapon.damage * (1f + 0.15f * (weaponLevel - 1)) * (Has("k_wyrmsteel") ? 1.3f : 1f) * (Has("h_pact") ? 1.1f : 1f) * (1f + Pct("wdmg%"))
+            + (Plv("spellblade") >= 4 ? 0.04f * mana : 0f);   // Runic Strikes
 
         /// Seconds between attacks: weapon cooldown, faster with weapon level (0.93 per level) and Offense.
-        public float AttackInterval => Weapon.cooldown * AttackSpeedMult * Mathf.Pow(0.93f, weaponLevel - 1) * (Has("h_phantom") && flying ? 0.5f : 1f);
+        public float AttackInterval => Weapon.cooldown * AttackSpeedMult * Mathf.Pow(0.93f, weaponLevel - 1) / (1f + 0.01f * FrenzyStacks);
 
         /// Projectiles per volley: +1 at weapon level 3 and 5 (Javelin, Staff), plus talents.
         public int ShotCount
@@ -155,10 +156,10 @@ namespace Skyfall
         public float CooldownMult => (Has("p_weaver") ? 0.75f : 1f) * (1f - Pct("spellcd%"));
         public float SpellCostMult => Has("p_weaver") ? 0.8f : 1f;
         /// Dragon cooldowns: the Dragon stat, Restless Wings (dragon card), talents and tree picks.
-        public float DragonCdMult => Mathf.Pow(0.94f, S("dragon", 2)) * Mathf.Pow(0.92f, SpellLv("d_haste", 0)) * (Has("k_oath") ? 0.75f : 1f) * (1f - Pct("dragoncd%"));
-        public float DragonDamageMult => 1f + 0.12f * S("dragon", 0) + (Has("k_oath") ? 0.4f : 0f) + (Has("h_wyrmbond") ? 0.3f : 0f) + (Has("p_dragonkin") ? 0.35f : 0f) + Pct("dragondmg%");
-        /// Breath reach: Dragon Kin, the Dragon stat, the dragon's size and tree picks.
-        public float DragonReachMult => (Has("p_dragonkin") ? 1.3f : 1f) * (1f + 0.08f * S("dragon", 1) + Pct("reach%")) * (1f + 0.67f * (DragonSizeMult - 1f));
+        public float DragonCdMult => Mathf.Pow(0.94f, S("dragon", 2)) * Mathf.Pow(0.92f, SpellLv("d_haste", 0)) * (1f - Pct("dragoncd%"));
+        public float DragonDamageMult => 1f + 0.12f * S("dragon", 0) + Pct("dragondmg%");
+        /// Breath reach: the Dragon stat, the dragon's size and tree picks.
+        public float DragonReachMult => (1f + 0.08f * S("dragon", 1) + Pct("reach%")) * (1f + 0.67f * (DragonSizeMult - 1f));
         /// How big the dragon is: Ancient Growth (dragon card) and tree picks.
         public float DragonSizeMult => 1f + 0.12f * SpellLv("d_size", 0) + Pct("size%");
         public float AreaMult => 1f;
@@ -183,7 +184,7 @@ namespace Skyfall
         public float SpellDamageMult => DamageMult * (1f + 0.08f * Plv("spellblade") + Pct("spelldmg%"));
         public float WeaponDamageMult => DamageMult * (1f + 0.05f * Plv("bloodthirst"));
         public float HealMult => 1f + 0.1f * S("health", 2) + Pct("heal%");
-        public float Lifesteal => (Plv("bloodthirst") == 0 ? 0f : (0.012f + 0.0072f * Plv("bloodthirst")) * HealMult) + (BloodMoon ? 0.06f : 0f) + (SpecterActive ? 0.05f : 0f);
+        public float Lifesteal => (Plv("bloodthirst") == 0 ? 0f : (0.012f + 0.0072f * Plv("bloodthirst")) * HealMult * (Plv("bloodthirst") >= 5 && hp < maxHp * 0.5f ? 2f : 1f)) + (BloodMoon ? 0.06f : 0f) + (SpecterActive ? 0.05f : 0f);
 
         public float ManaPerHit =>
             3f * (1f + 0.15f * S("mana", 2)) * (1f + (Plv("spellblade") > 0 ? 0.6f + 0.25f * Plv("spellblade") : 0f));
@@ -1011,6 +1012,7 @@ namespace Skyfall
                     velocity.y = JUMP_VELOCITY * 0.9f * Mathf.Sqrt(JumpMult);
                     FX.Shockwave(Pos + new Vector3(0, 0.2f, 0), 2f, Has("h_wings") ? new Color(1f, 0.2f, 0.25f, 0.6f) : new Color(0.8f, 0.85f, 1f, 0.5f), 0.25f);
                     FlapWings();
+                    if (Has("h_leap")) CrimsonLeap();
                 }
             }
             if (soaring)
@@ -1290,10 +1292,41 @@ namespace Skyfall
             if (target == null) return false;
             swingCount++;
             bool spin = Has("k_whirlwind") && swingCount % 5 == 0;
+            // Weapon Lv 2: every 4th swing is a heavy blow (+50% damage, staggers).
+            bool heavy = weaponLevel >= 2 && swingCount % 4 == 0;
             var dir = M.Flat(target.Pos - Pos).normalized;
             float arc = spin ? 360f : w.arc;
-            float dmg = WeaponBaseDamage * WeaponDamageMult * (spin ? 2f : 1f);
+            float dmg = WeaponBaseDamage * WeaponDamageMult * (spin ? 2f : 1f) * (heavy ? 1.5f : 1f);
             float knock = w.knock * (Has("k_reach") ? 1.5f : 1f);
+            int hits = SwordSweep(dir, reach, arc, dmg, knock, heavy);
+            WeaponHits(hits, dmg);
+            Sfx.Play("slash", -8f);
+            if (hits > 0) Sfx.Play("hit", heavy ? 0f : -3f, 0.12f);
+            var col = Has("k_wyrmsteel") ? new Color(1f, 0.6f, 0.2f) : w.color;
+            SwingFx(dir, reach, arc, col);
+            SwingAnim();
+            if (heavy) FX.Shockwave(Pos + dir * reach * 0.5f + new Vector3(0, 0.3f, 0), reach * 0.5f, M.WithA(col, 0.7f), 0.25f);
+            if (Has("k_firewave")) FireWave.Spawn(this, Pos + dir * 1.2f, dir, WeaponBaseDamage * WeaponDamageMult * 0.8f);
+            // Cleaving Arc: every 3rd swing, a backhand cut a moment later hits everything around you.
+            if (Has("k_cleaver") && swingCount % 3 == 0)
+            {
+                float backDmg = WeaponBaseDamage * WeaponDamageMult * 0.6f;
+                Tw.After(0.15f, () =>
+                {
+                    if (this == null || game == null || !game.running || hp <= 0f) return;
+                    WeaponHits(SwordSweep(-dir, reach, 360f, backDmg, knock * 0.6f, false), backDmg);
+                    SwingFx(-dir, reach, 360f, new Color(0.75f, 0.9f, 1f));
+                    Sfx.Play("slash", -6f, 0.2f);
+                });
+            }
+            return true;
+        }
+
+        /// One cut of the sword: damages every foe within reach and inside the arc, returning how many it hit. A heavy
+        /// blow (weapon Lv 2) staggers what it hits; from weapon Lv 4 every hit sunders (the foe is Exposed for 3 s).
+        int SwordSweep(Vector3 dir, float reach, float arc, float dmg, float knock, bool heavy)
+        {
+            var c = Center;
             float cosHalf = Mathf.Cos(arc * 0.5f * Mathf.Deg2Rad);
             int hits = 0;
             var list = game.enemies;
@@ -1309,20 +1342,15 @@ namespace Skyfall
                 if (dist > reach + e.radius) continue;
                 if (arc < 359f && dist > 0.5f && Vector3.Dot(to.normalized, dir) < cosHalf) continue;
                 var knockDir = dist > 0.01f ? to.normalized : dir;
+                if (weaponLevel >= 4) e.Expose(3f);
                 game.DamageEnemy(e, dmg, knockDir, knock);
+                if (heavy && !e.isBoss) e.stunT = Mathf.Max(e.stunT, 0.3f);
                 if (Has("k_wyrmsteel")) e.Ignite(3f, dmg * 0.12f);
                 if (hits >= 2 || !FX.Vfx("hit", e.Pos + new Vector3(0, e.size, 0), 0.8f, 1.2f, null, 0f))
                     FX.Burst(e.Pos + new Vector3(0, e.size, 0), new Color(1f, 0.9f, 0.7f), 5, 6f, 0.15f);
                 hits++;
             }
-            WeaponHits(hits, dmg);
-            Sfx.Play("slash", -8f);
-            if (hits > 0) Sfx.Play("hit", -3f, 0.12f);
-            var col = Has("k_wyrmsteel") ? new Color(1f, 0.6f, 0.2f) : w.color;
-            SwingFx(dir, reach, arc, col);
-            SwingAnim();
-            if (Has("k_firewave")) FireWave.Spawn(this, Pos + dir * 1.2f, dir, WeaponBaseDamage * WeaponDamageMult * 0.8f);
-            return true;
+            return hits;
         }
 
         /// Dragonguard Knight, only while riding the dragon: the sword swings give way to Skyblades, spectral
@@ -1411,7 +1439,22 @@ namespace Skyfall
             if (hits <= 0) return;
             AddMana(Mathf.Min(hits * ManaPerHit, 10f + 6f * Plv("spellblade")));
             float ls = Lifesteal;
-            if (ls > 0f) hp = Mathf.Min(maxHp, hp + dmg * hits * ls);
+            if (ls > 0f)
+            {
+                float heal = dmg * hits * ls;
+                // Gorge (Bloodthirst Lv 2): what overflows full health becomes a barrier, up to 10% of max health.
+                float over = hp + heal - maxHp;
+                hp = Mathf.Min(maxHp, hp + heal);
+                if (over > 0f && Plv("bloodthirst") >= 2) barrier = Mathf.Max(barrier, Mathf.Min(barrier + over, maxHp * 0.1f));
+            }
+            // Frenzy (Bloodthirst Lv 3): +1% attack speed per hit for 3 s, up to +15%.
+            if (Plv("bloodthirst") >= 3)
+            {
+                frenzyStacks = Mathf.Min(15, frenzyStacks + hits);
+                frenzyT = 3f;
+            }
+            // Arcane Edge (Spellblade Lv 2): a chance to take half a second off the spell's cooldown.
+            if (Plv("spellblade") >= 2 && M.RandF() < 0.15f && game.spellbook) game.spellbook.cooldown = Mathf.Max(0f, game.spellbook.cooldown - 0.5f);
         }
 
         /// Ember Mage auto attack: bursting fire bolts from the staff. Extra bolts pick other targets, or fan out at the only one.
@@ -1479,8 +1522,14 @@ namespace Skyfall
             throwCount++;
             if (Has("h_lance") && throwCount % 8 == 0)
                 BloodJavelin.Spawn(this, c, (first.Pos + new Vector3(0, first.size, 0) - c).normalized * 46f, WeaponBaseDamage * WeaponDamageMult * 3f, BloodJavelin.Kind.Lance);
-            // The blood price: 2% of current health (never lethal; Blood Pact waives it).
-            if (!Has("h_pact")) hp = Mathf.Max(1f, hp - hp * w.hp_cost);
+            // The blood price: 2% of current health (never lethal; Blood Pact waives it). Weapon Lv 4: every 5th throw is
+            // free and heals 3% instead.
+            if (weaponLevel >= 4 && throwCount % 5 == 0)
+            {
+                hp = Mathf.Min(maxHp, hp + maxHp * 0.03f * HealMult);
+                FX.Burst(Center, new Color(1f, 0.3f, 0.35f), 8, 4f, 0.2f);
+            }
+            else if (!Has("h_pact")) hp = Mathf.Max(1f, hp - hp * w.hp_cost);
             Sfx.Play("whoosh", -8f, 0.15f);
             armR.Keys((new Vector3(-2.6f, 0, 0), 0.08f), (new Vector3(0.4f, 0, 0), 0.1f), (new Vector3(-0.5f, 0, 0), 0.2f));
             if (rig && !rig.InAction) rig.Action(0.35f, THROW);
@@ -1579,6 +1628,15 @@ namespace Skyfall
                 }
                 if (shieldLevel >= 5) AddMana(5f);
                 if (Has("p_emberward")) Heal(maxHp * 0.018f);
+                // Pillar Ward: the ward answers with a column of fire under whoever struck.
+                if (Has("p_wardpillar") && attackerAlive)
+                {
+                    var ap = attacker.Pos;
+                    ap.y = game.terrain.SurfaceHeight(ap.x, ap.z, ap.y + 1f);
+                    FirePillar.Spawn(game, ap, 2.4f + 0.3f * attacker.size, WeaponBaseDamage * WeaponDamageMult * 1.8f);
+                    FX.Vfx("gq_flames", ap, 0.8f, 1.5f, null, 0.1f);
+                    Sfx.Play("pillar", ap, -4f, 0.1f);
+                }
                 return;
             }
             // Shield block (Knight only).
@@ -1601,6 +1659,13 @@ namespace Skyfall
             if (attackerAlive && Has("p_molten")) attacker.Ignite(4f, 10f + 2f * level);
             if (attackerAlive) DragonWrath(attacker);
             if (Has("k_retribution")) Retribution(amount);
+            // Mana Shield (Spellblade Lv 3): 15% of the blow is paid with mana while there is mana to pay it.
+            if (Plv("spellblade") >= 3 && mana > 1f)
+            {
+                float paid = Mathf.Min(dmg * 0.15f, mana);
+                mana -= paid;
+                dmg -= paid;
+            }
             // Barriers soak damage first.
             if (barrier > 0f)
             {
@@ -1722,8 +1787,16 @@ namespace Skyfall
                     else
                     {
                         float bleedT = player.Has("h_hemorrhage") ? 4.5f : 3f;
+                        float dmg = damage;
+                        // Barbed Javelins: a fresh wound in an old one.
+                        if (player.Has("h_barbed") && e.Bleeding)
+                        {
+                            dmg *= 1.3f;
+                            e.Slow(1.5f, 0.75f);
+                        }
                         e.Bleed(bleedT, damage * Data.WEAPONS["blood_lance"].bleed / 3f);
-                        g.DamageEnemy(e, damage, velocity.normalized, 2.5f, true, new Color(1f, 0.35f, 0.4f));
+                        if (player.weaponLevel >= 2) e.Slow(bleedT, 0.8f);   // weapon Lv 2: bleeding foes are slowed 20%
+                        g.DamageEnemy(e, dmg, velocity.normalized, 2.5f, true, new Color(1f, 0.35f, 0.4f));
                     }
                     player.WeaponHits(1, damage);
                     FX.Burst(pos, new Color(0.85f, 0.05f, 0.1f), 6, 4f, 0.18f);
@@ -1806,6 +1879,7 @@ namespace Skyfall
                 var c = e.Pos + new Vector3(0, e.size, 0);
                 if (Vector3.Distance(c, pos) >= e.radius + 0.7f + 0.5f * e.size) continue;
                 hit.Add(e);
+                if (player.weaponLevel >= 4) e.Expose(3f);   // the sword's Lv 4 sunder carries to the Skyblades
                 g.DamageEnemy(e, damage, velocity.normalized, 3f, true, Ice);
                 if (player.Has("k_wyrmsteel")) e.Ignite(3f, damage * 0.12f);
                 player.WeaponHits(1, damage);

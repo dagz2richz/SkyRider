@@ -31,6 +31,9 @@ namespace Skyfall
         public float frozenT;
         float shockT;
         float weakenT, weakenF;
+        /// Exposed (Brittle, Crushing Weight, Sunder, Ionize): takes EXPOSED_MULT damage from every hit while it lasts.
+        public float exposedT;
+        public const float EXPOSED_MULT = 1.25f;
         public bool lanceMarked;
         float bleedT, bleedDps;
         public float buffT;          // empowered by a shaman: faster and hits harder (no glow: the buff is stats only)
@@ -487,6 +490,10 @@ namespace Skyfall
 
         public float AtkMult => 1f - (weakenT > 0f ? weakenF : 0f);
 
+        /// Expose: every hit on it lands harder for a while (see EXPOSED_MULT).
+        public void Expose(float t) => exposedT = Mathf.Max(exposedT, t);
+        public bool Exposed => exposedT > 0f;
+
         /// Ignite: burns for a while.
         public void Ignite(float t, float dps)
         {
@@ -543,6 +550,7 @@ namespace Skyfall
             flash = Mathf.MoveTowards(flash, 0f, delta * 8f);
             shockT = Mathf.Max(shockT - delta, 0f);
             weakenT = Mathf.Max(weakenT - delta, 0f);
+            exposedT = Mathf.Max(exposedT - delta, 0f);
             buffT = Mathf.Max(buffT - delta, 0f);
             if (weakenT <= 0f) weakenF = 0f;
             // Status glow: white hit flash, blue crackle when shocked, orange flicker when burning.

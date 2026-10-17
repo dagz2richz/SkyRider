@@ -70,6 +70,16 @@ namespace Skyfall
         bool vowUsed;
         Transform wings, orbs;
         Light moonLight;
+        // Bastion Stance (seconds standing still), Vital Essence (orb stacks), Frenzy (Bloodthirst Lv 3 hit stacks).
+        float stillT, essenceT, frenzyT;
+        int essenceStacks, frenzyStacks;
+        bool stancePlanted;
+
+        /// Bastion Stance: planted after a second standing still on the ground.
+        public bool StanceActive => Has("k_stance") && stillT >= 1f && onGround && !flying && !DragonFormActive;
+        /// Vital Essence: +8% damage per stack while it lasts.
+        public float EssenceBonus => essenceT > 0f ? 0.08f * essenceStacks : 0f;
+        public int FrenzyStacks => frenzyT > 0f ? frenzyStacks : 0;
 
         public bool BloodMoon => moonT > 0f;
         public bool DragonFormActive => dragonFormT > 0f;
@@ -79,6 +89,7 @@ namespace Skyfall
             rallyT = 0f; aegisCd = 0f; chargeCd = 3f; chargeT = 0f; sanguineCd = 0f; shadowCd = 0f; moonT = 0f; moonCd = 30f;
             walkFireT = 0f; blinkCd = 0f; novaT = 35f; pillarT = 12f; vowUsed = false; invulnT = 0f; swingCount = 0; throwCount = 0;
             rescueCd = 0f; bulwarkCd = 0f; guardianReviveUsed = false; guardianWingsCd = 0f;
+            stillT = 0f; essenceT = 0f; frenzyT = 0f; essenceStacks = 0; frenzyStacks = 0; stancePlanted = false;
             EndDragonForm();
             dragonFormCd = 0f;
             OnTalentsChanged();
@@ -169,8 +180,13 @@ namespace Skyfall
             rescueCd = Mathf.Max(0f, rescueCd - delta);
             bulwarkCd = Mathf.Max(0f, bulwarkCd - delta);
             guardianWingsCd = Mathf.Max(0f, guardianWingsCd - delta);
+            essenceT = Mathf.Max(0f, essenceT - delta);
+            if (essenceT <= 0f) essenceStacks = 0;
+            frenzyT = Mathf.Max(0f, frenzyT - delta);
+            if (frenzyT <= 0f) frenzyStacks = 0;
             TickGuardian(delta);
             if (talents.Count == 0 && !DragonFormActive) return;
+            if (Has("k_stance")) TickStance(delta);
 
             if (Has("k_rally"))
             {
@@ -257,9 +273,58 @@ namespace Skyfall
             }
         }
 
+        /// Bastion Stance: a second without moving plants the shield (a ring of light marks it); moving lifts it.
+        void TickStance(float delta)
+        {
+            bool still = onGround && !flying && new Vector2(velocity.x, velocity.z).magnitude < 0.6f;
+            stillT = still ? stillT + delta : 0f;
+            bool planted = StanceActive;
+            if (planted && !stancePlanted)
+            {
+                FX.Shockwave(Pos + new Vector3(0, 0.15f, 0), 2.6f, new Color(0.55f, 0.75f, 1f, 0.9f), 0.35f);
+                if (!FX.Vfx("gq_shield", Pos + Vector3.up, 0.6f, 1.2f, null, 0.2f)) FX.Flash(Center, 1.6f, new Color(0.6f, 0.8f, 1f, 0.5f), 0.25f);
+                Sfx.Play("block", -4f, 0.1f);
+            }
+            stancePlanted = planted;
+        }
+
+        /// Crimson Leap: the double jump looses a downward fan of five javelins.
+        void CrimsonLeap()
+        {
+            float dmg = WeaponBaseDamage * WeaponDamageMult * 0.6f;
+            var from = Center + new Vector3(0, 0.4f, 0);
+            float spin = M.RandF() * M.TAU;
+            for (int i = 0; i < 5; i++)
+            {
+                float a = spin + M.TAU * i / 5f;
+                var dir = new Vector3(Mathf.Cos(a) * 0.55f, -1f, Mathf.Sin(a) * 0.55f).normalized;
+                BloodJavelin.Spawn(this, from, dir * 40f, dmg);
+            }
+            FX.Vfx("gq_shockwave", Pos, 0.6f, 1.2f, null, 0.2f, new Color(1f, 0.15f, 0.2f));
+            Sfx.Play("crimsonleap", -2f, 0.1f);
+        }
+
+        /// A health orb was picked up: Vital Essence stacks its damage bonus.
+        public void OnOrbCollected()
+        {
+            if (!Has("h_essence")) return;
+            essenceStacks = Mathf.Min(3, essenceStacks + 1);
+            essenceT = 6f;
+            FX.Vfx("gq_heal", Pos, 0.7f, 1.5f, null, 0.2f);
+            FX.Text(Center + Vector3.up * 1.6f, $"Essence x{essenceStacks}", new Color(1f, 0.35f, 0.4f));
+        }
+
         void OnBlock()
         {
             if (Has("k_bulwark")) Heal(maxHp * 0.012f);
+            // Shield Wall: each block adds to a barrier, up to 20% of max health.
+            if (Has("k_wall"))
+            {
+                float cap = maxHp * 0.2f;
+                if (barrier < cap) barrier = Mathf.Min(cap, barrier + maxHp * 0.04f);
+                FX.Vfx("gq_shield", Pos + Vector3.up, 0.55f, 1f, null, 0.5f);
+                Sfx.Play("shieldwall", -6f, 0.1f);
+            }
             if (Has("k_bash"))
             {
                 FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 5f, new Color(0.5f, 0.7f, 1f, 0.9f), 0.35f);
@@ -280,14 +345,13 @@ namespace Skyfall
             foreach (var e in list) game.DamageEnemy(e, dmg, Vector3.zero, 0f, true, new Color(1f, 0.85f, 0.4f));
         }
 
-        /// Talent damage reductions (Sky Sovereign / Phantom Hunt while flying, Dragon Form).
+        /// Talent damage reductions (Bastion Stance, riding, Dragon Form).
         float DamageTakenMult
         {
             get
             {
                 float m = 1f;
-                if (flying && Has("k_sky")) m *= 0.7f;
-                if (flying && Has("h_phantom")) m *= 0.75f;
+                if (StanceActive) m *= 0.75f;
                 if (flying) m *= 1f - Mathf.Min(Pct("mountdr%"), 0.6f);
                 if (DragonFormActive) m *= formKind == "specter" ? 0.4f : 0.5f;
                 return m * (1f - Mathf.Min(Pct("dmgtaken%"), 0.5f));
@@ -621,6 +685,11 @@ namespace Skyfall
         public void OnKill(Enemy e)
         {
             if (Has("h_thirst")) hp = Mathf.Min(maxHp, hp + maxHp * 0.009f * HealMult);
+            // Feast (Bloodthirst Lv 4) and Crimson Tithe (Blood Aura Lv 3, foes dying inside the aura).
+            if (Plv("bloodthirst") >= 4) hp = Mathf.Min(maxHp, hp + maxHp * 0.006f * HealMult);
+            if (Plv("blood_aura") >= 3 && M.Flat(e.Pos - Pos).magnitude < game.spellbook.AuraRadius) hp = Mathf.Min(maxHp, hp + maxHp * 0.01f * HealMult);
+            // Shatter (Frost Bolt Lv 9): a foe that dies frozen bursts into shards.
+            if (spellId == "frost_bolt" && e.frozenT > 0f && game.spellbook.Level >= 9) game.spellbook.Shatter(e.Pos + new Vector3(0, e.size, 0));
             if (Has("p_combustion") && e.Burning)
             {
                 var at = e.Pos;

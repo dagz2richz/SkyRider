@@ -731,6 +731,19 @@ namespace Skyfall
 
         readonly List<Enemy> cands = new List<Enemy>();
 
+        /// The foe with the most health within r (Eye of the Storm), or null.
+        public Enemy ToughestEnemyNear(Vector3 pos, float r)
+        {
+            Enemy best = null;
+            for (int i = 0; i < enemies.Count; i++)
+            {
+                var e = enemies[i];
+                if (e.dead || !CanTarget(e) || (e.Pos - pos).sqrMagnitude >= r * r) continue;
+                if (best == null || e.hp > best.hp) best = e;
+            }
+            return best;
+        }
+
         public Enemy RandomEnemyNear(Vector3 pos, float r, bool asDragon = false)
         {
             cands.Clear();
@@ -760,6 +773,7 @@ namespace Skyfall
             }
             bool crit = show && M.RandF() < player.CritChance;
             if (crit) amount *= 2f;
+            if (e.Exposed) amount *= Enemy.EXPOSED_MULT;
             e.hp -= amount;
             damageDealt += amount;
             biggestHit = Mathf.Max(biggestHit, amount);
@@ -884,6 +898,13 @@ namespace Skyfall
             foreach (var p in FindObjectsByType<PowerUpPickup>(FindObjectsInactive.Exclude)) p.Pull();
         }
 
+        /// Lodestar (Gravity Well level 8): gems and orbs within radius of a point start flying to the hero.
+        public void PullPickupsNear(Vector3 at, float radius)
+        {
+            foreach (var g in gems)
+                if (g.node && M.Flat(g.node.position - at).magnitude < radius) g.pulled = true;
+        }
+
         void DropOrb(Vector3 pos)
         {
             var n = new GameObject("HealthOrb").transform;
@@ -920,8 +941,9 @@ namespace Skyfall
                 {
                     if (g.orb)
                     {
-                        player.Heal(player.maxHp * g.value);
+                        player.Heal(player.maxHp * g.value * (player.Has("h_essence") ? 1.5f : 1f));
                         if (player.Has("h_orbs")) player.AddMana(20f);
+                        player.OnOrbCollected();
                         FX.Flash(c, 1.5f, new Color(1f, 0.3f, 0.3f, 0.5f), 0.3f);
                         Sfx.Play("heal", -2f, 0.05f);
                         FX.Vfx("healing", player.Pos, 1f, 1.5f, null, 0.3f);
@@ -1039,19 +1061,20 @@ namespace Skyfall
             if (pl < Data.MAX_LEVEL)
             {
                 var ps = Data.PASSIVES[p.passiveId];
-                pool.Add(new LevelOption { type = "spell", id = p.passiveId, name = ps.name, level = pl + 1, desc = ps.up, tag = "PASSIVE", color = ps.color });
+                pool.Add(new LevelOption { type = "spell", id = p.passiveId, name = ps.name, level = pl + 1, desc = ps.ups[pl] + "\n" + ps.grow, tag = "PASSIVE · UNIQUE", color = ps.color });
             }
             int sl = p.spells.TryGetValue(p.spellId, out int v2) ? v2 : 1;
             if (sl < Data.SPELL_MAX_LEVEL)
             {
                 var sp = Data.SPELLS[p.spellId];
                 bool evolve = sl + 1 == Data.EVOLVE_LEVEL;
-                bool unique = sl + 1 == Data.SPELL_FINAL_LEVEL;
+                bool capstone = sl + 1 == Data.SPELL_FINAL_LEVEL;
+                bool unique = sl + 1 > Data.EVOLVE_LEVEL && !capstone;
                 pool.Add(new LevelOption { type = "spell", id = p.spellId, name = sl + 1 >= Data.EVOLVE_LEVEL ? sp.evolved : sp.name, level = sl + 1, desc = sp.ups[sl],
-                    tag = evolve ? "SPELL · EVOLUTION" : unique ? "SPELL · UNIQUE" : "SPELL", color = sl + 1 >= Data.EVOLVE_LEVEL ? sp.evolvedColor : sp.color });
+                    tag = evolve ? "SPELL · EVOLUTION" : capstone ? "SPELL · CAPSTONE" : unique ? "SPELL · UNIQUE" : "SPELL", color = sl + 1 >= Data.EVOLVE_LEVEL ? sp.evolvedColor : sp.color });
             }
-            // The spell's evolution is too important to be shuffled away (it stays among the first two cards).
-            var evo = pool.Find(o => o.tag == "SPELL · EVOLUTION" || o.tag == "SPELL · UNIQUE");
+            // The spell's evolution and capstone are too important to be shuffled away (they stay among the first two cards).
+            var evo = pool.Find(o => o.tag == "SPELL · EVOLUTION" || o.tag == "SPELL · CAPSTONE");
             var picked = Pick3(pool);
             if (evo != null && picked.IndexOf(evo) != 0 && picked.IndexOf(evo) != 1)
             {

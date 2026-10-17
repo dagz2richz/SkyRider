@@ -40,6 +40,34 @@ namespace Skyfall.EditorTools
             Check(rising, "row costs rise every row");
             Check(convex, "each row's step up is bigger than the last (steepening)");
             Check(c[0] < 100 && c[1] < 200 && c[2] < 350, "first three rows are cheaper than the old curve (100, 200, 350)");
+
+            // Hero trees: four rows (the last the capstone), no dragon talents, and a rising cost curve of their own.
+            var hc = Data.HERO_ROW_COST;
+            bool heroRising = true;
+            for (int i = 1; i < hc.Length; i++) if (hc[i] <= hc[i - 1]) heroRising = false;
+            Check(heroRising, "hero row costs rise every row");
+            foreach (var hero in Data.HERO_ORDER)
+            {
+                var tree = Data.Tree("hero:" + hero);
+                Check(tree.Length == 4 && hc.Length == 4, $"{hero} tree has four rows");
+                bool noDragon = true;
+                foreach (var row in tree)
+                {
+                    Check(row.Length == 3, $"{hero} rows offer three talents");
+                    foreach (var t in row)
+                        if (t.desc.ToLower().Contains("your dragon") || t.mods.ContainsKey("dragondmg%") || t.mods.ContainsKey("mountdmg%")) noDragon = false;
+                }
+                Check(noDragon, $"{hero} tree has no dragon talents");
+                Check(Data.RowCost("hero:" + hero, 3) == hc[3], $"{hero} capstone uses the hero cost curve");
+            }
+            Check(Data.RowCount("dragon:blue") == 6 && Data.RowCost("dragon:blue", 5) == c[5], "dragon trees keep six rows and their own curve");
+            // Every spell level after the evolution and every passive level has its own unique text.
+            foreach (var sp in Data.SPELLS.Values)
+                for (int lv = Data.EVOLVE_LEVEL; lv < Data.SPELL_FINAL_LEVEL - 1; lv++)
+                    Check(sp.ups[lv].StartsWith("UNIQUE"), $"{sp.name} level {lv + 1} is unique");
+            foreach (var ps in Data.PASSIVES.Values)
+                for (int lv = 1; lv < Data.MAX_LEVEL; lv++)
+                    Check(ps.ups[lv].StartsWith("UNIQUE"), $"{ps.name} level {lv + 1} is unique");
             Check(c[5] > 900 && c[5] >= 20 * c[0], "the last row is far dearer than the first");
 
             // Save migration: eggs_found becomes the rescue counter; old saves infer it from the dragons owned.

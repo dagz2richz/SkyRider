@@ -1213,7 +1213,7 @@ namespace Skyfall
                     int row = r;
                     bool open = row < state.rows;
                     bool next = row == state.rows;
-                    int cost = Data.TREE_ROW_COST[row];
+                    int cost = Data.RowCost(key, row);
                     GUILayout.BeginHorizontal();
                     GUILayout.FlexibleSpace();
                     GUILayout.BeginVertical(GUILayout.Width(150));

@@ -45,6 +45,8 @@ namespace Skyfall.EditorTools
         const string HumanControllerPath = "Assets/Skyfall/Resources/Skyfall/RenegadeKnight.controller";
         const string KnightControllerPath = "Assets/Skyfall/Resources/Skyfall/Dragonguard.controller";
         const string Icons = "Assets/Basic_RPG_Icons/";
+        const string AiIcons = "Assets/Skyfall/Art/Icons/";
+        const string Quick = "Assets/GabrielAguiarProductions/FreeQuickEffectsVol1/Prefabs/";
         const string Slavic = "Assets/EmaceArt/Slavic World Free/Prefabs/";
         const string Trees = "Assets/BrokenVector/LowPolyTreePack/Prefabs/";
         const string Dungeon = "Assets/Gridness Studios/Elementary Dungeon Pack Lite/Prefabs/";
@@ -408,6 +410,14 @@ namespace Skyfall.EditorTools
                 var p = Load<GameObject>(path);
                 if (p) lib.vfx.Add(new SkinLibrary.Named { name = name, prefab = p });
             }
+            // Gabriel Aguiar's Free Quick Effects (URP): the reworked talents, spell and passive uniques.
+            V("gq_shield", Quick + "vfx_Shield_01.prefab");
+            V("gq_implosion", Quick + "vfx_Implosion_01.prefab");
+            V("gq_lightning", Quick + "vfx_Lightning_01.prefab");
+            V("gq_heal", Quick + "vfx_Heal_01.prefab");
+            V("gq_shockwave", Quick + "vfx_Shockwave_01.prefab");
+            V("gq_flames", Quick + "vfx_Flames_01.prefab");
+            V("gq_sparks", Quick + "vfx_Sparks_01.prefab");
             V("hit", Guz + "Basic Hit .prefab");
             V("hit_fire", Guz + "Fire Hit .prefab");
             V("hit_ice", Guz + "Ice Hit .prefab");
@@ -787,6 +797,19 @@ namespace Skyfall.EditorTools
                 ["p_ascend"] = T(heal, "p_ascend", ember), ["p_warding"] = T(shield, "p_warding", ember), ["p_flamecaller"] = T(aoe, "p_flamecaller", ember),
             };
             foreach (var kv in heroArt) talentArt[kv.Key] = kv.Value;
+            // The reworked hero trees' new talents have their own painted icons (Unity AI, GPT Image with a pack icon as
+            // the style reference), kept small on import.
+            foreach (var id in new[] { "k_wall", "k_cleaver", "k_stance", "h_barbed", "h_leap", "h_essence", "p_quick", "p_wardpillar" })
+            {
+                string path = AiIcons + id + ".png";
+                if (AssetImporter.GetAtPath(path) is TextureImporter ti && (ti.maxTextureSize != 256 || ti.mipmapEnabled))
+                {
+                    ti.maxTextureSize = 256;
+                    ti.mipmapEnabled = false;
+                    ti.SaveAndReimport();
+                }
+                if (Load<Texture2D>(path)) talentArt[id] = path;
+            }
             foreach (var kv in talentArt) I(kv.Key, kv.Value);
             // Power-ups no longer share a picture with an ability.
             lib.icons.RemoveAll(i => i.name.StartsWith("pu_"));

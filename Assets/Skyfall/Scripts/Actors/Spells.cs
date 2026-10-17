@@ -13,6 +13,8 @@ namespace Skyfall
         public Player player;
         public float cooldown = 1f;
         float stormTimer = 2f;
+        int stormVolleys;
+        float heartburstT = 6f;
 
         // Blood Aura
         Transform auraRing, auraDisc;
@@ -71,11 +73,21 @@ namespace Skyfall
             if (cooldown <= 0f && player.mana >= Cost) AutoCast();
         }
 
+        /// Casts so far this run: Quickcast frees every 4th, Falling Sky doubles every 3rd meteor barrage.
+        int casts;
+
+        /// Blood Aura's radius at its current level (Crimson Tithe checks kills against it).
+        public float AuraRadius => (3.4f + 0.4f * Lv("blood_aura")) * player.AreaMult;
+
         void AutoCast()
         {
             int L = Level;
             float area = player.AreaMult;
             float dm = player.SpellDamageMult;
+            // Spell Surge (Spellblade Lv 5): a cast from full mana hits twice as hard.
+            bool surge = player.Plv("spellblade") >= 5 && player.mana >= player.MaxMana - 0.5f;
+            if (surge) dm *= 2f;
+            bool free = player.Has("p_quick") && (casts + 1) % 4 == 0;
             bool ok = false;
             switch (player.spellId)
             {
@@ -89,8 +101,24 @@ namespace Skyfall
                 cooldown = 0.25f;   // no target yet; check again shortly
                 return;
             }
-            player.mana -= Cost;
-            cooldown = CooldownTime;
+            casts++;
+            if (surge)
+            {
+                FX.Vfx("gq_sparks", player.HandPosition, 0.6f, 1f, null, 0.2f, new Color(0.5f, 0.85f, 1f));
+                FX.Text(player.Center + Vector3.up * 1.8f, "Surge!", new Color(0.5f, 0.85f, 1f));
+            }
+            if (free)
+            {
+                // Quickcast: no mana, and the spell is ready again at once.
+                cooldown = 0.05f;
+                FX.Vfx("gq_sparks", player.HandPosition, 0.6f, 1f, null, 0.2f, new Color(1f, 0.6f, 0.2f));
+                Sfx.Play("quickcast", -6f, 0.1f);
+            }
+            else
+            {
+                player.mana -= Cost;
+                cooldown = CooldownTime;
+            }
             player.CastAnim();
         }
 
@@ -103,21 +131,45 @@ namespace Skyfall
             stormTimer -= delta;
             if (stormTimer > 0f) return;
             stormTimer = (2.2f - 0.2f * L) * player.CooldownMult;
+            stormVolleys++;
             var used = new List<Enemy>();
             int hits = 0;
-            for (int i = 0; i < 1 + L; i++)
+            float range = 16f * player.AreaMult;
+            float dmg = (14f + 7f * L) * player.DamageMult;
+            // Supercell (Lv 4): every 4th volley calls down twice as many bolts.
+            int bolts = (1 + L) * (L >= 4 && stormVolleys % 4 == 0 ? 2 : 1);
+            for (int i = 0; i < bolts; i++)
             {
-                var e = game.RandomEnemyNear(player.Pos, 16f * player.AreaMult);
+                Enemy e;
+                bool eye = false;
+                // Eye of the Storm (Lv 5): the first bolt finds the toughest foe in range and hits it twice as hard.
+                if (i == 0 && L >= 5) { e = game.ToughestEnemyNear(player.Pos, range); eye = e != null; }
+                else e = game.RandomEnemyNear(player.Pos, range);
                 if (e == null || used.Contains(e)) continue;
                 used.Add(e);
                 var top = e.Pos + new Vector3(M.RandRange(-2f, 2f), 24f, M.RandRange(-2f, 2f));
                 var hitAt = e.Pos + new Vector3(0, e.size, 0);
-                FX.Bolt(top, hitAt, new Color(0.8f, 0.85f, 1f), 0.3f, 0.22f);
-                FX.Vfx("electro_hit", e.Pos + new Vector3(0, e.size, 0), 0.8f, 1.5f, null, 0f);
+                FX.Bolt(top, hitAt, new Color(0.8f, 0.85f, 1f), eye ? 0.55f : 0.3f, 0.22f);
+                if (!(eye && FX.Vfx("gq_lightning", e.Pos, 0.6f + 0.2f * e.size, 1.2f, null, 0f)))
+                    FX.Vfx("electro_hit", e.Pos + new Vector3(0, e.size, 0), 0.8f, 1.5f, null, 0f);
                 FX.Flash(hitAt, 1.6f, new Color(0.7f, 0.8f, 1f, 0.7f), 0.2f);
-                game.DamageEnemy(e, (14f + 7f * L) * player.DamageMult, Vector3.zero, 0f, true, SHOCK_COLOR);
+                if (L >= 3) e.Expose(2f);   // Ionize
+                game.DamageEnemy(e, dmg * (eye ? 2f : 1f), Vector3.zero, 0f, true, SHOCK_COLOR);
                 if (M.RandF() < 0.55f + 0.07f * L) e.Shock(1f);
                 hits++;
+                // Forked Strike (Lv 2): the bolt leaps on to one more foe close by.
+                if (L >= 2)
+                {
+                    var fork = game.NearestEnemy(e.Pos, 6f, 6f, null, used);
+                    if (fork)
+                    {
+                        used.Add(fork);
+                        FX.Bolt(hitAt, fork.Pos + new Vector3(0, fork.size, 0), new Color(0.8f, 0.85f, 1f), 0.18f, 0.2f);
+                        if (L >= 3) fork.Expose(2f);
+                        game.DamageEnemy(fork, dmg * 0.6f, Vector3.zero, 0f, true, SHOCK_COLOR);
+                        hits++;
+                    }
+                }
             }
             if (hits > 0)
             {
@@ -138,7 +190,7 @@ namespace Skyfall
             }
             if (!on) return;
             int L = Lv("blood_aura");
-            float rad = (3.4f + 0.4f * L) * player.AreaMult;
+            float rad = AuraRadius;
             var basePos = player.Pos;
             basePos.y = game.terrain.SurfaceHeight(basePos.x, basePos.z, player.Pos.y) + 0.12f;
             if (player.flying) basePos = player.Pos + new Vector3(0, 0.2f, 0);
@@ -149,13 +201,30 @@ namespace Skyfall
             auraDisc.localScale = new Vector3(rad, 1f, rad);
             auraDiscAlpha = Mathf.MoveTowards(auraDiscAlpha, 0.08f, delta * 0.6f);
             FX.SetAlpha(auraDiscMat, auraDiscAlpha);
+            float dmg = (6f + 3.5f * L) * player.DamageMult;
+            // Heartburst (Lv 5): every 6 s the aura bursts outward for triple damage, hurling foes back.
+            if (L >= 5)
+            {
+                heartburstT -= delta;
+                if (heartburstT <= 0f && game.NearestEnemy(player.Pos, rad, 3.5f) != null)
+                {
+                    heartburstT = 6f;
+                    FX.Shockwave(basePos + new Vector3(0, 0.1f, 0), rad * 1.3f, new Color(0.9f, 0.05f, 0.12f, 0.9f), 0.4f, false);
+                    FX.Vfx("gq_shockwave", basePos, rad / 4f, 1.2f, null, 0f, new Color(1f, 0.1f, 0.15f));
+                    Sfx.Play("heartburst", -3f, 0.1f);
+                    foreach (var e in game.EnemiesInRadius(player.Pos, rad * 1.3f, 3.5f))
+                        game.DamageEnemy(e, dmg * 3f, M.Flat(e.Pos - player.Pos).normalized, 10f, true, new Color(1f, 0.25f, 0.3f));
+                    auraDiscAlpha = 0.4f;
+                }
+            }
             auraTick -= delta;
             if (auraTick > 0f) return;
             auraTick = 0.5f;
-            float dmg = (6f + 3.5f * L) * player.DamageMult;
             float total = 0f;
             foreach (var e in game.EnemiesInRadius(player.Pos, rad, 3.5f))
             {
+                if (L >= 2) e.Slow(0.6f, 0.8f);                // Thin Blood
+                if (L >= 4) e.Bleed(1.2f, dmg * 0.5f);         // Open Veins
                 game.DamageEnemy(e, dmg, Vector3.zero, 0f, true, new Color(1f, 0.3f, 0.35f));
                 total += dmg;
                 if (M.RandF() < 0.3f) FX.Bolt(e.Pos + new Vector3(0, e.size, 0), player.Center, new Color(0.85f, 0.05f, 0.1f, 0.8f), 0.06f, 0.25f, 3);
@@ -202,6 +271,33 @@ namespace Skyfall
         {
             var t = game.NearestEnemy(player.Center, 28f, 20f);
             if (t == null) return false;
+            LaunchFrost(t, L, area, dm);
+            // Twin Comet (Lv 8): a second comet at another foe.
+            if (L >= 8)
+            {
+                var t2 = game.NearestEnemy(player.Center, 28f, 20f, t);
+                if (t2) LaunchFrost(t2, L, area, dm);
+            }
+            Sfx.Play("frost", -8f, 0.1f);
+            return true;
+        }
+
+        /// Shatter (Frost Bolt Lv 9): a foe that died frozen bursts into four shards.
+        public void Shatter(Vector3 at)
+        {
+            int L = Level;
+            float off = M.RandF() * M.TAU;
+            for (int i = 0; i < 4; i++)
+            {
+                float a = off + M.TAU * i / 4f;
+                IceShard.Spawn(this, at, new Vector3(Mathf.Cos(a), 0.05f, Mathf.Sin(a)) * 26f, (12f + 5f * L) * player.SpellDamageMult,
+                    0.2f + 0.03f * L, L >= Data.SPELL_FINAL_LEVEL);
+            }
+            FX.Burst(at, new Color(0.85f, 0.97f, 1f), 12, 8f, 0.25f);
+        }
+
+        void LaunchFrost(Enemy t, int L, float area, float dm)
+        {
             var from = player.HandPosition;
             bool evo = L >= Data.EVOLVE_LEVEL;
             FrostBolt.Spawn(this, from, (t.Pos + new Vector3(0, t.size, 0) - from).normalized * (evo ? 30f : 36f),
@@ -212,8 +308,6 @@ namespace Skyfall
                 pierce: L >= Data.SPELL_FINAL_LEVEL,
                 radius: 2.2f * area * (evo ? 1.6f : 1f),
                 evolved: evo);
-            Sfx.Play("frost", -8f, 0.1f);
-            return true;
         }
 
         bool Lightning(int L, float dm)
@@ -240,22 +334,46 @@ namespace Skyfall
             float w = evo ? 0.45f : 0.25f;
             FX.Bolt(player.HandPosition, first.Pos + new Vector3(0, first.size, 0), col, w, 0.2f);
             if (evo) FX.Bolt(player.HandPosition, first.Pos + new Vector3(0, first.size, 0), new Color(1f, 0.9f, 0.5f), w * 0.4f, 0.25f);
+            float baseDmg = dmg;
+            var firstPos = first.Pos;
             Zap(first, dmg, shockChance);
             hit.Add(first);
+            // Arc Flash (Lv 7): the first foe struck bursts in a 4m shockwave.
+            if (L >= 7)
+            {
+                FX.Shockwave(firstPos + new Vector3(0, 0.4f, 0), 4f, M.WithA(col, 0.8f), 0.3f);
+                foreach (var e in game.EnemiesInRadius(firstPos, 4f, 4f))
+                    if (e != first) game.DamageEnemy(e, baseDmg * 0.5f, M.Flat(e.Pos - firstPos).normalized, 4f, true, SHOCK_COLOR);
+            }
             var cur = first;
             int jumps = 2 + (L >= 2 ? 2 : 0) + (L >= 4 ? 2 : 0);
             for (int i = 0; i < jumps; i++)
             {
                 var nxt = game.NearestEnemy(cur.Pos, evo ? 12f : 9f, 8f, null, hit);
                 if (nxt == null) break;
+                if (L >= 6) dmg *= 1.1f;   // Overcharge
                 FX.Bolt(cur.Pos + new Vector3(0, cur.size, 0), nxt.Pos + new Vector3(0, nxt.size, 0), col, w * 0.75f, 0.2f);
                 Zap(nxt, dmg, shockChance);
                 hit.Add(nxt);
                 cur = nxt;
             }
-            FX.Flash(first.Pos + new Vector3(0, 1, 0), evo ? 2.5f : 1.5f, M.WithA(col, 0.8f), 0.2f);
-            // Storm Lord: a crackling orb stays where the chain ended and keeps zapping.
-            if (evo) StormOrb.Spawn(this, cur.Pos + new Vector3(0, cur.size + 1f, 0), dmg * 0.4f, col);
+            FX.Flash(firstPos + new Vector3(0, 1, 0), evo ? 2.5f : 1.5f, M.WithA(col, 0.8f), 0.2f);
+            // Storm Lord: a crackling orb stays where the chain ended and keeps zapping (Twin Orbs, Lv 8: one where it began too).
+            if (evo) StormOrb.Spawn(this, cur.Pos + new Vector3(0, cur.size + 1f, 0), baseDmg * 0.4f, col);
+            if (L >= 8 && cur != first) StormOrb.Spawn(this, firstPos + new Vector3(0, first.size + 1f, 0), baseDmg * 0.4f, col);
+            // Thunderhead (Lv 9): the last foe erupts in a thunderclap that shocks everything around it.
+            if (L >= 9)
+            {
+                var end = cur.Pos;
+                if (!FX.Vfx("gq_lightning", end, 1f, 1.2f, null, 0.1f)) FX.Flash(end + Vector3.up, 4f, M.WithA(col, 0.8f), 0.25f);
+                FX.Shockwave(end + new Vector3(0, 0.3f, 0), 5f, M.WithA(col, 0.9f), 0.35f);
+                Sfx.Play("thunderhead", end, -3f, 0.1f);
+                foreach (var e in game.EnemiesInRadius(end, 5f, 5f))
+                {
+                    game.DamageEnemy(e, baseDmg * 0.8f, M.Flat(e.Pos - end).normalized, 5f, true, SHOCK_COLOR);
+                    e.Shock(1f);
+                }
+            }
         }
 
         void Zap(Enemy e, float dmg, float shockChance)
@@ -270,6 +388,8 @@ namespace Skyfall
             var center = game.DensestPoint(player.Pos, 26f);
             if (M.IsInf(center)) return false;
             int count = 5 + (L >= 2 ? 2 : 0) + (L >= 4 ? 2 : 0);
+            // Falling Sky (Lv 9): every 3rd barrage drops twice as many stars.
+            if (L >= 9 && (casts + 1) % 3 == 0) count *= 2;
             bool evo = L >= Data.EVOLVE_LEVEL;
             float rad = (3f + (L >= 3 ? 1f : 0f)) * area;
             float ignite = 0.4f + (L >= 3 ? 0.2f : 0f) + 0.04f * L;
@@ -365,12 +485,17 @@ namespace Skyfall
             if (tick <= 0f)
             {
                 tick = 0.3f;
+                int L = book.Level;
                 foreach (var e in g.EnemiesInRadius(transform.position, radius, 8f))
                 {
                     var to = M.Flat(transform.position - e.Pos);
                     if (!e.isBoss) e.knock += to.normalized * pull * 0.7f;
+                    // Crushing Weight (Lv 6): caught foes are slowed and take more damage from everything.
+                    if (L >= 6) { e.Slow(0.5f, 0.5f); e.Expose(0.5f); }
                     g.DamageEnemy(e, tickDamage, Vector3.zero, 0f, false);
                 }
+                // Lodestar (Lv 8): gems and orbs nearby fly to the hero.
+                if (L >= 8) g.PullPickupsNear(transform.position, 14f);
             }
             if (life <= 0f)
             {
@@ -391,10 +516,31 @@ namespace Skyfall
         void Implode(Vector3 pos, float r, float dmg, Color col)
         {
             var g = book.game;
+            int L = book.Level;
+            // Collapse (Lv 9): what the implosion leaves below 15% health is torn apart.
+            if (L >= 9)
+                foreach (var e in g.EnemiesInRadius(pos, r, 8f))
+                    if (!e.isBoss && e.hp < e.maxHp * 0.15f)
+                    {
+                        FX.Text(e.Pos + new Vector3(0, 2f * e.size, 0), "Crushed", new Color(1f, 0.8f, 0.4f));
+                        g.DamageEnemy(e, e.hp + 1f, Vector3.zero, 0f, true, new Color(1f, 0.8f, 0.4f));
+                    }
             ImplodeStatic(g, pos, r, dmg, col);
             if (evolved)
                 foreach (var e in g.EnemiesInRadius(pos, r, 8f))
                     if (!e.isBoss) e.stunT = Mathf.Max(e.stunT, 1.5f);
+            // Void Shards (Lv 7): eight piercing shards of void fly out of the implosion.
+            if (L >= 7)
+            {
+                FX.Vfx("gq_implosion", pos, r / 4f, 1.5f, null, 0f);
+                Sfx.Play("voidshards", pos, -3f, 0.1f);
+                float off = M.RandF() * M.TAU;
+                for (int i = 0; i < 8; i++)
+                {
+                    float a = off + M.TAU * i / 8f;
+                    IceShard.Spawn(book, pos, new Vector3(Mathf.Cos(a), 0.05f, Mathf.Sin(a)) * 26f, dmg * 0.25f, 0f, true, new Color(0.75f, 0.45f, 1f));
+                }
+            }
         }
 
         static void ImplodeStatic(Game g, Vector3 pos, float r, float dmg, Color col)
@@ -470,6 +616,13 @@ namespace Skyfall
             if (hit || life <= 0f || pos.y < g.terrain.Height(pos.x, pos.z) + 0.2f) Burst();
         }
 
+        /// Freezes a foe; from Frost Bolt level 6 (Brittle) it is also Exposed for as long as the ice holds.
+        public static void Chill(SpellBook book, Enemy e, float t)
+        {
+            e.Freeze(t);
+            if (book.Level >= 6 && book.player.spellId == "frost_bolt") e.Expose(t);
+        }
+
         void Burst()
         {
             var g = book.game;
@@ -480,8 +633,8 @@ namespace Skyfall
             Sfx.Play("frost", at, -2f, 0.1f);
             foreach (var e in g.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f))
             {
+                if (evolved || M.RandF() < freezeChance) Chill(book, e, evolved ? 2f : 1.5f);
                 g.DamageEnemy(e, damage, Vector3.zero, 0f, true, new Color(0.7f, 0.95f, 1f));
-                if (evolved || M.RandF() < freezeChance) e.Freeze(evolved ? 2f : 1.5f);
             }
             if (evolved)
             {
@@ -506,12 +659,13 @@ namespace Skyfall
         SpellBook book;
         Vector3 velocity;
         float damage = 12f, freezeChance = 0.2f, life = 0.4f;
-        bool pierce;
+        bool pierce, frost = true;
         readonly HashSet<Enemy> hit = new HashSet<Enemy>();
 
-        public static void Spawn(SpellBook book, Vector3 at, Vector3 velocity, float damage, float freezeChance, bool pierce)
+        /// color: a non-frost shard (Gravity Well's void shards) in that color; it never freezes or chills.
+        public static void Spawn(SpellBook book, Vector3 at, Vector3 velocity, float damage, float freezeChance, bool pierce, Color? color = null)
         {
-            var s = new GameObject("IceShard").AddComponent<IceShard>();
+            var s = new GameObject(color.HasValue ? "VoidShard" : "IceShard").AddComponent<IceShard>();
             s.transform.SetParent(book.transform, false);
             s.transform.SetPositionAndRotation(at, M.FaceNegZ(velocity));
             s.book = book;
@@ -519,7 +673,8 @@ namespace Skyfall
             s.damage = damage;
             s.freezeChance = freezeChance;
             s.pierce = pierce;
-            var mi = FX.Part(s.transform, MeshGen.Cylinder(0f, 0.5f, 4), FX.Glow(new Color(0.75f, 0.95f, 1f), 2f), Vector3.zero, new Vector3(0.18f, 0.7f, 0.18f), new Vector3(-M.PI * 0.5f, 0, 0));
+            s.frost = !color.HasValue;
+            var mi = FX.Part(s.transform, MeshGen.Cylinder(0f, 0.5f, 4), FX.Glow(color ?? new Color(0.75f, 0.95f, 1f), 2f), Vector3.zero, new Vector3(0.18f, 0.7f, 0.18f), new Vector3(-M.PI * 0.5f, 0, 0));
             FX.NoShadow(mi);
         }
 
@@ -535,8 +690,12 @@ namespace Skyfall
             while ((e = g.FirstEnemyInRadius(transform.position - new Vector3(0, 1f, 0), 0.7f, 2.5f, false, hit)) != null)
             {
                 hit.Add(e);
-                g.DamageEnemy(e, damage, velocity.normalized, 2f, true, new Color(0.7f, 0.95f, 1f));
-                if (M.RandF() < freezeChance) e.Freeze(1.5f);
+                if (frost)
+                {
+                    if (book.Level >= 7) e.Slow(2f, 0.6f);                     // Frostbite
+                    if (M.RandF() < freezeChance) FrostBolt.Chill(book, e, 1.5f);
+                }
+                g.DamageEnemy(e, damage, velocity.normalized, 2f, true, frost ? new Color(0.7f, 0.95f, 1f) : new Color(0.85f, 0.65f, 1f));
                 if (!pierce)
                 {
                     Destroy(gameObject);
@@ -615,14 +774,27 @@ namespace Skyfall
             FX.Burst(target + new Vector3(0, 0.5f, 0), col, 16, 10f, 0.4f);
             Sfx.Play("boom", target, -3f + size * 2f);
             if (size > 1.5f) g.Shake(0.6f);
+            bool ember = size < 0.7f;
+            int L = book.Level;
             foreach (var e in g.EnemiesInRadius(target, radius, 4f))
             {
                 var outDir = M.Flat(e.Pos - target);
-                g.DamageEnemy(e, damage, outDir.normalized, 6f, true, Color.Lerp(col, Color.white, 0.3f));
+                g.DamageEnemy(e, damage, outDir.normalized, L >= 6 ? 10f : 6f, true, Color.Lerp(col, Color.white, 0.3f));
                 if (evolved || M.RandF() < igniteChance) e.Ignite(4f, damage * 0.15f);
+                if (L >= 6) e.Slow(2f, 0.6f);                                                       // Concussion
+                if (L >= 8 && !ember && !e.isBoss && outDir.magnitude < radius * 0.45f) e.stunT = Mathf.Max(e.stunT, 1f);   // Crater
             }
-            // Starfall: each star leaves a pool of blue starfire.
-            if (evolved) FirePatch.Spawn(g, target, radius * 0.9f, 3f, damage * 0.35f, new Color(0.45f, 0.7f, 1f));
+            // Starfall: each star leaves a pool of blue starfire (embers are too small to).
+            if (evolved && !ember) FirePatch.Spawn(g, target, radius * 0.9f, 3f, damage * 0.35f, new Color(0.45f, 0.7f, 1f));
+            // Splinterstar (Lv 7): the star breaks into three embers that strike close by.
+            if (L >= 7 && !ember)
+                for (int i = 0; i < 3; i++)
+                {
+                    float a = M.RandF() * M.TAU;
+                    var at = target + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * radius * M.RandRange(1f, 1.8f);
+                    at.y = g.terrain.SurfaceHeight(at.x, at.z, target.y + 1f);
+                    Spawn(book, target + Vector3.up * 2f, at, radius * 0.5f, damage * 0.3f, 0.08f * i, 0.5f, igniteChance, evolved);
+                }
             Destroy(gameObject);
         }
     }
@@ -710,10 +882,12 @@ namespace Skyfall
             if (!small) FX.Shockwave(at - new Vector3(0, 0.5f, 0), radius * 1.2f, custom ? new Color(fx.r, fx.g, fx.b, 0.8f) : new Color(1f, 0.6f, 0.2f, 0.8f), 0.35f);
             FX.Burst(at, custom ? fx : new Color(1f, 0.6f, 0.2f), small ? 8 : 18, 10f, small ? 0.3f : 0.45f);
             Sfx.Play(small ? "hit" : "boom", at, small ? -9f : -5f);
-            int hits = 0;
+            int hits = 0, kindled = 0;
+            int wl = ownerPlayer ? ownerPlayer.weaponLevel : 0;
             foreach (var e in game.EnemiesInRadius(at - new Vector3(0, 1f, 0), radius, 3.5f, ownerPlayer == null))
             {
                 var outDir = M.Flat(e.Pos - at);
+                if (e.Burning) kindled++;
                 game.dragonSource = ownerPlayer == null;   // a dragon-launched fireball (Inferno Wave) is the dragon's hit: bond XP, and it can hurt a wyvern
                 game.DamageEnemy(e, damage, outDir.normalized, small ? 2.5f : 6f, true, custom ? Color.Lerp(fx, Color.white, 0.4f) : new Color(1f, 0.7f, 0.3f));
                 game.dragonSource = false;
@@ -721,6 +895,17 @@ namespace Skyfall
                 hits++;
             }
             if (ownerPlayer) ownerPlayer.WeaponHits(hits, damage);
+            if (ownerPlayer && small)
+            {
+                // Staff Lv 2: a lick of flame where the bolt burst. Lv 4: bolts feeding a fire already burning restore mana.
+                if (wl >= 2)
+                {
+                    var ground = at;
+                    ground.y = game.terrain.SurfaceHeight(at.x, at.z, at.y + 0.5f);
+                    if (at.y - ground.y < 2.5f) FirePatch.Spawn(game, ground, 1.3f, 1.5f, damage * 2f * burnMult);   // burnMult is 0.15 x Kindling: 30% of the hit per second
+                }
+                if (wl >= 4 && kindled > 0) ownerPlayer.AddMana(Mathf.Min(kindled, 4));
+            }
             if (final) Destroy(gameObject);
         }
     }
@@ -763,7 +948,7 @@ namespace Skyfall
                 tick = 0.3f;
                 foreach (var e in g.EnemiesInRadius(transform.position, radius, 2.5f))
                 {
-                    e.Freeze(1f);
+                    FrostBolt.Chill(book, e, 1f);
                     g.DamageEnemy(e, damage, Vector3.zero, 0f, false);
                 }
             }

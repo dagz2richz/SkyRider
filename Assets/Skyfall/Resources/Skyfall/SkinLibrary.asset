@@ -130,6 +130,20 @@ MonoBehaviour:
   skyStage2: {fileID: 2100000, guid: 9ca22510633fbfd4399f1704cd9d5c72, type: 2}
   skyStage3: {fileID: 2100000, guid: d1fdb8e44b28da34d9e922cca0bc740e, type: 2}
   vfx:
+  - name: gq_shield
+    prefab: {fileID: 7314526620251459061, guid: ccf28ea29cf499744ac31bab90073aba, type: 3}
+  - name: gq_implosion
+    prefab: {fileID: 6441873369525384307, guid: 0f3d407feb92ebb49b98d0157de5008a, type: 3}
+  - name: gq_lightning
+    prefab: {fileID: 2705533495200665743, guid: e84c40719cee66744925cce01bef28fc, type: 3}
+  - name: gq_heal
+    prefab: {fileID: 339158821923109191, guid: 108ca465382c11742bd2c91fe4fdb13f, type: 3}
+  - name: gq_shockwave
+    prefab: {fileID: 9080140021571130472, guid: 82066d902ed0dd6488ddfd32eb994801, type: 3}
+  - name: gq_flames
+    prefab: {fileID: 8793510976239746625, guid: 8fa5143051527e949b0ae174c8430414, type: 3}
+  - name: gq_sparks
+    prefab: {fileID: 4503612902121041701, guid: 5a936c83b1746f14f9100db745e94f04, type: 3}
   - name: hit
     prefab: {fileID: 5238538877814813142, guid: 47096eff328e11a418ace7db2d72aa97, type: 3}
   - name: hit_fire
@@ -547,6 +561,22 @@ MonoBehaviour:
     icon: {fileID: 2800000, guid: 3d153d18a783c4947a672395c171e6a2, type: 3}
   - name: p_flamecaller
     icon: {fileID: 2800000, guid: d0a0c52e0a17eaf498c88f6db46d20f2, type: 3}
+  - name: k_wall
+    icon: {fileID: 2800000, guid: b632d4f76ffff074e8d512ec58851fee, type: 3}
+  - name: k_cleaver
+    icon: {fileID: 2800000, guid: 6f6b47ca37792484c98cabf981331e3d, type: 3}
+  - name: k_stance
+    icon: {fileID: 2800000, guid: cbf7479d5b39025419a8bb26d2c7e241, type: 3}
+  - name: h_barbed
+    icon: {fileID: 2800000, guid: 59eb69740e503ec479b9fa9792cd9385, type: 3}
+  - name: h_leap
+    icon: {fileID: 2800000, guid: e2eaff6a51043744ea41dbc760d3db9a, type: 3}
+  - name: h_essence
+    icon: {fileID: 2800000, guid: 4d9c2cc124e6e084a96f6b8a6d540a83, type: 3}
+  - name: p_quick
+    icon: {fileID: 2800000, guid: f847796a749b09842a7d661ee6497603, type: 3}
+  - name: p_wardpillar
+    icon: {fileID: 2800000, guid: bf5a75f1feaaa99458c3077d59f09efb, type: 3}
   - name: pu_speed
     icon: {fileID: 2800000, guid: 6e9350128577a0e489756a03996233cf, type: 3}
   - name: pu_damage

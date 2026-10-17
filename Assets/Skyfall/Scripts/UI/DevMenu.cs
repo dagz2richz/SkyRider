@@ -33,7 +33,7 @@ namespace Skyfall
         /// Opens every row of every hero and dragon tree (picks stay as they are).
         public static void OpenAllRows()
         {
-            foreach (var key in AllTrees()) Save.Tree(key).rows = Data.TREE_ROWS;
+            foreach (var key in AllTrees()) Save.Tree(key).rows = Data.RowCount(key);
             Save.Write();
         }
 
