@@ -21,6 +21,9 @@ namespace Skyfall
         public int xpValue = 1;
         public float radius = 0.5f;
         public bool isBoss;
+        /// For bosses: Data.MINI_BOSS or Data.FINAL_BOSS, and the model the stage gave it ("", "ogre", "dragon").
+        public int bossIdx = -1;
+        string bossModel = "";
 
         float attackCd;
         float slowT, slowF = 0.5f;
@@ -113,7 +116,10 @@ namespace Skyfall
             return e;
         }
 
-        public static Enemy MakeBoss(Game g, int idx, float hpMult, float dmgMult = 1f, string name = null, Color? tint = null)
+        /// model: "" (the stage 1 golems), "ogre" or "dragon" for the later final bosses. extraAbility is added to the
+        /// boss's usual rotation ("thorns", "gravehands").
+        public static Enemy MakeBoss(Game g, int idx, float hpMult, float dmgMult = 1f, string name = null, Color? tint = null,
+            string model = "", string extraAbility = "")
         {
             var d = Data.BOSSES[idx];
             var e = new GameObject("Boss_" + idx).AddComponent<Enemy>();
@@ -127,11 +133,21 @@ namespace Skyfall
             e.damage = d.damage * dmgMult;
             e.radius = 0.55f * e.size;
             e.abilities = d.abilities;
+            if (!string.IsNullOrEmpty(extraAbility))
+            {
+                // The signature attack comes up twice per cycle, so it is seen often.
+                var list = new System.Collections.Generic.List<string>(d.abilities);
+                list.Insert(2, extraAbility);
+                list.Add(extraAbility);
+                e.abilities = list.ToArray();
+            }
             e.isBoss = true;
+            e.bossIdx = idx;
+            e.bossModel = model ?? "";
             e.xpValue = 60 + idx * 60;
             e.abilityCd = 3f;
             if (!e.TrySkin(true, idx)) e.BuildOgre(tint.HasValue ? d.skin * tint.Value : d.skin, true, true);
-            else if (tint.HasValue && tint.Value != Color.white) e.TintModel(tint.Value);
+            else if (tint.HasValue && tint.Value != Color.white && e.bossModel != "dragon") e.TintModel(tint.Value);
             return e;
         }
 
@@ -150,10 +166,12 @@ namespace Skyfall
             if (lib == null) return false;
             GameObject prefab;
             RuntimeAnimatorController ctrl = null;
-            bool isOgreModel = false;
+            bool isOgreModel = false, isDragon = false;
             if (boss)
             {
-                if (bossIdx == Data.MINI_BOSS && lib.golem) prefab = lib.golem;
+                if (bossIdx == Data.FINAL_BOSS && bossModel == "ogre" && lib.forestBoss) { prefab = lib.forestBoss; isOgreModel = true; }
+                else if (bossIdx == Data.FINAL_BOSS && bossModel == "dragon" && lib.cryptBoss) { prefab = lib.cryptBoss; isDragon = true; }
+                else if (bossIdx == Data.MINI_BOSS && lib.golem) prefab = lib.golem;
                 else if (bossIdx == Data.FINAL_BOSS && lib.golemKing) prefab = lib.golemKing;
                 else { prefab = Skins.Pick(lib.bossOgres) ?? Skins.Pick(lib.ogres); isOgreModel = true; }
             }
@@ -167,7 +185,8 @@ namespace Skyfall
 
             model = FX.Node(transform, "Model");
             // Skeletons and knights stand at human height (scaled with their size roll); ogres tower at 2 m per size.
-            float headHeight = !boss && ModelKind != "" && !isOgreModel ? 1.75f * size / Data.OGRES[kind].size : 2.0f * size;
+            // A dragon is sized by its body height, about half an ogre's head height.
+            float headHeight = !boss && ModelKind != "" && !isOgreModel ? 1.75f * size / Data.OGRES[kind].size : (isDragon ? 1.0f : 2.0f) * size;
             rig = Skins.SpawnCharacter(prefab, model, headHeight, ctrl);
             var hand = rig.Bone(HumanBodyBones.RightHand);
             var leftHand = rig.Bone(HumanBodyBones.LeftHand);
@@ -691,7 +710,10 @@ namespace Skyfall
             if (dist < radius + player.HitRadius && vdiff < 1.4f + size && attackCd <= 0f && frozenT <= 0f)
             {
                 attackCd = 1f;
+                float healthBefore = player.hp + player.barrier;
                 player.TakeDamage(damage * AtkMult * (buffT > 0f ? 1.3f : 1f), this);
+                // A blow that lands (not one dodged, blocked or parried) shoves the hero away.
+                if (player.hp + player.barrier < healthBefore) player.Knockback(M.Flat(player.Pos - Pos), KnockDistance);
                 // Thorns or a reflect can kill it mid-swing (its model then already lies as a corpse).
                 if (dead) return;
                 if (rig) rig.Action(0.7f, "Attack01", "Attack02");
@@ -704,6 +726,11 @@ namespace Skyfall
         /// Big ogres and bosses are solid for the player; the small ones get shoved aside.
         public bool Solid => isBoss || kind == "brute" || kind == "hulk";
         public bool Airborne => airborne;
+
+        /// How hard this foe's blows (and body) shove the hero: regular < brute < hulk < mini boss < final boss, growing per stage.
+        public int KnockTier => isBoss ? (bossIdx == Data.FINAL_BOSS ? Data.KNOCK_FINAL_BOSS : Data.KNOCK_MINI_BOSS)
+            : kind == "hulk" ? Data.KNOCK_HULK : kind == "brute" ? Data.KNOCK_BRUTE : Data.KNOCK_REGULAR;
+        public float KnockDistance => Data.KnockDistance(KnockTier, game != null ? game.Stage.enemyMult : 1f);
 
         /// Moves this ogre sideways (the player or another body pushing it).
         public void Shove(Vector3 flat) => transform.position += flat;
@@ -998,6 +1025,59 @@ namespace Skyfall
                     }
                     break;
                 }
+                case "thorns":
+                {
+                    // Ulgrim: a fan of root lines. Each is outlined on the ground and fills toward its far end; when
+                    // the fill completes, thorns burst up along it from the boss outward. Step out of the strip.
+                    if (rig) rig.Action(1.3f, "Attack02", "Attack01");
+                    else if (armR != null) armR.KeysX((-2.4f, 0.5f), (0.5f, 0.3f));
+                    Sfx.Play("roar", Pos, -2f, 0.15f);
+                    FX.Text(Pos + new Vector3(0, 3f * size, 0), "Thorns!", THORN_GREEN);
+                    var origin = Pos;
+                    var lines = new Vector3[Data.THORNS_LINES];
+                    var starts = new Vector3[Data.THORNS_LINES];
+                    var lengths = new float[Data.THORNS_LINES];
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        float off = (i - (lines.Length - 1) * 0.5f) * Data.THORNS_SPREAD;
+                        lines[i] = Quaternion.AngleAxis(off * Mathf.Rad2Deg, Vector3.up) * dir;
+                        starts[i] = origin + lines[i] * (radius * 0.7f);
+                        lengths[i] = LineLength(starts[i], lines[i], Data.THORNS_LENGTH);
+                        FX.TelegraphLine(starts[i], lines[i], lengths[i], Data.THORNS_WIDTH, Data.THORNS_WARN, new Color(0.35f, 0.9f, 0.2f, 0.4f));
+                    }
+                    Tw.Run(ThornsRoutine(starts, lines, lengths, player));
+                    break;
+                }
+                case "gravehands":
+                {
+                    // Skarnath: bony hands claw out of the ground. One is aimed under the hero, one where they are heading,
+                    // the rest are scattered around them; every spot is ringed and fills for GRAVE_WARN seconds first.
+                    if (rig) rig.Action(1.4f, "Victory", "Attack01");
+                    else if (armR != null) armR.KeysX((-2.6f, 0.4f), (0.4f, 0.4f));
+                    Sfx.Play("roar", Pos, -2f, 0.15f);
+                    FX.Text(Pos + new Vector3(0, 3f * size, 0), "Grave Hands!", GRAVE_VIOLET);
+                    var spots = new System.Collections.Generic.List<Vector3>();
+                    var vel = M.Flat(player.velocity);
+                    var pp = player.Pos;
+                    spots.Add(pp);
+                    if (vel.magnitude > 1.5f) spots.Add(pp + vel.normalized * Mathf.Min(vel.magnitude * Data.GRAVE_WARN, Data.GRAVE_SPREAD));
+                    while (spots.Count < Data.GRAVE_HANDS)
+                    {
+                        float a = M.RandF() * M.TAU;
+                        float r = M.RandRange(2f, Data.GRAVE_SPREAD);
+                        spots.Add(pp + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * r);
+                    }
+                    for (int i = 0; i < spots.Count; i++)
+                    {
+                        var s = spots[i];
+                        if (islandBound) s = InsideIsland(s);
+                        s.y = game.terrain.SurfaceHeight(s.x, s.z, islandBound ? island.topY : pp.y + 1f);
+                        spots[i] = s;
+                        FX.Telegraph(s, Data.GRAVE_RADIUS, Data.GRAVE_WARN, new Color(GRAVE_VIOLET.r, GRAVE_VIOLET.g, GRAVE_VIOLET.b, 0.4f));
+                    }
+                    Tw.Run(GraveHandsRoutine(spots, player));
+                    break;
+                }
                 case "summon":
                     game.hud.Toast($"{displayName} calls the clan!");
                     Sfx.Play("roar", Pos, 0f, 0.1f);
@@ -1030,6 +1110,131 @@ namespace Skyfall
             float gh = game.terrain.GroundHeight(player.Pos.x, player.Pos.z, player.Pos.y);
             if (new Vector2(d.x, d.z).magnitude < rad && player.Pos.y - gh < 3f)
                 player.TakeDamage(damage * 1.4f * AtkMult);
+        }
+
+        static readonly Color THORN_GREEN = new Color(0.45f, 0.95f, 0.25f);
+        static readonly Color GRAVE_VIOLET = new Color(0.7f, 0.4f, 1f);
+
+        /// How far a strip starting at `from` can run along flat direction d before it leaves the boss island (or maxLen).
+        float LineLength(Vector3 from, Vector3 d, float maxLen)
+        {
+            if (!islandBound || island == null) return maxLen;
+            float l = 0f;
+            while (l < maxLen && island.Contains(from.x + d.x * (l + 1f), from.z + d.z * (l + 1f))) l += 1f;
+            return Mathf.Max(l, 3f);
+        }
+
+        /// The player stands at (flat) distance < r of `at` and on the ground there (not flying high above it).
+        bool PlayerInReach(Player player, Vector3 at, float r)
+        {
+            var d = player.Pos - at;
+            float gh = game.terrain.GroundHeight(player.Pos.x, player.Pos.z, player.Pos.y);
+            return new Vector2(d.x, d.z).magnitude < r && player.Pos.y - gh < 3f;
+        }
+
+        IEnumerator ThornsRoutine(Vector3[] starts, Vector3[] dirs, float[] lengths, Player player)
+        {
+            yield return Tw.Wait(Data.THORNS_WARN);
+            if (this == null || dead || player == null) yield break;
+            const float STEP = 3f;
+            bool hit = false;
+            float longest = 0f;
+            foreach (float l in lengths) longest = Mathf.Max(longest, l);
+            Sfx.Play("boom", Pos, -2f);
+            game.Shake(0.4f);
+            for (float s = STEP * 0.5f; s < longest; s += STEP)
+            {
+                for (int i = 0; i < dirs.Length; i++)
+                {
+                    if (s > lengths[i]) continue;
+                    var at = starts[i] + dirs[i] * s;
+                    at.y = game.terrain.SurfaceHeight(at.x, at.z, at.y + 1f);
+                    ThornSpikes(at);
+                    // Inside this 3 m cell of the strip (along it +-STEP/2, across it the half-width plus the hero's body).
+                    var rel = player.Pos - at;
+                    float along = rel.x * dirs[i].x + rel.z * dirs[i].z;
+                    float across = Mathf.Abs(-rel.x * dirs[i].z + rel.z * dirs[i].x);
+                    if (!hit && Mathf.Abs(along) <= STEP * 0.5f + 0.3f && across <= Data.THORNS_WIDTH + player.HitRadius * 0.6f && PlayerInReach(player, at, 99f))
+                    {
+                        hit = true;
+                        player.TakeDamage(damage * Data.THORNS_DAMAGE * AtkMult);
+                    }
+                }
+                yield return Tw.Wait(0.03f);
+                if (this == null || player == null) yield break;
+            }
+        }
+
+        /// A cluster of thorns that stabs up out of the ground, stays a moment and sinks back.
+        static void ThornSpikes(Vector3 at)
+        {
+            if (FX.root == null) return;
+            var holder = FX.Node(FX.root, "Thorns", at);
+            holder.position = at;
+            var bark = FX.Lit(new Color(0.3f, 0.2f, 0.1f));
+            var leaf = FX.Lit(new Color(0.25f, 0.5f, 0.12f));
+            for (int i = 0; i < 3; i++)
+            {
+                float h = M.RandRange(1.6f, 2.8f);
+                var off = new Vector3(M.RandRange(-0.8f, 0.8f), h * 0.5f, M.RandRange(-0.8f, 0.8f));
+                FX.Part(holder, MeshGen.Cylinder(0f, 0.5f, 5), i == 1 ? leaf : bark, off, new Vector3(0.45f, h, 0.45f),
+                    new Vector3(M.RandRange(-0.25f, 0.25f), 0f, M.RandRange(-0.25f, 0.25f)));
+            }
+            FX.Burst(at + new Vector3(0, 0.4f, 0), THORN_GREEN, 5, 4f, 0.2f);
+            holder.localScale = new Vector3(1f, 0.05f, 1f);
+            Tw.Run(Tw.Seq(
+                Tw.Lerp(0.12f, k => { if (holder) holder.localScale = new Vector3(1f, Mathf.Max(0.05f, k), 1f); }, holder),
+                Tw.Wait(0.6f),
+                Tw.Lerp(0.25f, k => { if (holder) holder.localScale = new Vector3(1f, Mathf.Max(0.05f, 1f - k), 1f); }, holder),
+                Tw.Call(() => { if (holder) Destroy(holder.gameObject); })));
+        }
+
+        IEnumerator GraveHandsRoutine(System.Collections.Generic.List<Vector3> spots, Player player)
+        {
+            yield return Tw.Wait(Data.GRAVE_WARN);
+            if (this == null || dead || player == null) yield break;
+            bool hit = false;
+            Sfx.Play("boom", Pos, -2f);
+            game.Shake(0.4f);
+            foreach (var at in spots)
+            {
+                GraveHand(at);
+                FX.Shockwave(at + new Vector3(0, 0.2f, 0), Data.GRAVE_RADIUS, M.WithA(GRAVE_VIOLET, 0.8f), 0.3f, true);
+                FX.Vfx("dark_explosion", at, Data.GRAVE_RADIUS / 5f, 1.5f, null, 0.04f, GRAVE_VIOLET);
+                if (!hit && PlayerInReach(player, at, Data.GRAVE_RADIUS + player.HitRadius * 0.4f))
+                {
+                    hit = true;
+                    player.TakeDamage(damage * Data.GRAVE_DAMAGE * AtkMult);
+                }
+            }
+        }
+
+        /// A skeletal hand that claws up out of the ground, grips at the air and sinks back.
+        static void GraveHand(Vector3 at)
+        {
+            if (FX.root == null) return;
+            var holder = FX.Node(FX.root, "GraveHand", at);
+            holder.position = at;
+            holder.rotation = Quaternion.Euler(0f, M.RandRange(0f, 360f), 0f);
+            var bone = FX.Lit(new Color(0.86f, 0.83f, 0.72f));
+            FX.Part(holder, MeshGen.Box(), bone, new Vector3(0, 1.1f, 0), new Vector3(0.4f, 2.2f, 0.4f));
+            var palm = FX.Node(holder, "Palm", new Vector3(0, 2.3f, 0));
+            FX.Part(palm, MeshGen.Box(), bone, Vector3.zero, new Vector3(1.1f, 0.3f, 0.9f));
+            var fingers = new Transform[4];
+            for (int i = 0; i < 4; i++)
+            {
+                fingers[i] = FX.Node(palm, "Finger", new Vector3(-0.4f + i * 0.27f, 0.1f, 0f));
+                FX.Part(fingers[i], MeshGen.Box(), bone, new Vector3(0, 0.55f, 0), new Vector3(0.16f, 1.1f, 0.16f));
+            }
+            FX.Part(palm, MeshGen.Sphere(8), FX.Glow(GRAVE_VIOLET, 2.5f), new Vector3(0, 0.25f, 0), Vector3.one * 0.35f);
+            holder.localScale = new Vector3(1f, 0.05f, 1f);
+            Tw.Run(Tw.Seq(
+                Tw.Lerp(0.15f, k => { if (holder) holder.localScale = new Vector3(1f, Mathf.Max(0.05f, k), 1f); }, holder),
+                // The fingers curl shut.
+                Tw.Lerp(0.35f, k => { foreach (var f in fingers) if (f) f.localRotation = Quaternion.Euler(-70f * k, 0f, 0f); }, holder),
+                Tw.Wait(0.4f),
+                Tw.Lerp(0.25f, k => { if (holder) holder.localScale = new Vector3(1f, Mathf.Max(0.05f, 1f - k), 1f); }, holder),
+                Tw.Call(() => { if (holder) Destroy(holder.gameObject); })));
         }
     }
 

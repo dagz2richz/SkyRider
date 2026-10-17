@@ -199,6 +199,21 @@ namespace Skyfall.EditorTools
             int f = frame;
             var d = FlatFwd(pl);
             if (f == 1) Tele(pl, OnGround(game, Vector3.zero));
+            if (f == 2)
+            {
+                // Final boss health: stage 2 is double and stage 3 triple what the stage's own multiplier alone would give.
+                for (int s = 0; s < Data.STAGE_COUNT; s++)
+                {
+                    var st = Data.STAGES[s];
+                    float plain = Data.BOSSES[Data.FINAL_BOSS].hp * Data.BOSS_STAT_MULT * st.enemyMult;
+                    float hp = Data.BOSSES[Data.FINAL_BOSS].hp * Data.FinalBossHpMult(st);
+                    Debug.Log($"SKYFALL_TEST finalboss stage {s + 1}: hp={hp:0} (x{hp / plain:0.0} of {plain:0}) model='{st.finalBossModel}' ability='{st.finalBossAbility}'");
+                    if (Mathf.Abs(hp / plain - (s == 0 ? 1f : s + 1f)) > 0.001f) Debug.LogError($"SKYFALL_TEST finalboss stage {s + 1}: wrong health multiplier");
+                    string tiers = "";
+                    for (int t = 0; t < Data.KNOCK_DIST.Length; t++) tiers += $" {Data.KnockDistance(t, st.enemyMult):0.0}m";
+                    Debug.Log($"SKYFALL_TEST knockback stage {s + 1} (regular, brute, hulk, mini, final):{tiers}");
+                }
+            }
             if (f < 1700 && f > 3 && !GameInput.TestMove.HasValue)
             {
                 // Keep the hero grounded and still for the power-up part.

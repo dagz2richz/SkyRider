@@ -136,12 +136,30 @@ namespace Skyfall
             return h;
         }
 
-        /// Plays the first state of the list that exists. Returns the state played or null.
+        /// The game's state names, and the names a model with its own animator (the dragons) uses for the same thing.
+        static string Alias(string s)
+        {
+            switch (s)
+            {
+                case "GetHit": return "Get Hit";
+                case "Attack01": return "Basic Attack";
+                case "Attack02": return "Tail Attack";
+                case "Victory": return "Scream";
+                default: return null;
+            }
+        }
+
+        /// Plays the first state of the list that exists (or its alias). Returns the state played or null.
         string PlayFirst(string[] states, float fade, bool restart)
         {
-            foreach (var s in states)
+            foreach (var name in states)
             {
-                if (!Has(s)) continue;
+                string s = name;
+                if (!Has(s))
+                {
+                    s = Alias(name);
+                    if (s == null || !Has(s)) continue;
+                }
                 if (s == current && !restart) return s;
                 anim.CrossFadeInFixedTime(s, fade, 0);
                 current = s;

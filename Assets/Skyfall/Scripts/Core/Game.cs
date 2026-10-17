@@ -403,8 +403,8 @@ namespace Skyfall
                         break;
                     }
                 }
-                // Harpooners only hunt riders: where the dragon can't fly yet they come as archers.
-                if (kind == "harpooner" && stage < Data.FLIGHT_STAGE) kind = "archer";
+                // Harpooners only hunt riders: where the dragon can't fly yet half of them come as archers, the rest as runts.
+                if (kind == "harpooner" && stage < Data.FLIGHT_STAGE) kind = M.RandF() < Data.HARPOONER_AS_ARCHER ? "archer" : "runt";
                 float a = M.RandF() * M.TAU;
                 float d = M.RandRange(34f, 52f);
                 var p = player.Pos + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * d;
@@ -474,7 +474,8 @@ namespace Skyfall
 
             var c = terrain.BossIslandCenter;
             var isl = terrain.bossIsland;
-            var b = Enemy.MakeBoss(this, Data.FINAL_BOSS, Data.BOSS_STAT_MULT * Stage.enemyMult, Data.BOSS_STAT_MULT * Mathf.Sqrt(Stage.enemyMult), Stage.finalBoss, Stage.bossTint);
+            var b = Enemy.MakeBoss(this, Data.FINAL_BOSS, Data.FinalBossHpMult(Stage), Data.BOSS_STAT_MULT * Mathf.Sqrt(Stage.enemyMult), Stage.finalBoss, Stage.bossTint,
+                Stage.finalBossModel, Stage.finalBossAbility);
             b.transform.SetParent(transform, false);
             if (isl != null && !M.IsInf(c))
             {

@@ -634,5 +634,23 @@ namespace Skyfall
                 Tw.Lerp(dur, k => ft.localScale = Vector3.Lerp(new Vector3(0.05f, 1f, 0.05f), new Vector3(radius, 1f, radius), k), holder),
                 Tw.Call(() => { if (holder) Object.Destroy(holder.gameObject); Object.Destroy(om); Object.Destroy(fm); })));
         }
+
+        /// A ground strip from `from` along flat direction dir: an outline that fills from the start to the far end over dur.
+        public static void TelegraphLine(Vector3 from, Vector3 dir, float length, float halfWidth, float dur, Color? colorIn = null)
+        {
+            if (root == null) return;
+            var color = colorIn ?? new Color(1f, 0.15f, 0.1f, 0.45f);
+            var holder = FxNode("TelegraphLine", from + new Vector3(0, 0.2f, 0));
+            holder.rotation = Quaternion.LookRotation(dir.sqrMagnitude > 0.0001f ? dir : Vector3.forward, Vector3.up);
+            var om = FadeMat(new Color(color.r, color.g, color.b, 0.25f), false);
+            NoShadow(Part(holder, MeshGen.Box(), om, new Vector3(0, 0, length * 0.5f), new Vector3(halfWidth * 2f, 0.04f, length)));
+            var fm = FadeMat(color, false);
+            var pivot = Node(holder, "Fill");
+            NoShadow(Part(pivot, MeshGen.Box(), fm, new Vector3(0, 0.02f, 0.5f), new Vector3(halfWidth * 2f, 0.04f, 1f)));
+            pivot.localScale = new Vector3(1f, 1f, 0.01f * length);
+            Tw.Run(Tw.Seq(
+                Tw.Lerp(dur, k => pivot.localScale = new Vector3(1f, 1f, Mathf.Max(0.01f, k * length)), holder),
+                Tw.Call(() => { if (holder) Object.Destroy(holder.gameObject); Object.Destroy(om); Object.Destroy(fm); })));
+        }
     }
 }

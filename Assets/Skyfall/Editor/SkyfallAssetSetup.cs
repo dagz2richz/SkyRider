@@ -308,6 +308,9 @@ namespace Skyfall.EditorTools
             lib.shaman = Load<GameObject>("Assets/Mini Legion Grunt PBR HP Polyart/Prefab/GruntPolyart.prefab");
             lib.golem = Load<GameObject>("Assets/Mini Legion Rock Golem PBR HP Polyart/Prefabs/PBR_Golem.prefab");
             lib.golemKing = Load<GameObject>("Assets/Mini Legion Rock Golem PBR HP Polyart/Prefabs/Polyart_Golem.prefab");
+            // Stage 2 and 3 final bosses: Ulgrim is a warpainted ogre, Skarnath a Soul Eater dragon (not the Usurper the player's dragons use).
+            lib.forestBoss = Load<GameObject>("Assets/Ogre/Prefabs/PBR/Ogre Green Warpainted.prefab");
+            lib.cryptBoss = Load<GameObject>(Dragons + "DragonSoulEater/Purple.prefab");
 
             // The swarm: Toon RTS skeletons (humanoid rig, so they share the Grunt's clips and their own) and Toon RTS
             // knights (generic rig, driven by the knight's own clips).

@@ -34,6 +34,10 @@ namespace Skyfall
         public GameObject shaman;
         public GameObject golem;
         public GameObject golemKing;
+        /// Final boss models of stages 2 and 3: a warpainted ogre (club in hand, the Grunt's clips) and a Soul Eater dragon
+        /// (its own animator: Idle, Walk, Run, Basic Attack, Tail Attack, Scream, Get Hit, Die).
+        public GameObject forestBoss;
+        public GameObject cryptBoss;
 
         [Header("Swarm (skeletons and renegade knights)")]
         public GameObject skeleton;

@@ -36,6 +36,8 @@ MonoBehaviour:
   shaman: {fileID: 388476414, guid: 7df524699deb44341b3693c8538df185, type: 3}
   golem: {fileID: 1067925524328404, guid: 6bbfea6690ef7724ba495c866081f855, type: 3}
   golemKing: {fileID: 1077356408, guid: c6cfc32748fb5004aa11a1be074b5c58, type: 3}
+  forestBoss: {fileID: 5674075356657402348, guid: 5bf37a0727d14eb44b2a5435c908fcba, type: 3}
+  cryptBoss: {fileID: 174418, guid: 36c38a65d57de7d4a9a582f9ee857701, type: 3}
   skeleton: {fileID: 165424, guid: 9f4313a771e05c64d8da7ae6bd19a19f, type: 3}
   skeletonController: {fileID: 9100000, guid: 101f2a0308156ab4a8b5521181b24337, type: 2}
   humanSoldier: {fileID: 100050, guid: ba24e610e0a338545b447ff44a3cf1cc, type: 3}

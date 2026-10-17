@@ -996,13 +996,13 @@ namespace Skyfall
                 if (Has("h_wings") && !onGround && GameInput.JumpHeld && velocity.y < -3f) velocity.y = -3f;
             }
 
-            var pos = Pos + velocity * delta;
+            var pos = Pos + velocity * delta + KnockStep(delta);
             float lim = WorldTerrain.PLAY_LIMIT + 8f;
             pos.x = Mathf.Clamp(pos.x, -lim, lim);
             pos.z = Mathf.Clamp(pos.z, -lim, lim);
             // Solid islands and ruins, then the ogres; a push keeps only the speed along the surface (so you slide along walls).
             var wanted = pos;
-            terrain.CollidePlayer(Pos, ref pos, PhysRadius, PhysHeight, ref velocity.y);
+            if (terrain.CollidePlayer(Pos, ref pos, PhysRadius, PhysHeight, ref velocity.y)) knockVel = Vector3.zero;   // a wall ends the shove
             CollideEnemies(ref pos, delta);
             if (delta > 0f && (Mathf.Abs(pos.x - wanted.x) + Mathf.Abs(pos.z - wanted.z)) > 1e-5f)
             {
@@ -1089,6 +1089,7 @@ namespace Skyfall
                 if (d > 0.001f) { nx = dx / d; nz = dz / d; }
                 else { float a = M.RandF() * M.TAU; nx = Mathf.Cos(a); nz = Mathf.Sin(a); }
                 float o = rr - d;
+                BumpInto(e, nx, nz);
                 if (e.Solid)
                 {
                     pos.x += nx * o;

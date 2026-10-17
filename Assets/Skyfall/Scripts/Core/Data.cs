@@ -635,13 +635,41 @@ namespace Skyfall
 
         /// Spawn weights per wave (four 2-minute waves, the hardest mix last), as (kind, weight) pairs in a fixed order.
         /// Ranged ogres were halved; harpooners (they only hunt riders in the air) are about one in ten of those left.
+        /// The potion-throwing "archer" share was halved again (20/40/48/48 -> 10/20/24/24).
         public static readonly (string kind, int weight)[][] WAVE_WEIGHTS =
         {
-            new[] { ("runt", 650), ("ogre", 300), ("archer", 20), ("harpooner", 2) },
-            new[] { ("runt", 450), ("ogre", 350), ("brute", 80), ("archer", 40), ("harpooner", 5), ("shaman", 20) },
-            new[] { ("runt", 350), ("ogre", 300), ("brute", 150), ("hulk", 40), ("archer", 48), ("harpooner", 6), ("shaman", 40) },
-            new[] { ("runt", 200), ("ogre", 270), ("brute", 230), ("hulk", 120), ("archer", 48), ("harpooner", 6), ("shaman", 60) },
+            new[] { ("runt", 650), ("ogre", 300), ("archer", 10), ("harpooner", 2) },
+            new[] { ("runt", 450), ("ogre", 350), ("brute", 80), ("archer", 20), ("harpooner", 5), ("shaman", 20) },
+            new[] { ("runt", 350), ("ogre", 300), ("brute", 150), ("hulk", 40), ("archer", 24), ("harpooner", 6), ("shaman", 40) },
+            new[] { ("runt", 200), ("ogre", 270), ("brute", 230), ("hulk", 120), ("archer", 24), ("harpooner", 6), ("shaman", 60) },
         };
+
+        /// Before the dragon can fly (stage 1) a harpooner roll becomes an archer this often, otherwise a runt, so the
+        /// converted rolls don't undo the halved archer share.
+        public const float HARPOONER_AS_ARCHER = 0.5f;
+
+        // ------------------------------------------------------------ knockback on the player
+
+        /// A monster's melee hit (and the player running into one) shoves the hero a short way. The distance in metres
+        /// by tier on stage 1: regular, brute, hulk, mini boss, final boss. It grows with the stage like the rest of the
+        /// game (the stage's enemyMult to the power KNOCK_STAGE_POW: x1.0 / x1.22 / x1.43 on stages 1 / 2 / 3).
+        public static readonly float[] KNOCK_DIST = { 1.4f, 2.2f, 2.8f, 3.6f, 4.5f };
+        public const int KNOCK_REGULAR = 0, KNOCK_BRUTE = 1, KNOCK_HULK = 2, KNOCK_MINI_BOSS = 3, KNOCK_FINAL_BOSS = 4;
+        public const float KNOCK_STAGE_POW = 0.25f;
+        /// Running into a monster pushes this fraction of a melee hit's distance, and only when closing at KNOCK_BUMP_SPEED m/s or more.
+        public const float KNOCK_BUMP_MULT = 0.5f;
+        public const float KNOCK_BUMP_SPEED = 4f;
+        /// The shove dies out with exp(-KNOCK_DECAY t): about 0.35 s of motion. Hard cap on any single shove, in metres.
+        public const float KNOCK_DECAY = 9f;
+        public const float KNOCK_MAX = 7f;
+        /// Seconds before another shove of similar strength can start (a clearly stronger blow still lands at once).
+        public const float KNOCK_COOLDOWN = 0.6f;
+        /// A shove is cancelled rather than push the hero over a drop of more than this many metres (island rims, cliffs).
+        public const float KNOCK_MAX_DROP = 0.8f;
+
+        /// Knockback distance in metres for a tier on a stage with the given enemyMult.
+        public static float KnockDistance(int tier, float stageEnemyMult) =>
+            Mathf.Min(KNOCK_MAX, KNOCK_DIST[Mathf.Clamp(tier, 0, KNOCK_DIST.Length - 1)] * Mathf.Pow(Mathf.Max(stageEnemyMult, 0.01f), KNOCK_STAGE_POW));
 
         /// Alchemists lob potions in a slow arc (flight time grows with distance) that splash where they land.
         public const float POTION_FLIGHT_MIN = 1.1f;
@@ -685,6 +713,21 @@ namespace Skyfall
                 abilities = new[] { "slam", "boulders", "charge", "summon", "boulders" }, skin = C(0.32f, 0.38f, 0.28f) },
         };
 
+        /// Signature attacks of the later final bosses (tuned against the boss's own damage stat).
+        /// Ulgrim's "thorns": a fan of root lines erupts from him; each line is marked on the ground for THORNS_WARN seconds.
+        public const int THORNS_LINES = 5;
+        public const float THORNS_SPREAD = 0.5f;     // radians between neighbouring lines (the middle one points at the hero)
+        public const float THORNS_LENGTH = 34f;
+        public const float THORNS_WIDTH = 1.7f;      // half-width of a line
+        public const float THORNS_WARN = 1.3f;
+        public const float THORNS_DAMAGE = 1.3f;     // x boss damage
+        /// Skarnath's "gravehands": bony hands claw out of the ground around the hero after GRAVE_WARN seconds.
+        public const int GRAVE_HANDS = 9;
+        public const float GRAVE_RADIUS = 2.8f;
+        public const float GRAVE_WARN = 1.4f;
+        public const float GRAVE_SPREAD = 13f;       // how far from the hero the stray hands may rise
+        public const float GRAVE_DAMAGE = 1.2f;      // x boss damage
+
         // ------------------------------------------------------------ stages
 
         /// The run is three stages. Clearing a stage's final boss opens a portal to the next; the hero keeps everything.
@@ -693,6 +736,10 @@ namespace Skyfall
             public string name, intro;
             public string[] waves;
             public string miniBoss, finalBoss, islandName;
+            /// The final boss's health on top of every other multiplier (stage 2: x2, stage 3: x3), its model ("" = the
+            /// golem king, "ogre", "dragon") and the signature attack it adds to the usual set ("" = none).
+            public float finalBossHpMult = 1f;
+            public string finalBossModel = "", finalBossAbility = "";
             /// Enemy health multiplier on top of the stage's time growth (damage grows by its square root).
             public float enemyMult;
             /// Terrain palette.
@@ -702,6 +749,9 @@ namespace Skyfall
             public float fogDensity, sunPitch;
             public Color bossTint;
         }
+
+        /// Health multiplier handed to the final boss of a stage: the boss stat multiplier, the stage's growth and its extra boss health.
+        public static float FinalBossHpMult(StageDef s) => BOSS_STAT_MULT * s.enemyMult * s.finalBossHpMult;
 
         public const int STAGE_COUNT = 3;
         public static readonly StageDef[] STAGES =
@@ -716,6 +766,7 @@ namespace Skyfall
             new StageDef { name = "The Verdant Marches", intro = "The portal sets you down among forest villages. The clans followed you through.",
                 waves = new[] { "Whispering Pines", "The Hunted Hamlet", "Moonlit Clearing", "Wolfsbane Dusk" },
                 miniBoss = "Vorna the Thornhide", finalBoss = "Ulgrim, the Forest Tyrant", islandName = "Forest Tyrant's Island", enemyMult = 2.185f,
+                finalBossHpMult = 2f, finalBossModel = "ogre", finalBossAbility = "thorns",
                 grass = C(0.22f, 0.42f, 0.14f), grass2 = C(0.32f, 0.5f, 0.17f), dry = C(0.42f, 0.45f, 0.22f), dirt = C(0.36f, 0.27f, 0.17f),
                 rock = C(0.45f, 0.45f, 0.42f), ash = C(0.2f, 0.22f, 0.12f), mud = C(0.24f, 0.22f, 0.14f), scorch = 0.15f,
                 fog = C(0.55f, 0.66f, 0.6f), skyTop = C(0.3f, 0.48f, 0.66f), skyHorizon = C(0.72f, 0.78f, 0.7f), sunColor = C(1f, 0.96f, 0.85f),
@@ -723,6 +774,7 @@ namespace Skyfall
             new StageDef { name = "The Sunken Crypts", intro = "A land of buried halls and torchlight. Their warlord waits at the end.",
                 waves = new[] { "Crypt Gate", "Halls of Bone", "The Drowned Chapel", "Last Torch" },
                 miniBoss = "Mordak the Gravecaller", finalBoss = "Skarnath, the Crypt Warlord", islandName = "Crypt Warlord's Island", enemyMult = 4.2f,
+                finalBossHpMult = 3f, finalBossModel = "dragon", finalBossAbility = "gravehands",
                 grass = C(0.31f, 0.3f, 0.25f), grass2 = C(0.38f, 0.34f, 0.27f), dry = C(0.46f, 0.39f, 0.29f), dirt = C(0.33f, 0.27f, 0.21f),
                 rock = C(0.42f, 0.4f, 0.42f), ash = C(0.13f, 0.11f, 0.12f), mud = C(0.2f, 0.17f, 0.15f), scorch = 0.35f,
                 fog = C(0.4f, 0.37f, 0.48f), skyTop = C(0.22f, 0.2f, 0.34f), skyHorizon = C(0.55f, 0.45f, 0.58f), sunColor = C(0.95f, 0.85f, 1f),
