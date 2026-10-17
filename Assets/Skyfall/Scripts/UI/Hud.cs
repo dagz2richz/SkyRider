@@ -1128,7 +1128,7 @@ namespace Skyfall
                 {
                     var d = Data.SPELLS[id];
                     name = d.name; desc = d.desc; c = d.color;
-                    extra = $"{(int)d.cost} mana · {d.cd:0.0}s cooldown";
+                    extra = $"{(int)d.cost} mana · {d.cd:0.0} s cooldown";
                 }
                 else
                 {
@@ -1196,7 +1196,7 @@ namespace Skyfall
                 Space(10);
                 Label($"{title}   ·   {state.xp} {xpName} to spend   ·   {state.earned} earned", 20, Color.Lerp(accent, PARCHMENT, 0.4f), 6, TextAnchor.UpperCenter);
                 if (!isHero && !Save.IsDragonUnlocked(id))
-                    Label("You don't own this dragon yet: a stage warlord may hold it captive: defeat one to set it free.", 14, M.Darken(PARCHMENT, 0.3f), 3, TextAnchor.UpperCenter);
+                    Label("You don't own this dragon yet: a stage warlord may hold it captive; defeat one to set it free.", 14, M.Darken(PARCHMENT, 0.3f), 3, TextAnchor.UpperCenter);
                 Space(10);
                 for (int r = 0; r < rows.Length; r++)
                 {
@@ -1256,7 +1256,7 @@ namespace Skyfall
                     Label("Picked during a run:   " + string.Join("     ", names), 14, M.Darken(PARCHMENT, 0.2f), 3, TextAnchor.UpperCenter);
                     Space(4);
                 }
-                Label("Open a row with XP, then click a talent to choose it (you can swap any time out of a run).   Gamepad: LB / RB switch trees", 14, M.Darken(PARCHMENT, 0.3f), 3, TextAnchor.UpperCenter);
+                Label("Open a row with XP, then click a talent to choose it (you can swap at any time outside a run).   Gamepad: LB / RB switch trees", 14, M.Darken(PARCHMENT, 0.3f), 3, TextAnchor.UpperCenter);
                 Space(8);
                 CenterRow(() =>
                 {

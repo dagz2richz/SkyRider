@@ -4,7 +4,7 @@ A medieval battlemage survivors roguelike where your dragon is a partner that gr
 **Unity 6 (6000.6.5f1, URP)**. (The code namespace and folders are still called `Skyfall`, from the Godot original.)
 
 Cross three lands. Each stage is eight minutes against growing waves of skeletons, renegade knights and ogres: a
-champion arrives at 4:00, and at 0:00 the field clears and the stage's warlord waits on a giant floating island. Slay
+champion arrives at 4:00, and at 0:00 the field clears and the stage's warlord waits (on a giant floating island in worlds 2 and 3). Slay
 him and a portal carries you to the next land. Everything attacks on its own: you move, fly your dragon and choose
 upgrades.
 
@@ -152,8 +152,8 @@ Any Xbox, PlayStation or generic controller works alongside the keyboard and mou
 | 2 | The Verdant Marches: forest villages, daylight | Ulgrim, the Forest Tyrant |
 | 3 | The Sunken Crypts: torch-lit crypt halls, night | Skarnath, the Crypt Warlord |
 
-Beating stage 3 is a victory. A warlord may drop an egg for a dragon you don't own; the first egg is guaranteed,
-after that it is a 50% chance. Bosses drop no XP.
+Beating stage 3 is a victory. A warlord may hold a dragon you don't own captive; walk up to it to break its chains. The first rescue is
+guaranteed, after that it is a 50% chance. Bosses drop no XP.
 
 ## Saving
 
@@ -170,7 +170,7 @@ The title screen has a **Dev** menu for testing (free talents, 10x XP, unlock ev
 
 | File | What it does |
 | --- | --- |
-| `Core/Game.cs` | Run manager: stages and portals, waves, spawning, bosses, eggs, XP, level-ups, rerolls, run save, sky |
+| `Core/Game.cs` | Run manager: stages and portals, waves, spawning, bosses, dragon rescues, XP, level-ups, rerolls, run save, sky |
 | `Core/Data.cs` | All tunable numbers: heroes, weapons, spells, dragons, stat buckets, armor, talents, enemies, bosses, stages |
 | `Core/Save.cs` | Save slots, talent trees, settings, owned dragons and the run in progress (JSON) |
 | `Actors/Player.cs` | Hero movement, flight, camera, stats, armor, auto attacks, defenses, harpoon hits |

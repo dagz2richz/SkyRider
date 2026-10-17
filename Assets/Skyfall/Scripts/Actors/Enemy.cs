@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Skyfall
 {
-    /// Ogres of every size, and the giant ogre bosses: model, movement, status effects, boss abilities.
+    /// Foes of every kind (skeletons, knights, ogres, alchemists) and the bosses: model, movement, status effects, boss abilities.
     public partial class Enemy : MonoBehaviour   // WYVERN logic lives in Wyvern.cs
     {
         static readonly Color[] SKINS =
@@ -415,7 +415,7 @@ namespace Skyfall
         public bool Burning => burnT > 0f;
         public bool Poisoned => poisonT > 0f;
 
-        /// Poison (Venom Wyrm): damage over time; an ogre that dies poisoned bursts and poisons its neighbors.
+        /// Poison: damage over time (no dragon applies it now); an ogre that dies poisoned bursts and poisons its neighbors.
         public void Poison(float t, float dps)
         {
             poisonT = Mathf.Max(poisonT, t);

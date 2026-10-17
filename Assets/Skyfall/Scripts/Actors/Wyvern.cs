@@ -112,7 +112,7 @@ namespace Skyfall
             if (announcedFor != g && g.hud != null)
             {
                 announcedFor = g;
-                g.hud.Toast("A wyvern circles overhead: only your dragon can hurt it (or ride your dragon with Q)");
+                g.hud.Toast("A wyvern circles overhead: only your dragon can hurt it (or you, while riding it with Q)");
             }
             FX.Text(e.Pos + Vector3.up * 3f, "Wyvern: dragon only!", new Color(0.75f, 0.6f, 1f));
             Sfx.Play("roar", e.Pos, -4f, 0.15f);

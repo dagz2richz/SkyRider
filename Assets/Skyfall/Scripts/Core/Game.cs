@@ -53,7 +53,7 @@ namespace Skyfall
         public int stage = 1;
         public int bossesSpawned;
         public int bossesSlain;
-        /// True once the timer hit 0:00: the field is cleared and the stage's final boss waits on the floating island.
+        /// True once the timer hit 0:00: the field is cleared and the stage's final boss waits (on the floating island in worlds 2 and 3).
         public bool finalStarted;
         public bool miniSpawned;
         Enemy miniBoss;
@@ -1397,7 +1397,7 @@ namespace Skyfall
                 // It grew by devouring the last world's warlord (the still after his defeat).
                 string fed = Data.STAGES[Mathf.Clamp(stage - 2, 0, Data.STAGES.Length - 1)].finalBoss.Split(',')[0];
                 if (stage < Data.GUARDIAN_WINGS_STAGE) hud.Banner($"Your dragon has grown: {age}", $"Fed by {fed}'s fall, it can carry you now (Q)");
-                else hud.Banner($"Your dragon is grown: {age}", $"Fed by {fed}'s fall: Guardian Wings at 30% health, and {Data.FLIGHT_TIME_ADULT:0} s of flight (Q)");
+                else hud.Banner($"Your dragon has grown: {age}", $"Fed by {fed}'s fall: Guardian Wings at 30% health, and {Data.FLIGHT_TIME_ADULT:0} s of flight (Q)");
             }
         }
 
