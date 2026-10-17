@@ -18,6 +18,11 @@ namespace Skyfall
         public RuntimeAnimatorController huntressController;
         /// The RPG Hero's own sword-and-shield clips plus a fall and a leap attack (built by the setup).
         public RuntimeAnimatorController knightController;
+        /// Animator for the Ember Mage (Kevin Iglesias male clips, left-hand cast), used with the rigged hero art.
+        public RuntimeAnimatorController mageController;
+        /// True when the hero slots hold the game's own rigged models (Assets/Skyfall/Art/Heroes): they come dressed and
+        /// armed, so the pack-model dress-up (Huntress armor and javelin, wizard staff) is skipped.
+        public bool artHeroes;
 
         [Header("Dragons (all the Usurper model; its color variants)")]
         public GameObject dragonBlue;
@@ -149,7 +154,7 @@ namespace Skyfall
         }
 
         public GameObject Hero(string id) => id == "knight" ? knight : id == "pyromancer" ? pyromancer : id == "huntress" ? huntress : null;
-        public RuntimeAnimatorController HeroController(string id) => id == "huntress" ? huntressController : id == "knight" ? knightController : null;
+        public RuntimeAnimatorController HeroController(string id) => id == "huntress" ? huntressController : id == "knight" ? knightController : id == "pyromancer" ? mageController : null;
         /// A color variant of the dragon model: blue, red, black or albino.
         public GameObject Dragon(string skin) => skin == "blue" ? dragonBlue : skin == "red" ? dragonRed : skin == "black" ? dragonBlack : skin == "albino" ? dragonAlbino : null;
     }

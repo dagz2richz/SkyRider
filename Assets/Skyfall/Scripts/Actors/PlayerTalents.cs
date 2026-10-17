@@ -104,7 +104,9 @@ namespace Skyfall
                 if (d == null) continue;
                 foreach (var kv in d.mods) mods[kv.Key] = Mod(kv.Key) + kv.Value;
             }
-            if (Has("h_wings") && wings == null) BuildWings();
+            // The rigged hero art has no wing sockets and the glow blades clash with it: the talent still grants its
+            // jumps and glide, only the wing visual is left off.
+            if (Has("h_wings") && wings == null && !(Skins.Lib && Skins.Lib.artHeroes)) BuildWings();
             if (!Has("h_wings") && wings != null) { Destroy(wings.gameObject); wings = null; }
             if (Has("p_sunorbs") && orbs == null) BuildOrbs();
             if (!Has("p_sunorbs") && orbs != null) { Destroy(orbs.gameObject); orbs = null; }

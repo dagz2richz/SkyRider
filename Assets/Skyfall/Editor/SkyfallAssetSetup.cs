@@ -22,6 +22,11 @@ namespace Skyfall.EditorTools
         /// The dedicated wyvern model (generated separately); the setup falls back to an evil dragon until it exists.
         const string WyvernPath = "Assets/Skyfall/Art/Wyvern/Wyvern.prefab";
         const string WyvernHighPolyPath = "Assets/Skyfall/Art/Wyvern/Wyvern_HighPoly.prefab";
+        /// The game's own rigged hero models (humanoid FBX exported from ArtSource/Heroes) and the blue dragon
+        /// (generic rig with its own clips, exported from ArtSource/Dragon). Each gets a prefab next to its FBX.
+        const string HeroArt = "Assets/Skyfall/Art/Heroes/";
+        const string BlueDragonFbx = "Assets/Skyfall/Art/BlueDragon/BlueDragon.fbx";
+        const string MageControllerPath = "Assets/Skyfall/Resources/Skyfall/EmberMage.controller";
 
         static readonly string[] CharacterFolders =
         {
@@ -270,12 +275,31 @@ namespace Skyfall.EditorTools
             lib.huntress = Load<GameObject>(KI + "Unity Demo Scenes/Human Melee Animations/Prefabs/Characters/HumanF_Dummy_Red - Polearm.prefab");
             lib.huntressController = BuildHuntressController();
             lib.knightController = BuildKnightController(lib.knight);
+            lib.mageController = null;
+            lib.artHeroes = false;
+            // The game's own rigged heroes replace the pack models when all three have landed. The pack clips are
+            // humanoid, so the same controllers drive them; the Ember Mage gets male clips with a left-hand cast.
+            var artKnight = HeroArtPrefab("DragonguardKnight");
+            var artHuntress = HeroArtPrefab("BloodHuntress");
+            var artMage = HeroArtPrefab("EmberMage");
+            if (artKnight && artHuntress && artMage)
+            {
+                lib.knight = artKnight;
+                lib.huntress = artHuntress;
+                lib.pyromancer = artMage;
+                lib.mageController = BuildMageController();
+                lib.artHeroes = true;
+            }
 
             // Dragons: every dragon is the Usurper; the game tints the variants per dragon (albino is the base for the new ones).
             lib.dragonBlue = Load<GameObject>(Dragons + "DragonUsurper/Blue.prefab");
             lib.dragonRed = Load<GameObject>(Dragons + "DragonUsurper/Red.prefab");
             lib.dragonBlack = Load<GameObject>(Dragons + "DragonUsurper/Black.prefab");
             lib.dragonAlbino = Load<GameObject>(Dragons + "DragonUsurper/Albino.prefab");
+            // The Azure Wyrm is the game's own blue dragon when it has been exported (its clips use the state names
+            // DragonPet asks for, so it gets a controller of its own). The other dragons keep the Usurper.
+            var blue = DragonArtPrefab(BlueDragonFbx);
+            if (blue) lib.dragonBlue = blue;
 
             // The wyvern enemy: the dedicated model when it has landed, otherwise a stand-in evil dragon (the Terror Bringer,
             // NOT the Usurper that is the player's dragon) that the game scales down and tints.
@@ -493,6 +517,81 @@ namespace Skyfall.EditorTools
             }
             EditorUtility.SetDirty(ctrl);
             return ctrl;
+        }
+
+        /// The Ember Mage: Kevin Iglesias male idle and locomotion, a left-hand directional cast (his wand hand), a hit
+        /// and a death, with the state names the game asks for.
+        static RuntimeAnimatorController BuildMageController()
+        {
+            string m = KI + "Animations/Male/";
+            return BuildController(MageControllerPath, new (string, string)[]
+            {
+                ("Idle", m + "Idles/HumanM@Idle01.fbx"),
+                ("Walk", m + "Movement/Walk/HumanM@Walk01_Forward.fbx"),
+                ("Run", m + "Movement/Run/HumanM@Run01_Forward.fbx"),
+                ("JumpAir", m + "Movement/Jump/HumanM@Fall01.fbx"),
+                ("Attack01", m + "Combat/Spellcasting/MagicAttacks/Directional/HumanM@MagicAttackDirect1H01_L - Cast.fbx"),
+                ("JumpUpAttack", m + "Combat/Spellcasting/MagicAttacks/Directional/HumanM@MagicAttackDirect1H01_L - Cast.fbx"),
+                ("GetHit", m + "Combat/HumanM@CombatDamage01.fbx"),
+                ("Die", m + "Combat/HumanM@Death01.fbx"),
+            });
+        }
+
+        /// A prefab for one of the game's rigged heroes (Assets/Skyfall/Art/Heroes/&lt;name&gt;/&lt;name&gt;_Rigged.fbx), imported
+        /// as humanoid with its texture extracted. The game sets the controller at spawn. Null when the FBX is missing.
+        static GameObject HeroArtPrefab(string name)
+        {
+            string dir = HeroArt + name + "/", fbx = dir + name + "_Rigged.fbx", prefab = dir + name + ".prefab";
+            if (!File.Exists(fbx) || !(AssetImporter.GetAtPath(fbx) is ModelImporter imp)) return null;
+            if (imp.animationType != ModelImporterAnimationType.Human || imp.importAnimation)
+            {
+                imp.animationType = ModelImporterAnimationType.Human;
+                imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                imp.importAnimation = false;
+                imp.SaveAndReimport();
+            }
+            return SavePrefab(fbx, prefab, null);
+        }
+
+        /// A prefab for a generic-rig model that carries its own clips: one controller state per clip (named after the
+        /// clip, Blender's "Rig|" prefix removed), looping idle, walk, run and flight clips.
+        static GameObject DragonArtPrefab(string fbx)
+        {
+            if (!File.Exists(fbx) || !(AssetImporter.GetAtPath(fbx) is ModelImporter imp)) return null;
+            var loops = new HashSet<string> { "Idle", "Walk", "Run", "Flame Attack", "Fly Forward", "Fly Float", "Fly Glide", "Fly Flame Attack" };
+            var clips = imp.clipAnimations.Length > 0 ? imp.clipAnimations : imp.defaultClipAnimations;
+            foreach (var c in clips)
+            {
+                c.name = c.takeName.Contains("|") ? c.takeName.Substring(c.takeName.IndexOf('|') + 1) : c.takeName;
+                c.loopTime = loops.Contains(c.name);
+            }
+            imp.animationType = ModelImporterAnimationType.Generic;
+            imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            imp.importAnimation = true;
+            imp.clipAnimations = clips;
+            imp.SaveAndReimport();
+            string ctrlPath = Path.ChangeExtension(fbx, ".controller");
+            AssetDatabase.DeleteAsset(ctrlPath);
+            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(ctrlPath);
+            var sm = ctrl.layers[0].stateMachine;
+            foreach (var clip in AssetDatabase.LoadAllAssetsAtPath(fbx).OfType<AnimationClip>().Where(c => !c.name.StartsWith("__preview")))
+            {
+                var st = sm.AddState(clip.name);
+                st.motion = clip;
+                if (clip.name == "Idle") sm.defaultState = st;
+            }
+            return SavePrefab(fbx, Path.ChangeExtension(fbx, ".prefab"), ctrl);
+        }
+
+        static GameObject SavePrefab(string fbx, string prefabPath, RuntimeAnimatorController ctrl)
+        {
+            var inst = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(fbx));
+            var anim = inst.GetComponent<Animator>() ?? inst.AddComponent<Animator>();
+            anim.applyRootMotion = false;
+            if (ctrl) anim.runtimeAnimatorController = ctrl;
+            var saved = PrefabUtility.SaveAsPrefabAsset(inst, prefabPath);
+            UnityEngine.Object.DestroyImmediate(inst);
+            return saved;
         }
 
         /// Imports a model as humanoid (making its own avatar) and its separate animation files as humanoid clips

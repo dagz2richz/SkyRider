@@ -12,15 +12,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 62c560a6db4d2374eb736008b7fcd684, type: 3}
   m_Name: SkinLibrary
   m_EditorClassIdentifier: Assembly-CSharp::Skyfall.SkinLibrary
-  knight: {fileID: 1319517528997712, guid: 1543549dcdf638d488bd40cb68dd9b8e, type: 3}
-  pyromancer: {fileID: 1248815240492774, guid: ccd8c3b89aa02e943a08ab9238a8a70c, type: 3}
-  huntress: {fileID: 7991373657290914776, guid: 0d1dc15b702800b41900704ee66dac39, type: 3}
+  knight: {fileID: 590401641143935464, guid: a49cb763a55913544b2c432ce3d66096, type: 3}
+  pyromancer: {fileID: 7050478522302761404, guid: d40e13251a7b2634cb7f2bbdaff7f85b, type: 3}
+  huntress: {fileID: 5727217182150115001, guid: 62f67df062ba8fd4d9f04b03c6189cf3, type: 3}
   huntressController: {fileID: 9100000, guid: 70015e4d52e077d4894c25a94115fb2f, type: 2}
   knightController: {fileID: 9100000, guid: 131dccc378951544e9641ea5c7ee05b3, type: 2}
-  dragonBlue: {fileID: 194904, guid: 445a5c29e7f715947b713a753f242af0, type: 3}
+  mageController: {fileID: 9100000, guid: 4b209097d694c384b80925b2e9588d6f, type: 2}
+  artHeroes: 1
+  dragonBlue: {fileID: 4923504583379633661, guid: 19460e201c583ee48a77816b7ebfae56, type: 3}
   dragonRed: {fileID: 139696, guid: eb58e8f2831a51f45a44a261e6710cdd, type: 3}
   dragonBlack: {fileID: 116688, guid: 09ade59177310454ba3c93ae4b7dc125, type: 3}
   dragonAlbino: {fileID: 132738, guid: aeb4794909bc89d43b72ad784903e0f5, type: 3}
+  wyvern: {fileID: 8086867768170610240, guid: 8f5a575d356148f42a4f152c97e3da13, type: 3}
+  wyvernFallback: 0
   ogres:
   - {fileID: 5674075356657402348, guid: 7e38136a601fead4a9e3d91f1163ff27, type: 3}
   - {fileID: 5674075356657402348, guid: e3b54a198a81ae947869418b3de8360d, type: 3}
@@ -67,6 +71,7 @@ MonoBehaviour:
   - {fileID: 6739804228592001243, guid: 6cdd667aa0034cd4dadc8d58a65fb098, type: 3}
   - {fileID: 6739804228592001243, guid: 6cdd667aa0034cd4dadc8d58a65fb098, type: 3}
   - {fileID: 6444807355431749394, guid: f593bc20677ebf14abd27a4853408c68, type: 3}
+  grassMaterial: {fileID: 2100000, guid: f7bc96225726e0641a6653092cea035f, type: 2}
   ruinsKit: {fileID: -927199367670048503, guid: 71ff0e77341aa304c921a48a639924b6, type: 3}
   forestTrees:
   - {fileID: 143020, guid: aee731a00031fcc4d9d2b075e528e050, type: 3}

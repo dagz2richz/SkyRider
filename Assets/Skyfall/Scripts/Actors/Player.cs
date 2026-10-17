@@ -553,7 +553,7 @@ namespace Skyfall
                 {
                     skinRoot = FX.Node(transform, "HeroSkin");
                     rig = Skins.SpawnCharacter(prefab, skinRoot, 1.8f, lib.HeroController(heroId));
-                    if (IsHuntress) DressHuntress();
+                    if (IsHuntress && !lib.artHeroes) DressHuntress();
                     rig.Loop(IDLE);
                 }
             }
@@ -762,15 +762,23 @@ namespace Skyfall
         Transform staffTipProc;
         Renderer staffSkin;
         Transform staffGem;
+        /// The rigged Ember Mage holds a flame-tipped wand in his left hand; bolts leave from just above that hand.
+        Transform wandHand;
 
         /// The wizard model carries its own staff: it is the Ember Mage's weapon now. Bolts leave from its top, where a
         /// glowing ember crystal is added.
         void FindStaff()
         {
             staffSkin = null;
+            wandHand = null;
             if (staffGem) DestroyImmediate(staffGem.gameObject);
             staffGem = null;
             if (!IsPyro || rig == null) return;
+            if (Skins.Lib && Skins.Lib.artHeroes)
+            {
+                wandHand = rig.Bone(HumanBodyBones.LeftHand);
+                return;
+            }
             foreach (var r in rig.model.GetComponentsInChildren<Renderer>(true))
             {
                 if (!r.name.StartsWith("Staff")) continue;
@@ -801,6 +809,7 @@ namespace Skyfall
                     var b = staffSkin.bounds;
                     return new Vector3(b.center.x, b.max.y - 0.12f, b.center.z);
                 }
+                if (wandHand) return wandHand.position + Vector3.up * 0.4f * transform.lossyScale.y;
                 if (staffTipProc) return staffTipProc.position;
                 return HandPosition;
             }
