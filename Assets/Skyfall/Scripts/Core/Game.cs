@@ -263,7 +263,7 @@ namespace Skyfall
         public void ContinueRun()
         {
             var s = Save.run;
-            player.SetupLoadout(s.spell, Data.PASSIVES.ContainsKey(s.passive ?? "") ? s.passive : "lightning_storm", s.hero,
+            player.SetupLoadout(Data.SPELLS.ContainsKey(s.spell ?? "") ? s.spell : "frost_bolt", Data.PASSIVES.ContainsKey(s.passive ?? "") ? s.passive : "lightning_storm", s.hero,
                 Save.IsDragonUnlocked(s.dragon) && Data.DRAGONS.ContainsKey(s.dragon ?? "") ? s.dragon : "blue");
             player.ApplyRunState(s);
             kills = s.kills;

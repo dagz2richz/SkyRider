@@ -345,7 +345,7 @@ namespace Skyfall
             var t = AimTarget();
             if (t) return t.Pos;
             var p = Pos + CamFwd * 14f;
-            p.y = game.terrain.Height(p.x, p.z);
+            p.y = game.terrain.SurfaceHeight(p.x, p.z, Pos.y);   // an island top when you stand on one
             return p;
         }
 
@@ -1122,6 +1122,9 @@ namespace Skyfall
             leaping = false;
             chargeT = 0f;
             velocity = Vector3.zero;
+            knockVel = Vector3.zero;   // a shove left over from before the portal must not carry into the new stage
+            knockCd = 0f;
+            hookedT = 0f;
             Pos = at;
             onGround = true;
             flightStamina = MaxFlight;

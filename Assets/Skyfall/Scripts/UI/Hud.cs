@@ -152,6 +152,7 @@ namespace Skyfall
                 menu = Menu.None;
                 pauseOpen = true;
             }
+            else if (game.ended) game.Restart(false);   // the finished run's state (ended, mounted, kills...) must not leak into a new run
             else ShowMainMenu();
         }
 

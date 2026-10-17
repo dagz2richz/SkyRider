@@ -140,7 +140,7 @@ namespace Skyfall
             int L = Lv("blood_aura");
             float rad = (3.4f + 0.4f * L) * player.AreaMult;
             var basePos = player.Pos;
-            basePos.y = game.terrain.Height(basePos.x, basePos.z) + 0.12f;
+            basePos.y = game.terrain.SurfaceHeight(basePos.x, basePos.z, player.Pos.y) + 0.12f;
             if (player.flying) basePos = player.Pos + new Vector3(0, 0.2f, 0);
             auraSpin -= delta;
             auraRing.SetPositionAndRotation(basePos, Quaternion.Euler(0, auraSpin * Mathf.Rad2Deg, 0));
@@ -698,7 +698,9 @@ namespace Skyfall
                 Explode(false);
                 return;
             }
-            if (first != null || life <= 0f || pos.y < game.terrain.Height(pos.x, pos.z) + 0.2f) Explode(true);
+            // The ground it bursts on includes island tops (judged from where it was before this step).
+            float prevY = pos.y - velocity.y * delta;
+            if (first != null || life <= 0f || pos.y < game.terrain.SurfaceHeight(pos.x, pos.z, prevY) + 0.2f) Explode(true);
         }
 
         void Explode(bool final)

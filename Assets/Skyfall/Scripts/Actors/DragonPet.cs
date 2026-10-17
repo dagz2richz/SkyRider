@@ -640,8 +640,9 @@ namespace Skyfall
                 case "black":
                 {
                     // Blood Rain: steady damage and -40% ogre attack over the crowd.
+                    // The pool lies on whatever surface the crowd stands on: an island top as well as the terrain.
                     var ground = at;
-                    ground.y = game.terrain.Height(at.x, at.z);
+                    ground.y = game.terrain.SurfaceHeight(at.x, at.z, at.y + 1f);
                     BloodRain.Spawn(this, ground, (8f + 1f * L) * SigArea * (1f + player.Pct("rainarea%")), 4f + 0.5f * L + player.Mod("raintime"), (10f + 4f * L) * DmgMult * SigDmg);
                     Sfx.Play("roar", 0f, 0.05f);
                     break;
@@ -664,7 +665,7 @@ namespace Skyfall
             {
                 float a = M.TAU * i / shocks + M.RandF() * 0.5f;
                 var p = at + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * (rad + 2.5f);
-                p.y = game.terrain.Height(p.x, p.z);
+                p.y = game.terrain.SurfaceHeight(p.x, p.z, at.y + 1f);   // island tops count, like the first blast
                 yield return Tw.Wait(0.12f);
                 if (this == null) yield break;
                 Blast(p, rad * 0.55f, dmg * 0.4f, 0.5f);
@@ -768,7 +769,7 @@ namespace Skyfall
         public static bool Covers(Vector3 p)
         {
             foreach (var r in live)
-                if (r && M.Flat(r.transform.position - p).magnitude < r.radius) return true;
+                if (r && M.Flat(r.transform.position - p).magnitude < r.radius && Mathf.Abs(r.transform.position.y - p.y) < 8f) return true;
             return false;
         }
 
