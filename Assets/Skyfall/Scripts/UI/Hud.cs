@@ -537,8 +537,8 @@ namespace Skyfall
             string bossShort = st.finalBoss.Split(',')[0];
             if (game.traveling) waveText = "Traveling to the next world...";
             else if (game.finalStarted) waveText = $"Defeat {st.finalBoss}";
-            else if (!game.miniSpawned) waveText = $"Wave {game.wave} / {st.waves.Length} · Boss in {Mathf.CeilToInt(Data.MINI_BOSS_TIME - game.timeElapsed)} s";
-            else waveText = $"Wave {game.wave} / {st.waves.Length} · {bossShort} in {Mathf.CeilToInt(left)} s";
+            else if (!game.miniSpawned) waveText = $"Wave {game.wave} / {st.waves.Length} · Boss in {Mathf.CeilToInt(Data.MINI_BOSS_TIME - game.timeElapsed)}s";
+            else waveText = $"Wave {game.wave} / {st.waves.Length} · {bossShort} in {Mathf.CeilToInt(left)}s";
             DrawText(new Rect(W / 2 - 300, 80, 600, 24), waveText, Text(18, TextAnchor.UpperCenter), GOLD);
             if (bossName != "")
             {
@@ -620,7 +620,7 @@ namespace Skyfall
                 var lockCol = new Color(1f, 0.55f, 0.35f);
                 Bar(new Rect(bx + 80, by, bw - 80, 10), 1f - p.qLockT / Data.Q_LOCKOUT_AFTER_E, lockCol);
                 DrawText(new Rect(bx, by - 6, 80, 20), "Q locked", Text(15), lockCol, 5);
-                DrawText(new Rect(bx + bw - 90, by - 6, 90, 20), $"{p.qLockT:0.0} s", Text(13, TextAnchor.MiddleRight), M.Darken(lockCol, 0.1f), 4);
+                DrawText(new Rect(bx + bw - 90, by - 6, 90, 20), $"{p.qLockT:0.0}s", Text(13, TextAnchor.MiddleRight), M.Darken(lockCol, 0.1f), 4);
                 return;
             }
             bool landing = !p.flying && p.RemountWait > 0f;
@@ -631,7 +631,7 @@ namespace Skyfall
             DrawText(new Rect(bx, by - 6, 80, 20), label, Text(15), labelCol, 5);
             // Flight is unlimited in worlds 2-3 (no time readout); the bar only counts down in the (unreachable) limited case.
             if (!p.UnlimitedFlight)
-                DrawText(new Rect(bx + bw - 90, by - 6, 90, 20), $"{Mathf.CeilToInt(p.flightStamina)} / {p.MaxFlight:0} s", Text(13, TextAnchor.MiddleRight), M.Darken(labelCol, 0.1f), 4);
+                DrawText(new Rect(bx + bw - 90, by - 6, 90, 20), $"{Mathf.CeilToInt(p.flightStamina)} / {p.MaxFlight:0}s", Text(13, TextAnchor.MiddleRight), M.Darken(labelCol, 0.1f), 4);
         }
 
         /// Active power-ups under the level: a glyph chip, the name and the seconds left, with a thin timer bar.
@@ -653,7 +653,7 @@ namespace Skyfall
                     DrawText(new Rect(r.x + 3, r.y + 3, 24, 24), d.glyph, Text(d.glyph.Length > 1 ? 15 : 22, TextAnchor.MiddleCenter, false, true), Color.Lerp(d.color, Color.white, 0.4f), 3, a);
                 }
                 DrawText(new Rect(r.x + 34, r.y + 2, 110, 18), d.name, Text(15, TextAnchor.UpperLeft, false, true), Color.Lerp(d.color, PARCHMENT, 0.4f), 4, a);
-                DrawText(new Rect(r.x + 120, r.y + 2, 64, 18), $"{Mathf.CeilToInt(left)} s", Text(16, TextAnchor.UpperRight, false, true), PARCHMENT, 4, a);
+                DrawText(new Rect(r.x + 120, r.y + 2, 64, 18), $"{Mathf.CeilToInt(left)}s", Text(16, TextAnchor.UpperRight, false, true), PARCHMENT, 4, a);
                 UiKit.Rect(new Rect(r.x + 34, r.y + 22, 150 * Mathf.Clamp01(left / Data.POWERUP_TIME), 3), M.WithA(d.color, 0.9f * a));
                 y += 34f;
             }
@@ -728,7 +728,7 @@ namespace Skyfall
             if (!IslandMarker(out var pos, out bool onScreen, out float meters, out float ang)) return;
             float pulse = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * 4f);
             var col = new Color(1f, 0.82f, 0.4f);
-            string label = $"{Mathf.RoundToInt(meters)} m";
+            string label = $"{Mathf.RoundToInt(meters)}m";
             if (onScreen)
             {
                 DrawText(new Rect(pos.x - 150, pos.y - 56, 300, 22), game.Stage.islandName, Text(16, TextAnchor.UpperCenter, false, true), col, 6, pulse);
@@ -1100,8 +1100,8 @@ namespace Skyfall
                 Space(18);
                 Label($"{Data.HEROES[pickHero].name} with the {Data.DRAGONS[pickDragon].name}.  Everything fights on its own; your spell casts whenever you have the mana.\n" +
                       "In world 1 your dragon is a hatchling: it walks beside you and breathes fire. From world 2 it is big enough to ride and its signature awakens.\n" +
-                      "Q (gamepad Y) calls your dragon to carry you: flight is unlimited in worlds 2 and 3. E (RB / X) unleashes the dragon's signature, on the ground or in the air (from the air you leap down and slam; Q is locked for 5 s after).\n" +
-                      "After leaving your dragon, it can carry you again 1 s after you first touch solid ground.\n" +
+                      "Q (gamepad Y) calls your dragon to carry you: flight is unlimited in worlds 2 and 3. E (RB / X) unleashes the dragon's signature, on the ground or in the air (from the air you leap down and slam; Q is locked for 5s after).\n" +
+                      "After leaving your dragon, it can carry you again 1s after you first touch solid ground.\n" +
                       "Every level-up offers a card for your dragon. Talents open at levels 3 and 7; armor every 5 levels. Permanent talent trees grow between runs.",
                     16, M.Darken(PARCHMENT, 0.1f), 4, TextAnchor.UpperCenter);
                 Space(18);
@@ -1138,7 +1138,7 @@ namespace Skyfall
                 {
                     var d = Data.SPELLS[id];
                     name = d.name; desc = d.desc; c = d.color;
-                    extra = $"{(int)d.cost} mana · {d.cd:0.0} s cooldown";
+                    extra = $"{(int)d.cost} mana · {d.cd:0.0}s cooldown";
                 }
                 else
                 {
@@ -1421,8 +1421,8 @@ namespace Skyfall
             { "Mouse", "Look around; orbits all the way, stopping at the ground" },
             { "Scroll wheel", "Zoom in and out" },
             { "Space", "Jump; press again in the air to double jump; hold to climb while flying" },
-            { "Q", "Call your dragon and take flight (press again to drop off). Flight is unlimited in worlds 2 and 3; the hatchling of world 1 is too small to ride. After you leave it, Q works again 1 s after you touch the ground" },
-            { "E", "Dragon signature (from world 2). Riding, you leap down and slam; Q is locked for 5 s after E" },
+            { "Q", "Call your dragon and take flight (press again to drop off). Flight is unlimited in worlds 2 and 3; the hatchling of world 1 is too small to ride. After you leave it, Q works again 1s after you touch the ground" },
+            { "E", "Dragon signature (from world 2). Riding, you leap down and slam; Q is locked for 5s after E" },
             { "F", "Capstone form once you learn its talent (Dragon Form / Crimson Specter / Phoenix Form)" },
             { "Shift / C", "Dive while flying" },
             { "Tab", "Stats screen" },
@@ -1679,7 +1679,7 @@ namespace Skyfall
                         Kv("Lifesteal", $"{p.Lifesteal * 100f:0.0}%", 16);
                         Kv("Move speed", $"{Mathf.RoundToInt(p.MoveMult * 100)}%", 16);
                         Kv("Dragon cooldowns", $"{Mathf.RoundToInt(p.DragonCdMult * 100)}%", 16);
-                        Kv("Dragon flight", !p.CanFly ? "None (hatchling)" : p.UnlimitedFlight ? "Unlimited" : $"{p.MaxFlight:0.0} s", 16);
+                        Kv("Dragon flight", !p.CanFly ? "None (hatchling)" : p.UnlimitedFlight ? "Unlimited" : $"{p.MaxFlight:0.0}s", 16);
                         Kv("Power-up drop chance", $"{p.PowerUpDropChance * 100f:0.0}%", 16);
                     });
                     Space(18);
@@ -1713,7 +1713,7 @@ namespace Skyfall
                         Space(6);
                         Label("Power-ups", 20, GOLD, 5);
                         foreach (var id in Data.POWERUP_ORDER)
-                            Kv(Data.POWERUPS[id].name, p.PowerActive(id) ? $"{Mathf.CeilToInt(p.PowerLeft(id))} s" : "-", 16);
+                            Kv(Data.POWERUPS[id].name, p.PowerActive(id) ? $"{Mathf.CeilToInt(p.PowerLeft(id))}s" : "-", 16);
                     });
                     Space(18);
                     StatColumn("This Run", () =>

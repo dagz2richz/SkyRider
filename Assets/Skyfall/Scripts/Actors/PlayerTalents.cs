@@ -662,7 +662,7 @@ namespace Skyfall
             if (kind == "" || DragonFormActive) return;
             if (dragonFormCd > 0f)
             {
-                game.hud.Toast($"{FormName(kind)} ready in {Mathf.CeilToInt(dragonFormCd)} s");
+                game.hud.Toast($"{FormName(kind)} ready in {Mathf.CeilToInt(dragonFormCd)}s");
                 return;
             }
             if (leaping) return;

@@ -217,7 +217,7 @@ namespace Skyfall
                 game.VacuumPickups();
                 FX.Shockwave(Pos + new Vector3(0, 0.3f, 0), 14f, M.WithA(d.color, 0.8f), 0.6f);
             }
-            game.hud.Toast($"{d.name}! {d.desc} for {Mathf.RoundToInt(Data.POWERUP_TIME)} s");
+            game.hud.Toast($"{d.name}! {d.desc} for {Mathf.RoundToInt(Data.POWERUP_TIME)}s");
         }
 
         void TickPowerUps(float delta)
@@ -952,7 +952,7 @@ namespace Skyfall
             {
                 // Using E (the signature) locks Q for a few seconds, mounting and dismounting alike. Forced dismounts
                 // (harpoons, Guardian Wings, rescue swoops) don't go through Q and are unaffected.
-                if (qLockT > 0f) game.hud.Toast($"Q is recovering from your signature: {Mathf.CeilToInt(qLockT)} s");
+                if (qLockT > 0f) game.hud.Toast($"Q is recovering from your signature: {Mathf.CeilToInt(qLockT)}s");
                 else if (flying) ReleaseDragon();
                 else if (!CanFly) game.hud.Toast($"Your {Data.DRAGON_AGE[0].ToLower()} is too small to carry you yet: it grows in the next world");
                 else if (remountWait > 0f) game.hud.Toast(remountLanded ? "Your dragon is circling back..." : "Land first: your dragon can only pick you up from solid ground");
